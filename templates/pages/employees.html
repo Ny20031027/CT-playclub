@@ -1,0 +1,420 @@
+{% extends 'layout.html' %}
+
+{% block content %}
+<script>
+    document.getElementById('pageTitle').textContent = '打手管理';
+</script>
+
+<div class="card">
+    <div class="card-header">
+        <div class="card-title">打手列表</div>
+        <div class="card-actions">
+            <input type="text" class="search-input" id="searchInput" placeholder="搜索昵称/姓名">
+            <button class="btn btn-primary" onclick="showAddEmployeeModal()">
+                <i class="fa-solid fa-user-plus"></i> 添加打手
+            </button>
+        </div>
+    </div>
+    <div class="table-container">
+        <table>
+            <thead>
+                <tr>
+                    <th>ID</th>
+                    <th>头像</th>
+                    <th>昵称</th>
+                    <th>真实姓名</th>
+                    <th>等级</th>
+                    <th>状态</th>
+                    <th>评分</th>
+                    <th>接单数</th>
+                    <th>操作</th>
+                </tr>
+            </thead>
+            <tbody id="employeeList">
+                <tr><td colspan="9" class="empty-state"><i class="fa-solid fa-spinner fa-spin"></i><br>加载中...</td></tr>
+            </tbody>
+        </table>
+    </div>
+    <div class="table-pagination" id="pagination">
+        <button class="pagination-btn" onclick="prevPage()">上一页</button>
+        <span id="pageInfo">第 1 页 / 共 1 页</span>
+        <button class="pagination-btn" onclick="nextPage()">下一页</button>
+    </div>
+</div>
+
+<!-- 编辑打手弹窗 -->
+<div class="modal-overlay" id="editEmployeeModal">
+    <div class="modal">
+        <div class="modal-header">
+            <div class="modal-title">编辑打手</div>
+            <div class="modal-close" onclick="hideModal('editEmployeeModal')">&times;</div>
+        </div>
+        <div class="modal-body">
+            <input type="hidden" id="editEmpId">
+            <div class="form-group">
+                <label>昵称</label>
+                <input type="text" id="editEmpNickname" placeholder="请输入昵称">
+            </div>
+            <div class="form-group">
+                <label>真实姓名</label>
+                <input type="text" id="editEmpRealName" placeholder="请输入真实姓名">
+            </div>
+            <div class="form-group">
+                <label>等级</label>
+                <select id="editEmpLevel">
+                    <option value="0">0 - 默认</option>
+                    <option value="1">1</option>
+                    <option value="2">2</option>
+                    <option value="3">3</option>
+                    <option value="4">4</option>
+                    <option value="5">5</option>
+                    <option value="6">6</option>
+                    <option value="7">7</option>
+                    <option value="8">8</option>
+                    <option value="9">9</option>
+                    <option value="10">10</option>
+                </select>
+            </div>
+            <div class="form-group">
+                <label>联系电话</label>
+                <input type="text" id="editEmpPhone" placeholder="请输入联系电话">
+            </div>
+            <div class="form-group">
+                <label>个人简介</label>
+                <textarea id="editEmpIntro" rows="3" placeholder="请输入个人简介"></textarea>
+            </div>
+            <div class="form-group">
+                <label>佣金余额(元)</label>
+                <input type="number" id="editEmpCommission" min="0" step="0.01" value="0" placeholder="打手可提现的佣金余额">
+            </div>
+        </div>
+        <div class="modal-footer">
+            <button class="btn btn-default" onclick="hideModal('editEmployeeModal')">取消</button>
+            <button class="btn btn-primary" onclick="saveEmployee()">保存</button>
+        </div>
+    </div>
+</div>
+
+<!-- 添加打手弹窗：从客户列表选择 -->
+<div class="modal-overlay" id="addEmployeeModal">
+    <div class="modal">
+        <div class="modal-header">
+            <div class="modal-title">添加打手（从客户中选择）</div>
+            <div class="modal-close" onclick="hideModal('addEmployeeModal')">&times;</div>
+        </div>
+        <div class="modal-body">
+            <div class="form-group">
+                <label>搜索客户</label>
+                <input type="text" id="customerSearchInput" placeholder="输入昵称/手机号搜索" oninput="searchCustomers()">
+            </div>
+            <div class="form-group">
+                <label>选择客户</label>
+                <div id="customerSelectList" class="customer-select-list">
+                    <div class="empty-hint">请先搜索客户</div>
+                </div>
+            </div>
+            <div id="selectedCustomerInfo" style="display:none; margin-top: 12px; padding: 12px; background: #f0f7ff; border-radius: 8px;">
+                <strong>已选择：</strong><span id="selectedCustomerName"></span>
+            </div>
+            <hr style="margin: 16px 0; border: none; border-top: 1px solid #eee;">
+            <div class="form-group">
+                <label>打手等级</label>
+                <select id="empLevel">
+                    <option value="0" selected>0 - 默认</option>
+                    <option value="1">1</option>
+                    <option value="2">2</option>
+                    <option value="3">3</option>
+                    <option value="4">4</option>
+                    <option value="5">5</option>
+                    <option value="6">6</option>
+                    <option value="7">7</option>
+                    <option value="8">8</option>
+                    <option value="9">9</option>
+                    <option value="10">10</option>
+                </select>
+            </div>
+        </div>
+        <div class="modal-footer">
+            <button class="btn btn-default" onclick="hideModal('addEmployeeModal')">取消</button>
+            <button class="btn btn-primary" onclick="convertToEmployee()" id="confirmBtn" disabled>确认转换</button>
+        </div>
+    </div>
+</div>
+
+<style>
+    .customer-select-list {
+        max-height: 200px;
+        overflow-y: auto;
+        border: 1px solid #ddd;
+        border-radius: 6px;
+    }
+    .customer-select-item {
+        padding: 10px 12px;
+        cursor: pointer;
+        border-bottom: 1px solid #f0f0f0;
+        display: flex;
+        align-items: center;
+        gap: 10px;
+    }
+    .customer-select-item:hover {
+        background: #f5f5f5;
+    }
+    .customer-select-item.selected {
+        background: #e3f2fd;
+        border-color: #2196f3;
+    }
+    .customer-select-item img {
+        width: 32px;
+        height: 32px;
+        border-radius: 50%;
+        object-fit: cover;
+    }
+    .empty-hint {
+        padding: 20px;
+        text-align: center;
+        color: #999;
+    }
+</style>
+
+<script>
+    let currentPage = 1;
+    let totalPages = 1;
+    let selectedCustomerId = null;
+    let customerSearchTimer = null;
+
+    document.addEventListener('DOMContentLoaded', async function() {
+        await loadEmployees();
+        
+        document.getElementById('searchInput').addEventListener('input', debounce(async function() {
+            currentPage = 1;
+            await loadEmployees();
+        }, 300));
+    });
+
+    async function loadEmployees() {
+        const keyword = document.getElementById('searchInput').value;
+        try {
+            const result = await get('/employee/employees/', { page: currentPage, keyword });
+            if (result.code === 200) {
+                const employees = result.data.results || [];
+                const tbody = document.getElementById('employeeList');
+                
+                if (employees.length === 0) {
+                    tbody.innerHTML = '<tr><td colspan="9" class="empty-state"><i class="fa-solid fa-inbox"></i><br>暂无数据</td></tr>';
+                    return;
+                }
+
+                const statusMap = {
+                    'idle': { text: '空闲中', class: 'badge-success' },
+                    'busy': { text: '接单中', class: 'badge-warning' },
+                    'offline': { text: '离线', class: 'badge-info' },
+                    'rest': { text: '休息', class: 'badge-secondary' },
+                    'leave': { text: '请假', class: 'badge-danger' }
+                };
+
+                const levelMap = {
+                    'new': '新人',
+                    'normal': '普通',
+                    'silver': '白银',
+                    'gold': '黄金',
+                    'diamond': '钻石',
+                    'king': '王者'
+                };
+
+                tbody.innerHTML = employees.map(emp => {
+                    const status = statusMap[emp.status] || { text: emp.status, class: 'badge-info' };
+                    const levelText = emp.level_num || 0;
+                    const avatar = emp.avatar ? `<img src="${emp.avatar}" style="width: 48px; height: 48px; border-radius: 50%; object-fit: cover;">` : '<i class="fa-solid fa-user-circle" style="font-size: 48px; color: #ccc;"></i>';
+                    return `
+                    <tr>
+                        <td>${emp.id}</td>
+                        <td>${avatar}</td>
+                        <td>${emp.nickname || emp.user?.nickname || '-'}</td>
+                        <td>${emp.real_name || '-'}</td>
+                        <td>${levelText}</td>
+                        <td><span class="badge ${status.class}">${status.text}</span></td>
+                        <td>${emp.rating || 0.0}</td>
+                        <td>${emp.order_count || 0}</td>
+                        <td>
+                            <button class="btn btn-default" onclick="editEmployee(${emp.id})">编辑</button>
+                            <button class="btn btn-danger" onclick="dismissEmployee(${emp.id})">解聘</button>
+                        </td>
+                    </tr>
+                `}).join('');
+                
+                totalPages = result.data.pages || 1;
+                document.getElementById('pageInfo').textContent = `第 ${currentPage} 页 / 共 ${totalPages} 页`;
+            }
+        } catch (error) {
+                console.error('加载打手数据失败:', error);
+                document.getElementById('employeeList').innerHTML = '<tr><td colspan="9" class="empty-state"><i class="fa-solid fa-exclamation-triangle"></i><br>加载失败</td></tr>';
+            }
+    }
+
+    function showAddEmployeeModal() {
+        selectedCustomerId = null;
+        document.getElementById('selectedCustomerInfo').style.display = 'none';
+        document.getElementById('confirmBtn').disabled = true;
+        document.getElementById('customerSearchInput').value = '';
+        document.getElementById('customerSelectList').innerHTML = '<div class="empty-hint">请先搜索客户</div>';
+        document.getElementById('addEmployeeForm')?.reset();
+        showModal('addEmployeeModal');
+        loadCustomerList();
+    }
+
+    async function loadCustomerList() {
+        try {
+            const result = await get('/customer/customers/', { page_size: 50 });
+            if (result.code === 200) {
+                const customers = result.data.results || [];
+                renderCustomerList(customers);
+            }
+        } catch (error) {
+            console.error('加载客户列表失败:', error);
+        }
+    }
+
+    async function searchCustomers() {
+        const keyword = document.getElementById('customerSearchInput').value;
+        try {
+            const result = await get('/customer/customers/', { keyword, page_size: 50 });
+            if (result.code === 200) {
+                const customers = result.data.results || [];
+                renderCustomerList(customers);
+            }
+        } catch (error) {
+            console.error('搜索客户失败:', error);
+        }
+    }
+
+    function renderCustomerList(customers) {
+        const list = document.getElementById('customerSelectList');
+        if (customers.length === 0) {
+            list.innerHTML = '<div class="empty-hint">未找到客户</div>';
+            return;
+        }
+        list.innerHTML = customers.map(c => `
+            <div class="customer-select-item ${selectedCustomerId === c.id ? 'selected' : ''}" 
+                 onclick="selectCustomer(${c.id}, '${(c.nickname || '').replace(/'/g, "\\'")}', '${(c.avatar || '').replace(/'/g, "\\'")}')">
+                ${c.avatar ? `<img src="${c.avatar}">` : '<i class="fa-solid fa-user" style="font-size:32px;color:#ccc;"></i>'}
+                <div>
+                    <div><strong>${c.nickname || '未设置昵称'}</strong></div>
+                    <div style="font-size:12px;color:#999;">${c.phone || '未绑定手机'} | ID: ${c.id}</div>
+                </div>
+            </div>
+        `).join('');
+    }
+
+    function selectCustomer(id, nickname, avatar) {
+        selectedCustomerId = id;
+        document.getElementById('selectedCustomerName').textContent = nickname || '客户 #' + id;
+        document.getElementById('selectedCustomerInfo').style.display = 'block';
+        document.getElementById('confirmBtn').disabled = false;
+        
+        document.querySelectorAll('.customer-select-item').forEach(el => el.classList.remove('selected'));
+        event.currentTarget.classList.add('selected');
+    }
+
+    async function convertToEmployee() {
+        if (!selectedCustomerId) {
+            showToast('请先选择客户', 'error');
+            return;
+        }
+
+        const level_num = parseInt(document.getElementById('empLevel').value);
+
+        try {
+            const result = await post('/employee/employees/convert/', {
+                customer_id: selectedCustomerId,
+                level_num: level_num
+            });
+
+            if (result.code === 200) {
+                showToast('转换成功', 'success');
+                hideModal('addEmployeeModal');
+                await loadEmployees();
+            } else {
+                showToast(result.msg || '转换失败', 'error');
+            }
+        } catch (error) {
+            showToast(error.message || '转换失败', 'error');
+        }
+    }
+
+    async function dismissEmployee(id) {
+        if (!confirm('确定要解聘该打手吗？解聘后该用户将恢复为客户身份，可从客户管理中重新转为打手。')) return;
+        
+        try {
+            const result = await post(`/employee/employees/${id}/remove/`);
+            if (result.code === 200) {
+                showToast('解聘成功，已恢复为客户身份', 'success');
+                await loadEmployees();
+            } else {
+                showToast(result.msg, 'error');
+            }
+        } catch (error) {
+            showToast(error.message, 'error');
+        }
+    }
+
+    async function editEmployee(id) {
+        try {
+            const result = await get(`/employee/employees/${id}/`);
+            if (result.code === 200) {
+                const emp = result.data;
+                document.getElementById('editEmpId').value = emp.id;
+                document.getElementById('editEmpNickname').value = emp.nickname || '';
+                document.getElementById('editEmpRealName').value = emp.real_name || '';
+                document.getElementById('editEmpLevel').value = emp.level_num || 0;
+                document.getElementById('editEmpPhone').value = emp.phone || '';
+                document.getElementById('editEmpIntro').value = emp.intro || '';
+                document.getElementById('editEmpCommission').value = emp.commission_balance || 0;
+                showModal('editEmployeeModal');
+            } else {
+                showToast('获取打手信息失败', 'error');
+            }
+        } catch (error) {
+            showToast('获取打手信息失败', 'error');
+        }
+    }
+
+    async function saveEmployee() {
+        const id = document.getElementById('editEmpId').value;
+        const data = {
+            nickname: document.getElementById('editEmpNickname').value,
+            real_name: document.getElementById('editEmpRealName').value,
+            level_num: parseInt(document.getElementById('editEmpLevel').value),
+            phone: document.getElementById('editEmpPhone').value,
+            intro: document.getElementById('editEmpIntro').value,
+            commission_balance: parseFloat(document.getElementById('editEmpCommission').value) || 0,
+        };
+
+        try {
+            const result = await put(`/employee/employees/${id}/`, data);
+            if (result.code === 200) {
+                showToast('保存成功', 'success');
+                hideModal('editEmployeeModal');
+                await loadEmployees();
+            } else {
+                showToast(result.msg || '保存失败', 'error');
+            }
+        } catch (error) {
+            showToast(error.message || '保存失败', 'error');
+        }
+    }
+
+    function prevPage() {
+        if (currentPage > 1) {
+            currentPage--;
+            loadEmployees();
+        }
+    }
+
+    function nextPage() {
+        if (currentPage < totalPages) {
+            currentPage++;
+            loadEmployees();
+        }
+    }
+</script>
+{% endblock %}

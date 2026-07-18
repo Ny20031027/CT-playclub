@@ -1,0 +1,100 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>陪玩店综合管理平台</title>
+    <link rel="stylesheet" href="/static/css/styles.css">
+    <link rel="stylesheet" href="/static/css/fontawesome/all.min.css">
+</head>
+<body>
+    <div class="layout-container">
+        <aside class="sidebar">
+            <div class="sidebar-header">
+                <i class="fa-solid fa-gamepad"></i> PlayClub
+            </div>
+            <div class="sidebar-menu" id="sidebarMenu">
+                <div class="menu-item" data-href="/dashboard/">
+                    <i class="fa-solid fa-chart-line"></i>
+                    <span>数据概览</span>
+                </div>
+                <div class="menu-item" data-href="/employees/">
+                    <i class="fa-solid fa-user-shield"></i>
+                    <span>打手管理</span>
+                </div>
+                <div class="menu-item" data-href="/customers/">
+                    <i class="fa-solid fa-user"></i>
+                    <span>客户管理</span>
+                </div>
+                <div class="menu-item" data-href="/cs-manage/">
+                    <i class="fa-solid fa-headset"></i>
+                    <span>客服管理</span>
+                </div>
+                <div class="menu-item" data-href="/orders/">
+                    <i class="fa-solid fa-file-text"></i>
+                    <span>订单管理</span>
+                </div>
+                <div class="menu-item" data-href="/finance/">
+                    <i class="fa-solid fa-wallet"></i>
+                    <span>财务管理</span>
+                </div>
+                <div class="menu-item" data-href="/schedule/">
+                    <i class="fa-solid fa-calendar-days"></i>
+                    <span>排班管理</span>
+                </div>
+                <div class="menu-item" data-href="/statistics/">
+                    <i class="fa-solid fa-bar-chart"></i>
+                    <span>数据统计</span>
+                </div>
+                <div class="menu-item" data-href="/system/">
+                    <i class="fa-solid fa-gear"></i>
+                    <span>系统设置</span>
+                </div>
+            </div>
+        </aside>
+        
+        <main class="main-content">
+            <header class="header">
+                <div class="header-left" id="pageTitle">数据概览</div>
+                <div class="header-right">
+                    <div class="user-info">
+                        <div class="user-avatar" id="userAvatar">U</div>
+                        <span id="userName">用户</span>
+                    </div>
+                    <button class="btn btn-default" onclick="logout()">
+                        <i class="fa-solid fa-right-from-bracket"></i> 退出
+                    </button>
+                </div>
+            </header>
+            <div class="content-area" id="contentArea">
+                {% block content %}{% endblock %}
+            </div>
+        </main>
+    </div>
+
+    <script src="/static/js/api.js"></script>
+    <script>
+        document.addEventListener('DOMContentLoaded', function() {
+            const userInfo = getUserInfo();
+            if (userInfo) {
+                document.getElementById('userName').textContent = userInfo.username || userInfo.name || '用户';
+                document.getElementById('userAvatar').textContent = (userInfo.username || userInfo.name || 'U')[0].toUpperCase();
+            }
+            
+            const menuItems = document.querySelectorAll('.menu-item');
+            const currentPath = window.location.pathname;
+            
+            menuItems.forEach(item => {
+                const href = item.getAttribute('data-href');
+                if (currentPath === href) {
+                    item.classList.add('active');
+                }
+                
+                item.addEventListener('click', function() {
+                    window.location.href = href;
+                });
+            });
+        });
+    </script>
+</body>
+</html>

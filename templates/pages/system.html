@@ -1,0 +1,1593 @@
+{% extends 'layout.html' %}
+
+{% block content %}
+<script>
+    document.getElementById('pageTitle').textContent = '系统设置';
+</script>
+
+<div class="tabs">
+    <div class="tab-item active" onclick="switchTab('config')">参数配置</div>
+    <div class="tab-item" onclick="switchTab('banner')">轮播图</div>
+    <div class="tab-item" onclick="switchTab('announcement')">公告管理</div>
+    <div class="tab-item" onclick="switchTab('gameCategory')">品类设置</div>
+    <div class="tab-item" onclick="switchTab('dictionary')">字典管理</div>
+    <div class="tab-item" onclick="switchTab('skill')">技能设置</div>
+    <div class="tab-item" onclick="switchTab('tag')">标签设置</div>
+    <div class="tab-item" onclick="switchTab('cs')">客服设置</div>
+    <div class="tab-item" onclick="switchTab('logs')">操作日志</div>
+</div>
+
+<div id="configTab" style="display: block;">
+    <div class="card">
+        <div class="card-header">
+            <div class="card-title">系统配置</div>
+            <div class="card-actions">
+                <button class="btn btn-primary" onclick="showAddConfigModal()">
+                    <i class="fa-solid fa-plus"></i> 添加配置
+                </button>
+            </div>
+        </div>
+        <div class="table-container">
+            <table>
+                <thead>
+                    <tr>
+                        <th>配置键</th>
+                        <th>配置值</th>
+                        <th>描述</th>
+                        <th>操作</th>
+                    </tr>
+                </thead>
+                <tbody id="configList">
+                    <tr><td colspan="4" class="empty-state"><i class="fa-solid fa-spinner fa-spin"></i><br>加载中...</td></tr>
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
+<div id="bannerTab" style="display: none;">
+    <div class="card">
+        <div class="card-header">
+            <div class="card-title">轮播图管理</div>
+            <div class="card-actions">
+                <button class="btn btn-primary" onclick="showAddBannerModal()">
+                    <i class="fa-solid fa-plus"></i> 添加轮播图
+                </button>
+            </div>
+        </div>
+        <div class="table-container">
+            <table>
+                <thead>
+                    <tr>
+                        <th>图片</th>
+                        <th>标题</th>
+                        <th>跳转链接</th>
+                        <th>排序</th>
+                        <th>状态</th>
+                        <th>操作</th>
+                    </tr>
+                </thead>
+                <tbody id="bannerList">
+                    <tr><td colspan="6" class="empty-state"><i class="fa-solid fa-spinner fa-spin"></i><br>加载中...</td></tr>
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
+<div id="announcementTab" style="display: none;">
+    <div class="card">
+        <div class="card-header">
+            <div class="card-title">公告管理</div>
+            <div class="card-actions">
+                <button class="btn btn-primary" onclick="showAddAnnouncementModal()">
+                    <i class="fa-solid fa-plus"></i> 添加公告
+                </button>
+            </div>
+        </div>
+        <div class="table-container">
+            <table>
+                <thead>
+                    <tr>
+                        <th>标题</th>
+                        <th>类型</th>
+                        <th>内容</th>
+                        <th>排序</th>
+                        <th>状态</th>
+                        <th>操作</th>
+                    </tr>
+                </thead>
+                <tbody id="announcementList">
+                    <tr><td colspan="6" class="empty-state"><i class="fa-solid fa-spinner fa-spin"></i><br>加载中...</td></tr>
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
+<div id="gameCategoryTab" style="display: none;">
+    <div class="card">
+        <div class="card-header">
+            <div class="card-title">品类设置（游戏分类）</div>
+            <div class="card-actions">
+                <button class="btn btn-primary" onclick="showAddGameCategoryModal()">
+                    <i class="fa-solid fa-plus"></i> 添加品类
+                </button>
+            </div>
+        </div>
+        <div class="table-container">
+            <table>
+                <thead>
+                    <tr>
+                        <th>图标</th>
+                        <th>名称</th>
+                        <th>排序</th>
+                        <th>状态</th>
+                        <th>操作</th>
+                    </tr>
+                </thead>
+                <tbody id="gameCategoryList">
+                    <tr><td colspan="5" class="empty-state"><i class="fa-solid fa-spinner fa-spin"></i><br>加载中...</td></tr>
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
+<div id="skillTab" style="display: none;">
+    <div class="card">
+        <div class="card-header">
+            <div class="card-title">技能设置（技能 & 段位管理）</div>
+            <div class="card-actions">
+                <button class="btn btn-primary" onclick="showAddSkillModal()">
+                    <i class="fa-solid fa-plus"></i> 添加技能
+                </button>
+            </div>
+        </div>
+        <div class="table-container">
+            <table>
+                <thead>
+                    <tr>
+                        <th>技能名称</th>
+                        <th>游戏分类</th>
+                        <th>段位</th>
+                        <th>状态</th>
+                        <th>操作</th>
+                    </tr>
+                </thead>
+                <tbody id="skillList">
+                    <tr><td colspan="5" class="empty-state"><i class="fa-solid fa-spinner fa-spin"></i><br>加载中...</td></tr>
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
+<div id="tagTab" style="display: none;">
+    <div class="card">
+        <div class="card-header">
+            <div class="card-title">打手标签管理</div>
+            <div class="card-actions">
+                <button class="btn btn-primary" onclick="showAddTagModal()">
+                    <i class="fa-solid fa-plus"></i> 添加标签
+                </button>
+            </div>
+        </div>
+        <div class="table-container">
+            <table>
+                <thead>
+                    <tr>
+                        <th>标签名称</th>
+                        <th>颜色</th>
+                        <th>排序</th>
+                        <th>状态</th>
+                        <th>操作</th>
+                    </tr>
+                </thead>
+                <tbody id="tagList">
+                    <tr><td colspan="5" class="empty-state"><i class="fa-solid fa-spinner fa-spin"></i><br>加载中...</td></tr>
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
+<div id="csTab" style="display: none;">
+    <div class="card">
+        <div class="card-header">
+            <div class="card-title">客服设置</div>
+        </div>
+        <div class="card-body" style="padding: 20px;">
+            <div class="form-group">
+                <label>客服电话</label>
+                <input type="text" id="csPhone" placeholder="请输入客服电话" style="width: 100%; padding: 10px; border: 1px solid #ddd; border-radius: 4px;">
+            </div>
+            <div class="form-group">
+                <label>客服微信</label>
+                <input type="text" id="csWechat" placeholder="请输入客服微信号" style="width: 100%; padding: 10px; border: 1px solid #ddd; border-radius: 4px;">
+            </div>
+            <div class="form-group">
+                <label>工作时间</label>
+                <input type="text" id="csWorkTime" placeholder="如：9:00-22:00" value="9:00-22:00" style="width: 100%; padding: 10px; border: 1px solid #ddd; border-radius: 4px;">
+            </div>
+            <button class="btn btn-primary" onclick="saveCSConfig()" style="margin-top: 20px;">保存设置</button>
+        </div>
+    </div>
+</div>
+
+<div id="dictionaryTab" style="display: none;">
+    <div class="card">
+        <div class="card-header">
+            <div class="card-title">数据字典</div>
+            <div class="card-actions">
+                <button class="btn btn-primary" onclick="showAddDictModal()">
+                    <i class="fa-solid fa-plus"></i> 添加字典项
+                </button>
+            </div>
+        </div>
+        <div class="table-container">
+            <table>
+                <thead>
+                    <tr>
+                        <th>类型</th>
+                        <th>键</th>
+                        <th>值</th>
+                        <th>排序</th>
+                        <th>操作</th>
+                    </tr>
+                </thead>
+                <tbody id="dictList">
+                    <tr><td colspan="5" class="empty-state"><i class="fa-solid fa-spinner fa-spin"></i><br>加载中...</td></tr>
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
+<div id="logsTab" style="display: none;">
+    <div class="card">
+        <div class="card-header">
+            <div class="card-title">操作日志</div>
+            <div class="card-actions">
+                <input type="text" class="search-input" id="logKeyword" placeholder="搜索操作">
+                <button class="btn btn-primary" onclick="loadLogs()">搜索</button>
+            </div>
+        </div>
+        <div class="table-container">
+            <table>
+                <thead>
+                    <tr>
+                        <th>用户</th>
+                        <th>操作</th>
+                        <th>模块</th>
+                        <th>时间</th>
+                        <th>IP</th>
+                    </tr>
+                </thead>
+                <tbody id="logList">
+                    <tr><td colspan="5" class="empty-state"><i class="fa-solid fa-spinner fa-spin"></i><br>加载中...</td></tr>
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
+<div class="modal-overlay" id="addConfigModal">
+    <div class="modal">
+        <div class="modal-header">
+            <div class="modal-title">添加配置</div>
+            <div class="modal-close" onclick="hideModal('addConfigModal')">&times;</div>
+        </div>
+        <div class="modal-body">
+            <form id="addConfigForm">
+                <div class="form-group">
+                    <label>配置键</label>
+                    <input type="text" id="configKey" required>
+                </div>
+                <div class="form-group">
+                    <label>配置值</label>
+                    <input type="text" id="configValue" required>
+                </div>
+                <div class="form-group">
+                    <label>描述</label>
+                    <input type="text" id="configDesc">
+                </div>
+            </form>
+        </div>
+        <div class="modal-footer">
+            <button class="btn btn-default" onclick="hideModal('addConfigModal')">取消</button>
+            <button class="btn btn-primary" onclick="addConfig()">确定</button>
+        </div>
+    </div>
+</div>
+
+<div class="modal-overlay" id="addDictModal">
+    <div class="modal">
+        <div class="modal-header">
+            <div class="modal-title">添加字典项</div>
+            <div class="modal-close" onclick="hideModal('addDictModal')">&times;</div>
+        </div>
+        <div class="modal-body">
+            <form id="addDictForm">
+                <div class="form-group">
+                    <label>类型</label>
+                    <input type="text" id="dictType" required>
+                </div>
+                <div class="form-group">
+                    <label>键</label>
+                    <input type="text" id="dictKey" required>
+                </div>
+                <div class="form-group">
+                    <label>值</label>
+                    <input type="text" id="dictValue" required>
+                </div>
+                <div class="form-group">
+                    <label>排序</label>
+                    <input type="number" id="dictSort" value="0">
+                </div>
+            </form>
+        </div>
+        <div class="modal-footer">
+            <button class="btn btn-default" onclick="hideModal('addDictModal')">取消</button>
+            <button class="btn btn-primary" onclick="addDict()">确定</button>
+        </div>
+    </div>
+</div>
+
+<div class="modal-overlay" id="gameCategoryModal">
+    <div class="modal">
+        <div class="modal-header">
+            <div class="modal-title" id="gameCategoryModalTitle">添加品类</div>
+            <div class="modal-close" onclick="hideModal('gameCategoryModal')">&times;</div>
+        </div>
+        <div class="modal-body">
+            <form id="gameCategoryForm">
+                <input type="hidden" id="gameCategoryId">
+                <div class="form-group">
+                    <label>品类名称 *</label>
+                    <input type="text" id="gameCategoryName" required placeholder="例如：王者荣耀">
+                </div>
+                <div class="form-group">
+                    <label>图标</label>
+                    <div class="upload-area" id="gameCategoryIconUpload">
+                        <input type="file" id="gameCategoryIconFile" accept="image/*" style="display: none;" onchange="handleGameCategoryIconUpload(event)">
+                        <div class="upload-placeholder" id="gameCategoryIconPreview" onclick="document.getElementById('gameCategoryIconFile').click()">
+                            <i class="fa-solid fa-cloud-arrow-up"></i>
+                            <p>点击上传图标</p>
+                        </div>
+                    </div>
+                    <input type="hidden" id="gameCategoryIcon">
+                </div>
+                <div class="form-group">
+                    <label>排序</label>
+                    <input type="number" id="gameCategorySort" value="0" min="0">
+                </div>
+                <div class="form-group">
+                    <label>状态</label>
+                    <select id="gameCategoryStatus">
+                        <option value="true">启用</option>
+                        <option value="false">禁用</option>
+                    </select>
+                </div>
+            </form>
+        </div>
+        <div class="modal-footer">
+            <button class="btn btn-default" onclick="hideModal('gameCategoryModal')">取消</button>
+            <button class="btn btn-primary" onclick="saveGameCategory()">确定</button>
+        </div>
+    </div>
+</div>
+
+<div class="modal-overlay" id="bannerModal">
+    <div class="modal">
+        <div class="modal-header">
+            <div class="modal-title" id="bannerModalTitle">添加轮播图</div>
+            <div class="modal-close" onclick="hideModal('bannerModal')">&times;</div>
+        </div>
+        <div class="modal-body">
+            <form id="bannerForm">
+                <input type="hidden" id="bannerId">
+                <div class="form-group">
+                    <label>标题</label>
+                    <input type="text" id="bannerTitle" placeholder="请输入标题">
+                </div>
+                <div class="form-group">
+                    <label>图片 *</label>
+                    <div class="upload-area" id="bannerImageUpload">
+                        <input type="file" id="bannerImageFile" accept="image/*" style="display: none;" onchange="handleBannerImageUpload(event)">
+                        <div class="upload-placeholder" id="bannerImagePreview" onclick="document.getElementById('bannerImageFile').click()">
+                            <i class="fa-solid fa-cloud-arrow-up"></i>
+                            <p>点击上传图片</p>
+                        </div>
+                    </div>
+                    <input type="hidden" id="bannerImage">
+                </div>
+                <div class="form-group">
+                    <label>跳转链接</label>
+                    <input type="text" id="bannerLinkUrl" placeholder="请输入跳转链接，可不填">
+                </div>
+                <div class="form-group">
+                    <label>排序</label>
+                    <input type="number" id="bannerSort" value="0" min="0">
+                </div>
+                <div class="form-group">
+                    <label>状态</label>
+                    <select id="bannerStatus">
+                        <option value="true">启用</option>
+                        <option value="false">禁用</option>
+                    </select>
+                </div>
+            </form>
+        </div>
+        <div class="modal-footer">
+            <button class="btn btn-default" onclick="hideModal('bannerModal')">取消</button>
+            <button class="btn btn-primary" onclick="saveBanner()">确定</button>
+        </div>
+    </div>
+</div>
+
+<div class="modal-overlay" id="announcementModal">
+    <div class="modal">
+        <div class="modal-header">
+            <div class="modal-title" id="announcementModalTitle">添加公告</div>
+            <div class="modal-close" onclick="hideModal('announcementModal')">&times;</div>
+        </div>
+        <div class="modal-body">
+            <form id="announcementForm">
+                <input type="hidden" id="announcementId">
+                <div class="form-group">
+                    <label>标题 *</label>
+                    <input type="text" id="announcementTitle" required placeholder="请输入公告标题">
+                </div>
+                <div class="form-group">
+                    <label>类型</label>
+                    <select id="announcementType">
+                        <option value="info">通知</option>
+                        <option value="activity">活动</option>
+                        <option value="rule">规则</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label>内容 *</label>
+                    <textarea id="announcementContent" rows="6" required placeholder="请输入公告内容"></textarea>
+                </div>
+                <div class="form-group">
+                    <label>排序</label>
+                    <input type="number" id="announcementSort" value="0" min="0">
+                </div>
+                <div class="form-group">
+                    <label>状态</label>
+                    <select id="announcementStatus">
+                        <option value="true">启用</option>
+                        <option value="false">禁用</option>
+                    </select>
+                </div>
+            </form>
+        </div>
+        <div class="modal-footer">
+            <button class="btn btn-default" onclick="hideModal('announcementModal')">取消</button>
+            <button class="btn btn-primary" onclick="saveAnnouncement()">确定</button>
+        </div>
+    </div>
+</div>
+
+<div class="modal-overlay" id="skillModal">
+    <div class="modal">
+        <div class="modal-header">
+            <div class="modal-title" id="skillModalTitle">添加技能</div>
+            <div class="modal-close" onclick="hideModal('skillModal')">&times;</div>
+        </div>
+        <div class="modal-body">
+            <form id="skillForm">
+                <input type="hidden" id="skillId">
+                <div class="form-group">
+                    <label>技能名称 *</label>
+                    <input type="text" id="skillName" required placeholder="如：王者荣耀陪玩">
+                </div>
+                <div class="form-group">
+                    <label>游戏分类</label>
+                    <select id="skillGameCategory">
+                        <option value="">请选择游戏分类</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label>排序</label>
+                    <input type="number" id="skillSort" value="0" min="0">
+                </div>
+                <div class="form-group">
+                    <label>状态</label>
+                    <select id="skillStatus">
+                        <option value="true">启用</option>
+                        <option value="false">禁用</option>
+                    </select>
+                </div>
+                <hr style="margin: 15px 0; border: none; border-top: 1px solid #eee;">
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;">
+                    <p style="font-weight: 600; margin: 0;">段位设置</p>
+                    <button type="button" class="btn btn-default" onclick="addLevelRow()" style="padding: 4px 12px; font-size: 13px;">+ 添加段位</button>
+                </div>
+                <div id="levelRows"></div>
+            </form>
+        </div>
+        <div class="modal-footer">
+            <button class="btn btn-default" onclick="hideModal('skillModal')">取消</button>
+            <button class="btn btn-primary" onclick="saveSkill()">确定</button>
+        </div>
+    </div>
+</div>
+
+<div class="modal-overlay" id="tagModal">
+    <div class="modal">
+        <div class="modal-header">
+            <div class="modal-title" id="tagModalTitle">添加标签</div>
+            <div class="modal-close" onclick="hideModal('tagModal')">&times;</div>
+        </div>
+        <div class="modal-body">
+            <form id="tagForm">
+                <input type="hidden" id="tagId">
+                <div class="form-group">
+                    <label>标签名称 *</label>
+                    <input type="text" id="tagName" required placeholder="如：技术好">
+                </div>
+                <div class="form-group">
+                    <label>标签颜色</label>
+                    <input type="color" id="tagColor" value="#1890ff">
+                </div>
+                <div class="form-group">
+                    <label>排序</label>
+                    <input type="number" id="tagSort" value="0" min="0">
+                </div>
+                <div class="form-group">
+                    <label>状态</label>
+                    <select id="tagStatus">
+                        <option value="true">启用</option>
+                        <option value="false">禁用</option>
+                    </select>
+                </div>
+            </form>
+        </div>
+        <div class="modal-footer">
+            <button class="btn btn-default" onclick="hideModal('tagModal')">取消</button>
+            <button class="btn btn-primary" onclick="saveTag()">确定</button>
+        </div>
+    </div>
+</div>
+
+<script>
+    document.addEventListener('DOMContentLoaded', async function() {
+        await loadConfigs();
+        await loadBanners();
+        await loadAnnouncements();
+        await loadGameCategories();
+        await loadDictionaries();
+        await loadLogs();
+        await loadSkills();
+        await loadTags();
+    });
+
+    function switchTab(tab) {
+        document.querySelectorAll('.tab-item').forEach(t => t.classList.remove('active'));
+        event.target.classList.add('active');
+
+        document.getElementById('configTab').style.display = tab === 'config' ? 'block' : 'none';
+        document.getElementById('bannerTab').style.display = tab === 'banner' ? 'block' : 'none';
+        document.getElementById('announcementTab').style.display = tab === 'announcement' ? 'block' : 'none';
+        document.getElementById('gameCategoryTab').style.display = tab === 'gameCategory' ? 'block' : 'none';
+        document.getElementById('dictionaryTab').style.display = tab === 'dictionary' ? 'block' : 'none';
+        document.getElementById('skillTab').style.display = tab === 'skill' ? 'block' : 'none';
+        document.getElementById('tagTab').style.display = tab === 'tag' ? 'block' : 'none';
+        document.getElementById('csTab').style.display = tab === 'cs' ? 'block' : 'none';
+        document.getElementById('logsTab').style.display = tab === 'logs' ? 'block' : 'none';
+
+        if (tab === 'cs') loadCSConfig();
+    }
+
+    let editingConfigId = null;
+
+    function showAddConfigModal() {
+        editingConfigId = null;
+        document.getElementById('addConfigForm').reset();
+        document.getElementById('configKey').readOnly = false;
+        document.getElementById('addConfigModal').querySelector('.modal-title').textContent = '添加配置';
+        showModal('addConfigModal');
+    }
+
+    async function loadConfigs() {
+        try {
+            const result = await get('/system/configs/');
+            if (result.code === 200) {
+                const configs = result.data.results || [];
+                const tbody = document.getElementById('configList');
+                
+                if (configs.length === 0) {
+                    tbody.innerHTML = '<tr><td colspan="4" class="empty-state"><i class="fa-solid fa-inbox"></i><br>暂无配置</td></tr>';
+                    return;
+                }
+                
+                tbody.innerHTML = configs.map(c => `
+                    <tr>
+                        <td>${c.key}</td>
+                        <td>${c.value}</td>
+                        <td>${c.description || '-'}</td>
+                        <td>
+                            <button class="btn btn-default" onclick="editConfig(${c.id})">编辑</button>
+                            <button class="btn btn-danger" onclick="deleteConfig(${c.id})">删除</button>
+                        </td>
+                    </tr>
+                `).join('');
+            }
+        } catch (error) {
+            console.error('加载配置失败:', error);
+        }
+    }
+
+    async function addConfig() {
+        const key = document.getElementById('configKey').value;
+        const value = document.getElementById('configValue').value;
+        const desc = document.getElementById('configDesc').value;
+
+        try {
+            let result;
+            if (editingConfigId) {
+                result = await put(`/system/configs/${editingConfigId}/`, { value, description: desc });
+            } else {
+                result = await post('/system/configs/', { key, value, description: desc });
+            }
+
+            if (result.code === 200) {
+                showToast(editingConfigId ? '更新成功' : '添加成功', 'success');
+                hideModal('addConfigModal');
+                editingConfigId = null;
+                document.getElementById('addConfigForm').reset();
+                document.getElementById('addConfigModal').querySelector('.modal-title').textContent = '添加配置';
+                await loadConfigs();
+            } else {
+                showToast(result.msg, 'error');
+            }
+        } catch (error) {
+            showToast(error.message, 'error');
+        }
+    }
+
+    async function deleteConfig(id) {
+        if (!confirm('确定要删除该配置吗？')) return;
+        
+        try {
+            const result = await del(`/system/configs/${id}/`);
+            if (result.code === 200) {
+                showToast('删除成功', 'success');
+                await loadConfigs();
+            } else {
+                showToast(result.msg, 'error');
+            }
+        } catch (error) {
+            showToast(error.message, 'error');
+        }
+    }
+
+    async function editConfig(id) {
+        try {
+            const result = await get(`/system/configs/${id}/`);
+            if (result.code === 200) {
+                const config = result.data;
+                editingConfigId = id;
+                document.getElementById('configKey').value = config.key;
+                document.getElementById('configKey').readOnly = true;
+                document.getElementById('configValue').value = config.value;
+                document.getElementById('configDesc').value = config.description || '';
+                document.getElementById('addConfigModal').querySelector('.modal-title').textContent = '编辑配置';
+                showModal('addConfigModal');
+            }
+        } catch (error) {
+            showToast('加载配置失败', 'error');
+        }
+    }
+
+    // ============ 品类设置 ============
+    let currentGameCategoryId = null;
+
+    async function loadGameCategories() {
+        try {
+            const result = await get('/system/game-categories/');
+            if (result.code === 200) {
+                const categories = result.data.results || [];
+                const tbody = document.getElementById('gameCategoryList');
+
+                if (categories.length === 0) {
+                    tbody.innerHTML = '<tr><td colspan="5" class="empty-state"><i class="fa-solid fa-inbox"></i><br>暂无品类数据</td></tr>';
+                    return;
+                }
+
+                tbody.innerHTML = categories.map(c => `
+                    <tr>
+                        <td>
+                            ${c.icon ? `<img src="${c.icon}" style="width: 40px; height: 40px; border-radius: 8px; object-fit: cover;">` : '<span style="color: #999;">无图标</span>'}
+                        </td>
+                        <td>${c.name}</td>
+                        <td>${c.sort || 0}</td>
+                        <td>
+                            <span class="badge ${c.status ? 'badge-success' : 'badge-danger'}">${c.status ? '启用' : '禁用'}</span>
+                        </td>
+                        <td>
+                            <button class="btn btn-default" onclick="editGameCategory(${c.id})">编辑</button>
+                            <button class="btn btn-danger" onclick="deleteGameCategory(${c.id})">删除</button>
+                        </td>
+                    </tr>
+                `).join('');
+            }
+        } catch (error) {
+            console.error('加载品类失败:', error);
+        }
+    }
+
+    function showAddGameCategoryModal() {
+        currentGameCategoryId = null;
+        document.getElementById('gameCategoryModalTitle').textContent = '添加品类';
+        document.getElementById('gameCategoryForm').reset();
+        document.getElementById('gameCategoryId').value = '';
+        document.getElementById('gameCategoryIcon').value = '';
+        document.getElementById('gameCategoryIconPreview').innerHTML = '<i class="fa-solid fa-cloud-arrow-up"></i><p>点击上传图标</p>';
+        showModal('gameCategoryModal');
+    }
+
+    async function editGameCategory(id) {
+        try {
+            const result = await get(`/system/game-categories/${id}/`);
+            if (result.code === 200) {
+                const category = result.data;
+                currentGameCategoryId = id;
+                document.getElementById('gameCategoryModalTitle').textContent = '编辑品类';
+                document.getElementById('gameCategoryId').value = category.id;
+                document.getElementById('gameCategoryName').value = category.name;
+                document.getElementById('gameCategoryIcon').value = category.icon || '';
+                document.getElementById('gameCategorySort').value = category.sort || 0;
+                document.getElementById('gameCategoryStatus').value = category.status ? 'true' : 'false';
+
+                if (category.icon) {
+                    document.getElementById('gameCategoryIconPreview').innerHTML = `<img src="${category.icon}" style="max-width: 100%; max-height: 150px; border-radius: 8px;">`;
+                } else {
+                    document.getElementById('gameCategoryIconPreview').innerHTML = '<i class="fa-solid fa-cloud-arrow-up"></i><p>点击上传图标</p>';
+                }
+
+                showModal('gameCategoryModal');
+            }
+        } catch (error) {
+            showToast('加载品类信息失败', 'error');
+        }
+    }
+
+    async function handleGameCategoryIconUpload(event) {
+        const file = event.target.files[0];
+        if (!file) return;
+
+        const formData = new FormData();
+        formData.append('file', file);
+
+        try {
+            const result = await upload('/upload/files/image/', formData);
+            if (result.code === 200) {
+                document.getElementById('gameCategoryIcon').value = result.data.url;
+                document.getElementById('gameCategoryIconPreview').innerHTML = `<img src="${result.data.url}" style="max-width: 100%; max-height: 150px; border-radius: 8px;">`;
+                showToast('上传成功', 'success');
+            } else {
+                showToast('上传失败', 'error');
+            }
+        } catch (error) {
+            showToast('上传失败: ' + error.message, 'error');
+        }
+    }
+
+    async function saveGameCategory() {
+        const id = document.getElementById('gameCategoryId').value;
+        const name = document.getElementById('gameCategoryName').value;
+        const icon = document.getElementById('gameCategoryIcon').value;
+        const sort = document.getElementById('gameCategorySort').value;
+        const status = document.getElementById('gameCategoryStatus').value === 'true';
+
+        if (!name) {
+            showToast('请输入品类名称', 'error');
+            return;
+        }
+
+        const data = { name, icon, sort: parseInt(sort) || 0, status };
+
+        try {
+            let result;
+            if (id) {
+                result = await put(`/system/game-categories/${id}/`, data);
+            } else {
+                result = await post('/system/game-categories/', data);
+            }
+
+            if (result.code === 200) {
+                showToast(id ? '更新成功' : '添加成功', 'success');
+                hideModal('gameCategoryModal');
+                await loadGameCategories();
+            } else {
+                showToast(result.msg, 'error');
+            }
+        } catch (error) {
+            showToast('操作失败: ' + error.message, 'error');
+        }
+    }
+
+    async function deleteGameCategory(id) {
+        if (!confirm('确定要删除该品类吗？')) return;
+
+        try {
+            const result = await del(`/system/game-categories/${id}/`);
+            if (result.code === 200) {
+                showToast('删除成功', 'success');
+                await loadGameCategories();
+            } else {
+                showToast(result.msg, 'error');
+            }
+        } catch (error) {
+            showToast('删除失败: ' + error.message, 'error');
+        }
+    }
+
+    function showAddDictModal() {
+        document.getElementById('addDictForm').reset();
+        document.getElementById('dictKey').readOnly = false;
+        document.getElementById('addDictModal').querySelector('.modal-title').textContent = '添加字典项';
+        document.getElementById('addDictModal').querySelector('.modal-footer .btn-primary').setAttribute('onclick', 'addDict()');
+        showModal('addDictModal');
+    }
+
+    async function loadDictionaries() {
+        try {
+            const result = await get('/system/dictionaries/');
+            if (result.code === 200) {
+                const dicts = result.data.results || [];
+                const tbody = document.getElementById('dictList');
+                
+                if (dicts.length === 0) {
+                    tbody.innerHTML = '<tr><td colspan="5" class="empty-state"><i class="fa-solid fa-inbox"></i><br>暂无字典数据</td></tr>';
+                    return;
+                }
+                
+                tbody.innerHTML = dicts.map(d => `
+                    <tr>
+                        <td>${d.name}</td>
+                        <td>${d.code}</td>
+                        <td>${d.type === 'tree' ? '树形' : '列表'}</td>
+                        <td>${d.sort || 0}</td>
+                        <td>
+                            <button class="btn btn-default" onclick="editDict(${d.id})">编辑</button>
+                            <button class="btn btn-danger" onclick="deleteDict(${d.id})">删除</button>
+                        </td>
+                    </tr>
+                `).join('');
+            }
+        } catch (error) {
+            console.error('加载字典失败:', error);
+        }
+    }
+
+    async function addDict() {
+        const type = document.getElementById('dictType').value;
+        const key = document.getElementById('dictKey').value;
+        const value = document.getElementById('dictValue').value;
+        const sort = document.getElementById('dictSort').value;
+        
+        try {
+            const result = await post('/system/dictionaries/', { name: key, code: key, type: 'list', sort: parseInt(sort) || 0 });
+            
+            if (result.code === 200) {
+                showToast('添加成功', 'success');
+                hideModal('addDictModal');
+                document.getElementById('addDictForm').reset();
+                await loadDictionaries();
+            } else {
+                showToast(result.msg, 'error');
+            }
+        } catch (error) {
+            showToast(error.message, 'error');
+        }
+    }
+
+    async function deleteDict(id) {
+        if (!confirm('确定要删除该字典项吗？')) return;
+        
+        try {
+            const result = await del(`/system/dictionaries/${id}/`);
+            if (result.code === 200) {
+                showToast('删除成功', 'success');
+                await loadDictionaries();
+            } else {
+                showToast(result.msg, 'error');
+            }
+        } catch (error) {
+            showToast(error.message, 'error');
+        }
+    }
+
+    async function editDict(id) {
+        try {
+            const result = await get(`/system/dictionaries/${id}/`);
+            if (result.code === 200) {
+                const dict = result.data;
+                document.getElementById('dictType').value = dict.type || '';
+                document.getElementById('dictKey').value = dict.name || dict.code;
+                document.getElementById('dictKey').readOnly = true;
+                document.getElementById('dictValue').value = dict.code || '';
+                document.getElementById('dictSort').value = dict.sort || 0;
+                document.getElementById('addDictModal').querySelector('.modal-title').textContent = '编辑字典项';
+                document.getElementById('addDictModal').querySelector('.modal-footer .btn-primary').setAttribute('onclick', `updateDict(${id})`);
+                showModal('addDictModal');
+            }
+        } catch (error) {
+            showToast('加载字典失败', 'error');
+        }
+    }
+
+    async function updateDict(id) {
+        const name = document.getElementById('dictKey').value;
+        const sort = document.getElementById('dictSort').value;
+
+        try {
+            const result = await put(`/system/dictionaries/${id}/`, { name, sort: parseInt(sort) || 0 });
+            if (result.code === 200) {
+                showToast('更新成功', 'success');
+                hideModal('addDictModal');
+                document.getElementById('dictKey').readOnly = false;
+                document.getElementById('addDictModal').querySelector('.modal-title').textContent = '添加字典项';
+                document.getElementById('addDictModal').querySelector('.modal-footer .btn-primary').setAttribute('onclick', 'addDict()');
+                document.getElementById('addDictForm').reset();
+                await loadDictionaries();
+            } else {
+                showToast(result.msg, 'error');
+            }
+        } catch (error) {
+            showToast(error.message, 'error');
+        }
+    }
+
+    async function loadLogs() {
+        const keyword = document.getElementById('logKeyword').value;
+        try {
+            const result = await get('/system/operation-logs/', { keyword });
+            if (result.code === 200) {
+                const logs = result.data.results || [];
+                const tbody = document.getElementById('logList');
+                
+                if (logs.length === 0) {
+                    tbody.innerHTML = '<tr><td colspan="5" class="empty-state"><i class="fa-solid fa-inbox"></i><br>暂无日志</td></tr>';
+                    return;
+                }
+                
+                tbody.innerHTML = logs.map(log => `
+                    <tr>
+                        <td>${log.user_name || '-'}</td>
+                        <td>${log.action}</td>
+                        <td>${log.module}</td>
+                        <td>${formatDate(log.created_at)}</td>
+                        <td>${log.ip_address || '-'}</td>
+                    </tr>
+                `).join('');
+            }
+        } catch (error) {
+            console.error('加载日志失败:', error);
+        }
+    }
+
+    // ============ 轮播图管理 ============
+    let currentBannerId = null;
+
+    async function loadBanners() {
+        try {
+            const result = await get('/system/banners/');
+            if (result.code === 200) {
+                const banners = result.data.results || [];
+                const tbody = document.getElementById('bannerList');
+
+                if (banners.length === 0) {
+                    tbody.innerHTML = '<tr><td colspan="6" class="empty-state"><i class="fa-solid fa-inbox"></i><br>暂无轮播图</td></tr>';
+                    return;
+                }
+
+                tbody.innerHTML = banners.map(b => `
+                    <tr>
+                        <td>
+                            ${b.image ? `<img src="${b.image}" style="width: 120px; height: 60px; border-radius: 4px; object-fit: cover;">` : '<span style="color: #999;">无图片</span>'}
+                        </td>
+                        <td>${b.title || '-'}</td>
+                        <td>${b.link_url || '-'}</td>
+                        <td>${b.sort || 0}</td>
+                        <td>
+                            <span class="badge ${b.status ? 'badge-success' : 'badge-danger'}">${b.status ? '启用' : '禁用'}</span>
+                        </td>
+                        <td>
+                            <button class="btn btn-default" onclick="editBanner(${b.id})">编辑</button>
+                            <button class="btn btn-danger" onclick="deleteBanner(${b.id})">删除</button>
+                        </td>
+                    </tr>
+                `).join('');
+            }
+        } catch (error) {
+            console.error('加载轮播图失败:', error);
+        }
+    }
+
+    function showAddBannerModal() {
+        currentBannerId = null;
+        document.getElementById('bannerModalTitle').textContent = '添加轮播图';
+        document.getElementById('bannerForm').reset();
+        document.getElementById('bannerId').value = '';
+        document.getElementById('bannerImage').value = '';
+        document.getElementById('bannerImagePreview').innerHTML = '<i class="fa-solid fa-cloud-arrow-up"></i><p>点击上传图片</p>';
+        showModal('bannerModal');
+    }
+
+    async function editBanner(id) {
+        try {
+            const result = await get(`/system/banners/${id}/`);
+            if (result.code === 200) {
+                const banner = result.data;
+                currentBannerId = id;
+                document.getElementById('bannerModalTitle').textContent = '编辑轮播图';
+                document.getElementById('bannerId').value = banner.id;
+                document.getElementById('bannerTitle').value = banner.title || '';
+                document.getElementById('bannerImage').value = banner.image || '';
+                document.getElementById('bannerLinkUrl').value = banner.link_url || '';
+                document.getElementById('bannerSort').value = banner.sort || 0;
+                document.getElementById('bannerStatus').value = banner.status ? 'true' : 'false';
+
+                if (banner.image) {
+                    document.getElementById('bannerImagePreview').innerHTML = `<img src="${banner.image}" style="max-width: 100%; max-height: 200px; border-radius: 8px;">`;
+                } else {
+                    document.getElementById('bannerImagePreview').innerHTML = '<i class="fa-solid fa-cloud-arrow-up"></i><p>点击上传图片</p>';
+                }
+
+                showModal('bannerModal');
+            }
+        } catch (error) {
+            showToast('加载轮播图失败', 'error');
+        }
+    }
+
+    async function handleBannerImageUpload(event) {
+        const file = event.target.files[0];
+        if (!file) return;
+
+        const formData = new FormData();
+        formData.append('file', file);
+
+        try {
+            const result = await upload('/upload/files/image/', formData);
+            if (result.code === 200) {
+                document.getElementById('bannerImage').value = result.data.url;
+                document.getElementById('bannerImagePreview').innerHTML = `<img src="${result.data.url}" style="max-width: 100%; max-height: 200px; border-radius: 8px;">`;
+                showToast('上传成功', 'success');
+            } else {
+                showToast('上传失败', 'error');
+            }
+        } catch (error) {
+            showToast('上传失败: ' + error.message, 'error');
+        }
+    }
+
+    async function saveBanner() {
+        const id = document.getElementById('bannerId').value;
+        const title = document.getElementById('bannerTitle').value;
+        const image = document.getElementById('bannerImage').value;
+        const link_url = document.getElementById('bannerLinkUrl').value;
+        const sort = document.getElementById('bannerSort').value;
+        const status = document.getElementById('bannerStatus').value === 'true';
+
+        if (!image) {
+            showToast('请上传轮播图图片', 'error');
+            return;
+        }
+
+        const data = { title, image, link_url, sort: parseInt(sort) || 0, status };
+
+        try {
+            let result;
+            if (id) {
+                result = await put(`/system/banners/${id}/`, data);
+            } else {
+                result = await post('/system/banners/', data);
+            }
+
+            if (result.code === 200) {
+                showToast(id ? '更新成功' : '添加成功', 'success');
+                hideModal('bannerModal');
+                await loadBanners();
+            } else {
+                showToast(result.msg, 'error');
+            }
+        } catch (error) {
+            showToast('操作失败: ' + error.message, 'error');
+        }
+    }
+
+    async function deleteBanner(id) {
+        if (!confirm('确定要删除该轮播图吗？')) return;
+
+        try {
+            const result = await del(`/system/banners/${id}/`);
+            if (result.code === 200) {
+                showToast('删除成功', 'success');
+                await loadBanners();
+            } else {
+                showToast(result.msg, 'error');
+            }
+        } catch (error) {
+            showToast('删除失败: ' + error.message, 'error');
+        }
+    }
+
+    // ============ 公告管理 ============
+    let currentAnnouncementId = null;
+
+    async function loadAnnouncements() {
+        try {
+            const result = await get('/system/announcements/');
+            if (result.code === 200) {
+                const announcements = result.data.results || [];
+                const tbody = document.getElementById('announcementList');
+
+                if (announcements.length === 0) {
+                    tbody.innerHTML = '<tr><td colspan="6" class="empty-state"><i class="fa-solid fa-inbox"></i><br>暂无公告</td></tr>';
+                    return;
+                }
+
+                tbody.innerHTML = announcements.map(a => `
+                    <tr>
+                        <td>${a.title}</td>
+                        <td>
+                            <span class="badge ${a.type === 'activity' ? 'badge-warning' : a.type === 'rule' ? 'badge-info' : 'badge-success'}">${a.type_text || a.type}</span>
+                        </td>
+                        <td style="max-width: 300px;">${a.content.substring(0, 50)}${a.content.length > 50 ? '...' : ''}</td>
+                        <td>${a.sort || 0}</td>
+                        <td>
+                            <span class="badge ${a.status ? 'badge-success' : 'badge-danger'}">${a.status ? '启用' : '禁用'}</span>
+                        </td>
+                        <td>
+                            <button class="btn btn-default" onclick="editAnnouncement(${a.id})">编辑</button>
+                            <button class="btn btn-danger" onclick="deleteAnnouncement(${a.id})">删除</button>
+                        </td>
+                    </tr>
+                `).join('');
+            }
+        } catch (error) {
+            console.error('加载公告失败:', error);
+        }
+    }
+
+    function showAddAnnouncementModal() {
+        currentAnnouncementId = null;
+        document.getElementById('announcementModalTitle').textContent = '添加公告';
+        document.getElementById('announcementForm').reset();
+        document.getElementById('announcementId').value = '';
+        showModal('announcementModal');
+    }
+
+    async function editAnnouncement(id) {
+        try {
+            const result = await get(`/system/announcements/${id}/`);
+            if (result.code === 200) {
+                const announcement = result.data;
+                currentAnnouncementId = id;
+                document.getElementById('announcementModalTitle').textContent = '编辑公告';
+                document.getElementById('announcementId').value = announcement.id;
+                document.getElementById('announcementTitle').value = announcement.title;
+                document.getElementById('announcementType').value = announcement.type;
+                document.getElementById('announcementContent').value = announcement.content;
+                document.getElementById('announcementSort').value = announcement.sort || 0;
+                document.getElementById('announcementStatus').value = announcement.status ? 'true' : 'false';
+
+                showModal('announcementModal');
+            }
+        } catch (error) {
+            showToast('加载公告失败', 'error');
+        }
+    }
+
+    async function saveAnnouncement() {
+        const id = document.getElementById('announcementId').value;
+        const title = document.getElementById('announcementTitle').value;
+        const type = document.getElementById('announcementType').value;
+        const content = document.getElementById('announcementContent').value;
+        const sort = document.getElementById('announcementSort').value;
+        const status = document.getElementById('announcementStatus').value === 'true';
+
+        if (!title || !content) {
+            showToast('请填写标题和内容', 'error');
+            return;
+        }
+
+        const data = { title, type, content, sort: parseInt(sort) || 0, status };
+
+        try {
+            let result;
+            if (id) {
+                result = await put(`/system/announcements/${id}/`, data);
+            } else {
+                result = await post('/system/announcements/', data);
+            }
+
+            if (result.code === 200) {
+                showToast(id ? '更新成功' : '添加成功', 'success');
+                hideModal('announcementModal');
+                await loadAnnouncements();
+            } else {
+                showToast(result.msg, 'error');
+            }
+        } catch (error) {
+            showToast('操作失败: ' + error.message, 'error');
+        }
+    }
+
+    async function deleteAnnouncement(id) {
+        if (!confirm('确定要删除该公告吗？')) return;
+
+        try {
+            const result = await del(`/system/announcements/${id}/`);
+            if (result.code === 200) {
+                showToast('删除成功', 'success');
+                await loadAnnouncements();
+            } else {
+                showToast(result.msg, 'error');
+            }
+        } catch (error) {
+            showToast('删除失败: ' + error.message, 'error');
+        }
+    }
+
+    // ============ 技能设置 ============
+    async function loadSkills() {
+        try {
+            const result = await get('/employee/skills/');
+            if (result.code === 200) {
+                const skills = result.data.results || [];
+                const tbody = document.getElementById('skillList');
+
+                if (skills.length === 0) {
+                    tbody.innerHTML = '<tr><td colspan="5" class="empty-state"><i class="fa-solid fa-inbox"></i><br>暂无技能数据</td></tr>';
+                    return;
+                }
+
+                tbody.innerHTML = skills.map(s => {
+                    const levels = (s.levels || []).map(l => l.name + '(¥' + l.price_min + '~' + l.price_max + ')').join('、');
+                    return `
+                    <tr>
+                        <td>${s.name}</td>
+                        <td>${s.game_category_name || '-'}</td>
+                        <td>${levels || '<span style="color:#999;">未设置段位</span>'}</td>
+                        <td>
+                            <span class="badge ${s.status ? 'badge-success' : 'badge-danger'}">${s.status ? '启用' : '禁用'}</span>
+                        </td>
+                        <td>
+                            <button class="btn btn-default" onclick="editSkill(${s.id})">编辑</button>
+                            <button class="btn btn-danger" onclick="deleteSkill(${s.id})">删除</button>
+                        </td>
+                    </tr>
+                `}).join('');
+            }
+        } catch (error) {
+            console.error('加载技能失败:', error);
+        }
+    }
+
+    function addLevelRow(name, priceMin, priceMax, sort) {
+        const container = document.getElementById('levelRows');
+        const idx = container.children.length;
+        const html = `
+            <div style="display: flex; gap: 8px; align-items: center; margin-bottom: 8px;" class="level-row">
+                <input type="text" placeholder="段位名" value="${name || ''}" style="flex:1; padding:6px 10px; border:1px solid #ddd; border-radius:4px; font-size:13px;" class="lv-name">
+                <input type="number" placeholder="最低" value="${priceMin || ''}" step="0.01" min="0" style="width:80px; padding:6px 10px; border:1px solid #ddd; border-radius:4px; font-size:13px;" class="lv-min">
+                <input type="number" placeholder="最高" value="${priceMax || ''}" step="0.01" min="0" style="width:80px; padding:6px 10px; border:1px solid #ddd; border-radius:4px; font-size:13px;" class="lv-max">
+                <input type="number" placeholder="排序" value="${sort || 0}" style="width:60px; padding:6px 10px; border:1px solid #ddd; border-radius:4px; font-size:13px;" class="lv-sort">
+                <button type="button" onclick="this.parentElement.remove()" style="background:none; border:none; color:#ff4d4f; cursor:pointer; font-size:16px;">&times;</button>
+            </div>
+        `;
+        container.insertAdjacentHTML('beforeend', html);
+    }
+
+    async function showAddSkillModal() {
+        document.getElementById('skillModalTitle').textContent = '添加技能';
+        document.getElementById('skillForm').reset();
+        document.getElementById('skillId').value = '';
+        document.getElementById('levelRows').innerHTML = '';
+        await loadSkillGameCategories();
+        showModal('skillModal');
+    }
+
+    async function loadSkillGameCategories() {
+        try {
+            const result = await get('/system/game-categories/');
+            if (result.code === 200) {
+                const categories = result.data.results || [];
+                const select = document.getElementById('skillGameCategory');
+                select.innerHTML = '<option value="">请选择游戏分类</option>' +
+                    categories.map(c => `<option value="${c.id}">${c.name}</option>`).join('');
+            }
+        } catch (error) {
+            console.error('加载游戏分类失败:', error);
+        }
+    }
+
+    async function editSkill(id) {
+        try {
+            const result = await get(`/employee/skills/${id}/`);
+            if (result.code === 200) {
+                const s = result.data;
+                document.getElementById('skillModalTitle').textContent = '编辑技能';
+                document.getElementById('skillId').value = s.id;
+                document.getElementById('skillName').value = s.name;
+                document.getElementById('skillSort').value = s.sort || 0;
+                document.getElementById('skillStatus').value = s.status ? 'true' : 'false';
+
+                await loadSkillGameCategories();
+                document.getElementById('skillGameCategory').value = s.game_category || '';
+
+                // 填充段位
+                document.getElementById('levelRows').innerHTML = '';
+                (s.levels || []).forEach(lv => {
+                    addLevelRow(lv.name, lv.price_min, lv.price_max, lv.sort);
+                });
+
+                showModal('skillModal');
+            }
+        } catch (error) {
+            showToast('加载技能信息失败', 'error');
+        }
+    }
+
+    function collectLevels() {
+        const rows = document.querySelectorAll('#levelRows .level-row');
+        const levels = [];
+        rows.forEach((row, idx) => {
+            const name = row.querySelector('.lv-name').value.trim();
+            const priceMin = parseFloat(row.querySelector('.lv-min').value) || 0;
+            const priceMax = parseFloat(row.querySelector('.lv-max').value) || 0;
+            const sort = parseInt(row.querySelector('.lv-sort').value) || 0;
+            if (name) {
+                levels.push({ name, price_min: priceMin, price_max: priceMax, sort });
+            }
+        });
+        return levels;
+    }
+
+    async function saveSkill() {
+        const id = document.getElementById('skillId').value;
+        const name = document.getElementById('skillName').value;
+        const gameCategory = document.getElementById('skillGameCategory').value;
+        const sort = document.getElementById('skillSort').value;
+        const status = document.getElementById('skillStatus').value === 'true';
+        const levels = collectLevels();
+
+        if (!name) {
+            showToast('请输入技能名称', 'error');
+            return;
+        }
+
+        const data = {
+            name,
+            game_category: gameCategory || null,
+            sort: parseInt(sort) || 0,
+            status,
+            levels,
+        };
+
+        try {
+            let result;
+            if (id) {
+                result = await put(`/employee/skills/${id}/`, data);
+            } else {
+                result = await post('/employee/skills/', data);
+            }
+
+            if (result.code === 200) {
+                showToast(id ? '更新成功' : '添加成功', 'success');
+                hideModal('skillModal');
+                await loadSkills();
+            } else {
+                showToast(result.msg, 'error');
+            }
+        } catch (error) {
+            showToast('操作失败: ' + error.message, 'error');
+        }
+    }
+
+    async function deleteSkill(id) {
+        if (!confirm('确定要删除该技能吗？')) return;
+
+        try {
+            const result = await del(`/employee/skills/${id}/`);
+            if (result.code === 200) {
+                showToast('删除成功', 'success');
+                await loadSkills();
+            } else {
+                showToast(result.msg, 'error');
+            }
+        } catch (error) {
+            showToast('删除失败: ' + error.message, 'error');
+        }
+    }
+
+    // ============ 标签设置 ============
+    async function loadTags() {
+        try {
+            const result = await get('/employee/tags/');
+            if (result.code === 200) {
+                const tags = result.data.results || [];
+                const tbody = document.getElementById('tagList');
+
+                if (tags.length === 0) {
+                    tbody.innerHTML = '<tr><td colspan="5" class="empty-state"><i class="fa-solid fa-inbox"></i><br>暂无标签数据</td></tr>';
+                    return;
+                }
+
+                tbody.innerHTML = tags.map(t => `
+                    <tr>
+                        <td><span style="background:${t.color}20;color:${t.color};padding:4px 12px;border-radius:12px;font-size:13px;">${t.name}</span></td>
+                        <td><input type="color" value="${t.color}" style="width:30px;height:30px;border:none;cursor:pointer;" onchange="updateTagColor(${t.id}, this.value)"></td>
+                        <td>${t.sort || 0}</td>
+                        <td>
+                            <span class="badge ${t.status ? 'badge-success' : 'badge-danger'}">${t.status ? '启用' : '禁用'}</span>
+                        </td>
+                        <td>
+                            <button class="btn btn-default" onclick="editTag(${t.id})">编辑</button>
+                            <button class="btn btn-danger" onclick="deleteTag(${t.id})">删除</button>
+                        </td>
+                    </tr>
+                `).join('');
+            }
+        } catch (error) {
+            console.error('加载标签失败:', error);
+        }
+    }
+
+    function showAddTagModal() {
+        document.getElementById('tagModalTitle').textContent = '添加标签';
+        document.getElementById('tagForm').reset();
+        document.getElementById('tagId').value = '';
+        document.getElementById('tagColor').value = '#1890ff';
+        showModal('tagModal');
+    }
+
+    async function editTag(id) {
+        try {
+            const result = await get(`/employee/tags/${id}/`);
+            if (result.code === 200) {
+                const tag = result.data;
+                document.getElementById('tagModalTitle').textContent = '编辑标签';
+                document.getElementById('tagId').value = tag.id;
+                document.getElementById('tagName').value = tag.name;
+                document.getElementById('tagColor').value = tag.color || '#1890ff';
+                document.getElementById('tagSort').value = tag.sort || 0;
+                document.getElementById('tagStatus').value = tag.status ? 'true' : 'false';
+                showModal('tagModal');
+            }
+        } catch (error) {
+            showToast('加载标签信息失败', 'error');
+        }
+    }
+
+    async function saveTag() {
+        const id = document.getElementById('tagId').value;
+        const name = document.getElementById('tagName').value;
+        const color = document.getElementById('tagColor').value;
+        const sort = document.getElementById('tagSort').value;
+        const status = document.getElementById('tagStatus').value === 'true';
+
+        if (!name) {
+            showToast('请输入标签名称', 'error');
+            return;
+        }
+
+        const data = { name, color, sort: parseInt(sort) || 0, status };
+
+        try {
+            let result;
+            if (id) {
+                result = await put(`/employee/tags/${id}/`, data);
+            } else {
+                result = await post('/employee/tags/', data);
+            }
+
+            if (result.code === 200) {
+                showToast(id ? '更新成功' : '添加成功', 'success');
+                hideModal('tagModal');
+                await loadTags();
+            } else {
+                showToast(result.msg, 'error');
+            }
+        } catch (error) {
+            showToast('操作失败: ' + error.message, 'error');
+        }
+    }
+
+    async function updateTagColor(id, color) {
+        try {
+            const result = await put(`/employee/tags/${id}/`, { color });
+            if (result.code === 200) {
+                showToast('颜色更新成功', 'success');
+                await loadTags();
+            }
+        } catch (error) {
+            showToast('更新失败', 'error');
+        }
+    }
+
+    async function deleteTag(id) {
+        if (!confirm('确定要删除该标签吗？')) return;
+
+        try {
+            const result = await del(`/employee/tags/${id}/`);
+            if (result.code === 200) {
+                showToast('删除成功', 'success');
+                await loadTags();
+            } else {
+                showToast(result.msg, 'error');
+            }
+        } catch (error) {
+            showToast('删除失败: ' + error.message, 'error');
+        }
+    }
+
+    // ============ 客服设置 ============
+    async function loadCSConfig() {
+        try {
+            const result = await get('/system/configs/');
+            if (result.code === 200) {
+                const configs = result.data.results || [];
+                configs.forEach(c => {
+                    if (c.key === 'cs_phone') document.getElementById('csPhone').value = c.value || '';
+                    if (c.key === 'cs_wechat') document.getElementById('csWechat').value = c.value || '';
+                    if (c.key === 'cs_work_time') document.getElementById('csWorkTime').value = c.value || '9:00-22:00';
+                });
+            }
+        } catch (error) {
+            console.error('加载客服配置失败:', error);
+        }
+    }
+
+    async function saveCSConfig() {
+        const phone = document.getElementById('csPhone').value;
+        const wechat = document.getElementById('csWechat').value;
+        const workTime = document.getElementById('csWorkTime').value;
+
+        try {
+            // 保存客服电话
+            let result = await post('/system/configs/', { key: 'cs_phone', value: phone, description: '客服电话' });
+            if (result.code !== 200) {
+                // 可能已存在，尝试更新
+                const configs = await get('/system/configs/');
+                const phoneConfig = (configs.data.results || []).find(c => c.key === 'cs_phone');
+                if (phoneConfig) {
+                    await put(`/system/configs/${phoneConfig.id}/`, { value: phone });
+                }
+            }
+
+            // 保存客服微信
+            result = await post('/system/configs/', { key: 'cs_wechat', value: wechat, description: '客服微信' });
+            if (result.code !== 200) {
+                const configs = await get('/system/configs/');
+                const wechatConfig = (configs.data.results || []).find(c => c.key === 'cs_wechat');
+                if (wechatConfig) {
+                    await put(`/system/configs/${wechatConfig.id}/`, { value: wechat });
+                }
+            }
+
+            // 保存工作时间
+            result = await post('/system/configs/', { key: 'cs_work_time', value: workTime, description: '客服工作时间' });
+            if (result.code !== 200) {
+                const configs = await get('/system/configs/');
+                const workTimeConfig = (configs.data.results || []).find(c => c.key === 'cs_work_time');
+                if (workTimeConfig) {
+                    await put(`/system/configs/${workTimeConfig.id}/`, { value: workTime });
+                }
+            }
+
+            showToast('保存成功', 'success');
+        } catch (error) {
+            showToast('保存失败: ' + error.message, 'error');
+        }
+    }
+</script>
+{% endblock %}

@@ -1,0 +1,222 @@
+{% extends 'layout.html' %}
+
+{% block content %}
+<script>
+    document.getElementById('pageTitle').textContent = '数据统计';
+</script>
+
+<div class="tabs">
+    <div class="tab-item active" onclick="switchTab('revenue')">收入统计</div>
+    <div class="tab-item" onclick="switchTab('employee')">员工排行</div>
+    <div class="tab-item" onclick="switchTab('customer')">客户排行</div>
+</div>
+
+<div id="revenueTab" style="display: block;">
+    <div class="card">
+        <div class="card-header">
+            <div class="card-title">收入趋势</div>
+            <div class="card-actions">
+                <select id="revenuePeriod" onchange="loadRevenueStats()">
+                    <option value="week">本周</option>
+                    <option value="month">本月</option>
+                    <option value="year">本年</option>
+                </select>
+            </div>
+        </div>
+        <div class="chart-container">
+            <canvas id="revenueChart"></canvas>
+        </div>
+    </div>
+</div>
+
+<div id="employeeTab" style="display: none;">
+    <div class="card">
+        <div class="card-header">
+            <div class="card-title">员工排行榜</div>
+        </div>
+        <div class="table-container">
+            <table>
+                <thead>
+                    <tr>
+                        <th>排名</th>
+                        <th>员工</th>
+                        <th>接单量</th>
+                        <th>总收入</th>
+                        <th>评分</th>
+                    </tr>
+                </thead>
+                <tbody id="employeeRankList">
+                    <tr><td colspan="5" class="empty-state"><i class="fa-solid fa-spinner fa-spin"></i><br>加载中...</td></tr>
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
+<div id="customerTab" style="display: none;">
+    <div class="card">
+        <div class="card-header">
+            <div class="card-title">客户消费排行</div>
+        </div>
+        <div class="table-container">
+            <table>
+                <thead>
+                    <tr>
+                        <th>排名</th>
+                        <th>客户</th>
+                        <th>消费金额</th>
+                        <th>订单数</th>
+                        <th>等级</th>
+                    </tr>
+                </thead>
+                <tbody id="customerRankList">
+                    <tr><td colspan="5" class="empty-state"><i class="fa-solid fa-spinner fa-spin"></i><br>加载中...</td></tr>
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
+<script>
+    document.addEventListener('DOMContentLoaded', async function() {
+        await loadRevenueStats();
+        await loadEmployeeRank();
+        await loadCustomerRank();
+    });
+
+    function switchTab(tab) {
+        document.querySelectorAll('.tab-item').forEach(t => t.classList.remove('active'));
+        event.target.classList.add('active');
+        
+        document.getElementById('revenueTab').style.display = tab === 'revenue' ? 'block' : 'none';
+        document.getElementById('employeeTab').style.display = tab === 'employee' ? 'block' : 'none';
+        document.getElementById('customerTab').style.display = tab === 'customer' ? 'block' : 'none';
+    }
+
+    async function loadRevenueStats() {
+        const period = document.getElementById('revenuePeriod').value;
+        try {
+            const result = await get('/statistics/stats/trend/', { period });
+            if (result.code === 200) {
+                const data = result.data;
+                drawRevenueChart(data.labels, data.values);
+            }
+        } catch (error) {
+            console.error('加载收入统计失败:', error);
+        }
+    }
+
+    function drawRevenueChart(labels, values) {
+        const ctx = document.getElementById('revenueChart');
+        if (!ctx) return;
+        
+        const canvas = ctx.getContext('2d');
+        canvas.fillStyle = '#fff';
+        canvas.fillRect(0, 0, ctx.width, ctx.height);
+        
+        const chartWidth = ctx.width - 60;
+        const chartHeight = ctx.height - 40;
+        const barWidth = chartWidth / labels.length * 0.6;
+        const gap = chartWidth / labels.length;
+        
+        const maxValue = Math.max(...values) * 1.2 || 100;
+        
+        canvas.strokeStyle = '#ebeef5';
+        for (let i = 0; i <= 4; i++) {
+            const y = 20 + (chartHeight / 4) * i;
+            canvas.beginPath();
+            canvas.moveTo(50, y);
+            canvas.lineTo(ctx.width - 10, y);
+            canvas.stroke();
+        }
+        
+        canvas.fillStyle = '#67c23a';
+        values.forEach((value, index) => {
+            const x = 50 + gap * index + (gap - barWidth) / 2;
+            const height = (value / maxValue) * chartHeight;
+            const y = 20 + chartHeight - height;
+            
+            canvas.fillRect(x, y, barWidth, height);
+        });
+        
+        canvas.fillStyle = '#909399';
+        canvas.font = '12px sans-serif';
+        labels.forEach((label, index) => {
+            const x = 50 + gap * index + (gap - barWidth) / 2;
+            canvas.fillText(label, x, ctx.height - 10);
+        });
+    }
+
+    async function loadEmployeeRank() {
+        try {
+            const result = await get('/statistics/stats/employee-rank/');
+            if (result.code === 200) {
+                const ranks = result.data.results || [];
+                const tbody = document.getElementById('employeeRankList');
+                
+                if (ranks.length === 0) {
+                    tbody.innerHTML = '<tr><td colspan="5" class="empty-state"><i class="fa-solid fa-inbox"></i><br>暂无数据</td></tr>';
+                    return;
+                }
+                
+                tbody.innerHTML = ranks.map((r, i) => `
+                    <tr>
+                        <td>${i + 1}</td>
+                        <td>${r.name || '-'}</td>
+                        <td>${r.order_count || 0}</td>
+                        <td>¥${formatMoney(r.revenue)}</td>
+                        <td>${r.rating || 0.0}</td>
+                    </tr>
+                `).join('');
+            }
+        } catch (error) {
+            console.error('加载员工排行失败:', error);
+        }
+    }
+
+    async function loadCustomerRank() {
+        try {
+            const result = await get('/customer/customers/', { page_size: 20 });
+            if (result.code === 200) {
+                const ranks = result.data.results || [];
+                const tbody = document.getElementById('customerRankList');
+                
+                if (ranks.length === 0) {
+                    tbody.innerHTML = '<tr><td colspan="5" class="empty-state"><i class="fa-solid fa-inbox"></i><br>暂无数据</td></tr>';
+                    return;
+                }
+                
+                tbody.innerHTML = ranks.map((r, i) => `
+                    <tr>
+                        <td>${i + 1}</td>
+                        <td>${r.nickname || '-'}</td>
+                        <td>¥${formatMoney(r.total_amount)}</td>
+                        <td>${r.total_orders || 0}</td>
+                        <td>${r.phone || '-'}</td>
+                    </tr>
+                `).join('');
+            }
+        } catch (error) {
+            console.error('加载客户排行失败:', error);
+        }
+    }
+
+    function getLevelText(level) {
+        const map = {
+            'normal': '普通会员',
+            'vip': 'VIP会员',
+            'svip': 'SVIP会员'
+        };
+        return map[level] || level;
+    }
+
+    function getLevelBadge(level) {
+        const map = {
+            'normal': 'badge-info',
+            'vip': 'badge-warning',
+            'svip': 'badge-success'
+        };
+        return map[level] || 'badge-info';
+    }
+</script>
+{% endblock %}

@@ -1,0 +1,279 @@
+{% extends 'layout.html' %}
+
+{% block content %}
+<script>
+    document.getElementById('pageTitle').textContent = '订单管理';
+</script>
+
+<div class="filter-bar">
+    <input type="text" id="orderNoInput" placeholder="订单号">
+    <select id="statusSelect">
+        <option value="">全部状态</option>
+        <option value="pending">待支付</option>
+        <option value="allocated">待分配</option>
+        <option value="in_progress">进行中</option>
+        <option value="completed">已完成</option>
+        <option value="cancelled">已取消</option>
+    </select>
+    <input type="date" id="startDate">
+    <input type="date" id="endDate">
+    <button class="btn btn-primary" onclick="loadOrders()">搜索</button>
+</div>
+
+<div class="card">
+    <div class="card-header">
+        <div class="card-title">订单列表</div>
+        <div class="card-actions">
+            <button class="btn btn-primary" onclick="showModal('addOrderModal')">
+                <i class="fa-solid fa-plus"></i> 创建订单
+            </button>
+        </div>
+    </div>
+    <div class="table-container">
+        <table>
+            <thead>
+                <tr>
+                    <th>订单号</th>
+                    <th>客户</th>
+                    <th>陪玩师</th>
+                    <th>游戏</th>
+                    <th>金额</th>
+                    <th>时长</th>
+                    <th>状态</th>
+                    <th>创建时间</th>
+                    <th>操作</th>
+                </tr>
+            </thead>
+            <tbody id="orderList">
+                <tr><td colspan="9" class="empty-state"><i class="fa-solid fa-spinner fa-spin"></i><br>加载中...</td></tr>
+            </tbody>
+        </table>
+    </div>
+</div>
+
+<div class="modal-overlay" id="addOrderModal">
+    <div class="modal">
+        <div class="modal-header">
+            <div class="modal-title">创建订单</div>
+            <div class="modal-close" onclick="hideModal('addOrderModal')">&times;</div>
+        </div>
+        <div class="modal-body">
+            <form id="addOrderForm">
+                <div class="form-group">
+                    <label>客户</label>
+                    <select id="orderCustomerId" required>
+                        <option value="">请选择客户</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label>陪玩师</label>
+                    <select id="orderEmployeeId">
+                        <option value="">不指定</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label>游戏名称</label>
+                    <input type="text" id="orderGame" required>
+                </div>
+                <div class="form-group">
+                    <label>时长(小时)</label>
+                    <input type="number" id="orderDuration" value="1" min="0.5" step="0.5">
+                </div>
+                <div class="form-group">
+                    <label>金额</label>
+                    <input type="number" id="orderAmount" required>
+                </div>
+            </form>
+        </div>
+        <div class="modal-footer">
+            <button class="btn btn-default" onclick="hideModal('addOrderModal')">取消</button>
+            <button class="btn btn-primary" onclick="addOrder()">确定</button>
+        </div>
+    </div>
+</div>
+
+<script>
+    document.addEventListener('DOMContentLoaded', async function() {
+        await loadOrders();
+        await loadCustomerOptions();
+        await loadEmployeeOptions();
+    });
+
+    async function loadCustomerOptions() {
+        try {
+            const result = await get('/customer/customers/', { page_size: 100 });
+            if (result.code === 200) {
+                const list = result.data.results || [];
+                const select = document.getElementById('orderCustomerId');
+                select.innerHTML = '<option value="">请选择客户</option>' +
+                    list.map(c => `<option value="${c.id}">${c.nickname}</option>`).join('');
+            }
+        } catch (error) { console.error('加载客户列表失败:', error); }
+    }
+
+    async function loadEmployeeOptions() {
+        try {
+            const result = await get('/employee/employees/', { page_size: 100 });
+            if (result.code === 200) {
+                const list = result.data.results || [];
+                const select = document.getElementById('orderEmployeeId');
+                select.innerHTML = '<option value="">不指定</option>' +
+                    list.map(e => `<option value="${e.id}">${e.nickname || e.real_name}</option>`).join('');
+            }
+        } catch (error) { console.error('加载陪玩师列表失败:', error); }
+    }
+
+    async function loadOrders() {
+        const orderNo = document.getElementById('orderNoInput').value;
+        const status = document.getElementById('statusSelect').value;
+        const startDate = document.getElementById('startDate').value;
+        const endDate = document.getElementById('endDate').value;
+        
+        try {
+            const result = await get('/order/orders/', {
+                order_no: orderNo,
+                status,
+                start_date: startDate,
+                end_date: endDate
+            });
+            
+            if (result.code === 200) {
+                const orders = result.data.results || [];
+                const tbody = document.getElementById('orderList');
+                
+                if (orders.length === 0) {
+                    tbody.innerHTML = '<tr><td colspan="9" class="empty-state"><i class="fa-solid fa-inbox"></i><br>暂无数据</td></tr>';
+                    return;
+                }
+                
+                tbody.innerHTML = orders.map(order => `
+                    <tr>
+                        <td>${order.order_no}</td>
+                        <td>${order.customer_name || '-'}</td>
+                        <td>${order.employee_name || '-'}</td>
+                        <td>${order.game || '-'}</td>
+                        <td>¥${formatMoney(order.total_amount)}</td>
+                        <td>${order.duration || 0}小时</td>
+                        <td><span class="badge ${getStatusBadge(order.status)}">${getStatusText(order.status)}</span></td>
+                        <td>${formatDate(order.created_at)}</td>
+                        <td>
+                            <button class="btn btn-default" onclick="viewOrder(${order.id})">查看</button>
+                            ${order.status === 'allocated' ? `<button class="btn btn-success" onclick="allocateOrder(${order.id})">分配</button>` : ''}
+                            ${order.status === 'in_progress' ? `<button class="btn btn-success" onclick="completeOrder(${order.id})">完成</button>` : ''}
+                            ${order.status !== 'completed' && order.status !== 'cancelled' ? `<button class="btn btn-danger" onclick="cancelOrder(${order.id})">取消</button>` : ''}
+                        </td>
+                    </tr>
+                `).join('');
+            }
+        } catch (error) {
+            console.error('加载订单数据失败:', error);
+        }
+    }
+
+    function getStatusText(status) {
+        const map = {
+            'pending': '待支付',
+            'allocated': '待分配',
+            'in_progress': '进行中',
+            'completed': '已完成',
+            'cancelled': '已取消',
+            'refunded': '已退款'
+        };
+        return map[status] || status;
+    }
+
+    function getStatusBadge(status) {
+        const map = {
+            'pending': 'badge-warning',
+            'allocated': 'badge-info',
+            'in_progress': 'badge-blue',
+            'completed': 'badge-success',
+            'cancelled': 'badge-danger',
+            'refunded': 'badge-danger'
+        };
+        return map[status] || 'badge-info';
+    }
+
+    async function addOrder() {
+        const customerId = document.getElementById('orderCustomerId').value;
+        const employeeId = document.getElementById('orderEmployeeId').value;
+        const game = document.getElementById('orderGame').value;
+        const duration = document.getElementById('orderDuration').value;
+        const amount = document.getElementById('orderAmount').value;
+        
+        try {
+            const result = await post('/order/orders/', {
+                customer: parseInt(customerId),
+                employee_ids: employeeId ? [parseInt(employeeId)] : [],
+                game_name: game,
+                duration: parseFloat(duration) * 60,
+                total_amount: parseFloat(amount)
+            });
+            
+            if (result.code === 200) {
+                showToast('创建成功', 'success');
+                hideModal('addOrderModal');
+                document.getElementById('addOrderForm').reset();
+                await loadOrders();
+            } else {
+                showToast(result.msg, 'error');
+            }
+        } catch (error) {
+            showToast(error.message, 'error');
+        }
+    }
+
+    async function cancelOrder(id) {
+        if (!confirm('确定要取消该订单吗？')) return;
+        
+        try {
+            const result = await post(`/order/orders/${id}/cancel/`);
+            if (result.code === 200) {
+                showToast('订单已取消', 'success');
+                await loadOrders();
+            } else {
+                showToast(result.msg, 'error');
+            }
+        } catch (error) {
+            showToast(error.message, 'error');
+        }
+    }
+
+    async function completeOrder(id) {
+        try {
+            const result = await post(`/order/orders/${id}/complete/`);
+            if (result.code === 200) {
+                showToast('订单已完成', 'success');
+                await loadOrders();
+            } else {
+                showToast(result.msg, 'error');
+            }
+        } catch (error) {
+            showToast(error.message, 'error');
+        }
+    }
+
+    async function allocateOrder(id) {
+        const employeeId = prompt('请输入陪玩师ID');
+        if (!employeeId) return;
+        
+        try {
+            const result = await post(`/order/orders/${id}/assign/`, {
+                employee: parseInt(employeeId)
+            });
+            if (result.code === 200) {
+                showToast('分配成功', 'success');
+                await loadOrders();
+            } else {
+                showToast(result.msg, 'error');
+            }
+        } catch (error) {
+            showToast(error.message, 'error');
+        }
+    }
+
+    function viewOrder(id) {
+        showToast('查看详情功能开发中', 'info');
+    }
+</script>
+{% endblock %}

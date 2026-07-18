@@ -1,0 +1,565 @@
+{% extends 'layout.html' %}
+
+{% block content %}
+<script>
+    document.getElementById('pageTitle').textContent = '排班管理';
+</script>
+
+<div class="tabs">
+    <div class="tab-item active" onclick="switchTab('schedule')">排班表</div>
+    <div class="tab-item" onclick="switchTab('leave')">请假管理</div>
+    <div class="tab-item" onclick="switchTab('attendance')">考勤记录</div>
+    <div class="tab-item" onclick="switchTab('csSchedule')">客服排班</div>
+</div>
+
+<div id="scheduleTab" style="display: block;">
+    <div class="card">
+        <div class="card-header">
+            <div class="card-title">排班表</div>
+            <div class="card-actions">
+                <input type="date" id="scheduleDate" value="{{ today }}">
+                <button class="btn btn-primary" onclick="loadSchedule()">查询</button>
+                <button class="btn btn-primary" onclick="showModal('addScheduleModal')">
+                    <i class="fa-solid fa-plus"></i> 添加排班
+                </button>
+            </div>
+        </div>
+        <div class="table-container">
+            <table>
+                <thead>
+                    <tr>
+                        <th>陪玩师</th>
+                        <th>班次</th>
+                        <th>开始时间</th>
+                        <th>结束时间</th>
+                        <th>状态</th>
+                        <th>操作</th>
+                    </tr>
+                </thead>
+                <tbody id="scheduleList">
+                    <tr><td colspan="6" class="empty-state"><i class="fa-solid fa-spinner fa-spin"></i><br>加载中...</td></tr>
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
+<div id="leaveTab" style="display: none;">
+    <div class="card">
+        <div class="card-header">
+            <div class="card-title">请假列表</div>
+        </div>
+        <div class="table-container">
+            <table>
+                <thead>
+                    <tr>
+                        <th>陪玩师</th>
+                        <th>请假类型</th>
+                        <th>开始时间</th>
+                        <th>结束时间</th>
+                        <th>原因</th>
+                        <th>状态</th>
+                        <th>操作</th>
+                    </tr>
+                </thead>
+                <tbody id="leaveList">
+                    <tr><td colspan="7" class="empty-state"><i class="fa-solid fa-spinner fa-spin"></i><br>加载中...</td></tr>
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
+<div id="attendanceTab" style="display: none;">
+    <div class="card">
+        <div class="card-header">
+            <div class="card-title">考勤记录</div>
+            <div class="card-actions">
+                <input type="date" id="attendanceDate" value="{{ today }}">
+                <button class="btn btn-primary" onclick="loadAttendance()">查询</button>
+            </div>
+        </div>
+        <div class="table-container">
+            <table>
+                <thead>
+                    <tr>
+                        <th>陪玩师</th>
+                        <th>上班时间</th>
+                        <th>下班时间</th>
+                        <th>状态</th>
+                        <th>备注</th>
+                    </tr>
+                </thead>
+                <tbody id="attendanceList">
+                    <tr><td colspan="5" class="empty-state"><i class="fa-solid fa-spinner fa-spin"></i><br>加载中...</td></tr>
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
+<div id="csScheduleTab" style="display: none;">
+    <div class="card">
+        <div class="card-header">
+            <div class="card-title">客服排班（模板排班，设置后每天沿用）</div>
+            <div class="card-actions">
+                <button class="btn btn-primary" onclick="showModal('addCSScheduleModal')">
+                    <i class="fa-solid fa-plus"></i> 添加排班
+                </button>
+            </div>
+        </div>
+        <div class="table-container">
+            <table>
+                <thead>
+                    <tr>
+                        <th>客服人员</th>
+                        <th>星期</th>
+                        <th>上班时间</th>
+                        <th>下班时间</th>
+                        <th>状态</th>
+                        <th>操作</th>
+                    </tr>
+                </thead>
+                <tbody id="csScheduleList">
+                    <tr><td colspan="6" class="empty-state"><i class="fa-solid fa-spinner fa-spin"></i><br>加载中...</td></tr>
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
+<div class="modal-overlay" id="addCSScheduleModal">
+    <div class="modal">
+        <div class="modal-header">
+            <div class="modal-title">添加客服排班</div>
+            <div class="modal-close" onclick="hideModal('addCSScheduleModal')">&times;</div>
+        </div>
+        <div class="modal-body">
+            <form id="addCSScheduleForm">
+                <div class="form-group">
+                    <label>客服人员</label>
+                    <select id="csScheduleEmployeeId" required>
+                        <option value="">请选择客服人员</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label>星期</label>
+                    <select id="csScheduleDay" required>
+                        <option value="0">周一</option>
+                        <option value="1">周二</option>
+                        <option value="2">周三</option>
+                        <option value="3">周四</option>
+                        <option value="4">周五</option>
+                        <option value="5">周六</option>
+                        <option value="6">周日</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label>上班时间</label>
+                    <input type="time" id="csScheduleStartTime" value="09:00" required>
+                </div>
+                <div class="form-group">
+                    <label>下班时间</label>
+                    <input type="time" id="csScheduleEndTime" value="22:00" required>
+                </div>
+            </form>
+        </div>
+        <div class="modal-footer">
+            <button class="btn btn-default" onclick="hideModal('addCSScheduleModal')">取消</button>
+            <button class="btn btn-primary" onclick="addCSSchedule()">确定</button>
+        </div>
+    </div>
+</div>
+
+<div class="modal-overlay" id="addScheduleModal">
+    <div class="modal">
+        <div class="modal-header">
+            <div class="modal-title">添加排班</div>
+            <div class="modal-close" onclick="hideModal('addScheduleModal')">&times;</div>
+        </div>
+        <div class="modal-body">
+            <form id="addScheduleForm">
+                <div class="form-group">
+                    <label>陪玩师</label>
+                    <select id="scheduleEmployeeId" required>
+                        <option value="">请选择陪玩师</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label>班次</label>
+                    <select id="scheduleShift">
+                        <option value="">请选择班次</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label>日期</label>
+                    <input type="date" id="scheduleDateInput" required>
+                </div>
+            </form>
+        </div>
+        <div class="modal-footer">
+            <button class="btn btn-default" onclick="hideModal('addScheduleModal')">取消</button>
+            <button class="btn btn-primary" onclick="addSchedule()">确定</button>
+        </div>
+    </div>
+</div>
+
+<script>
+    document.addEventListener('DOMContentLoaded', async function() {
+        await loadSchedule();
+        await loadLeave();
+        await loadAttendance();
+        await loadEmployeeOptions();
+        await loadShiftOptions();
+    });
+
+    async function loadEmployeeOptions() {
+        try {
+            const result = await get('/employee/employees/', { page_size: 100 });
+            if (result.code === 200) {
+                const employees = result.data.results || [];
+                const select = document.getElementById('scheduleEmployeeId');
+                select.innerHTML = '<option value="">请选择陪玩师</option>' +
+                    employees.map(e => `<option value="${e.id}">${e.nickname || e.real_name}</option>`).join('');
+            }
+        } catch (error) { console.error('加载陪玩师列表失败:', error); }
+    }
+
+    async function loadShiftOptions() {
+        try {
+            const result = await get('/schedule/shifts/', { page_size: 100 });
+            if (result.code === 200) {
+                const shifts = result.data.results || [];
+                const select = document.getElementById('scheduleShift');
+                select.innerHTML = '<option value="">请选择班次</option>' +
+                    shifts.map(s => `<option value="${s.id}">${s.name}</option>`).join('');
+            }
+        } catch (error) { console.error('加载班次列表失败:', error); }
+    }
+
+    function switchTab(tab) {
+        document.querySelectorAll('.tab-item').forEach(t => t.classList.remove('active'));
+        event.target.classList.add('active');
+        
+        document.getElementById('scheduleTab').style.display = tab === 'schedule' ? 'block' : 'none';
+        document.getElementById('leaveTab').style.display = tab === 'leave' ? 'block' : 'none';
+        document.getElementById('attendanceTab').style.display = tab === 'attendance' ? 'block' : 'none';
+        document.getElementById('csScheduleTab').style.display = tab === 'csSchedule' ? 'block' : 'none';
+
+        if (tab === 'csSchedule') loadCSSchedule();
+    }
+
+    async function loadSchedule() {
+        const date = document.getElementById('scheduleDate').value;
+        try {
+            const result = await get('/schedule/schedules/', { date });
+            if (result.code === 200) {
+                const schedules = result.data.results || [];
+                const tbody = document.getElementById('scheduleList');
+                
+                if (schedules.length === 0) {
+                    tbody.innerHTML = '<tr><td colspan="6" class="empty-state"><i class="fa-solid fa-inbox"></i><br>暂无排班</td></tr>';
+                    return;
+                }
+                
+                tbody.innerHTML = schedules.map(s => `
+                    <tr>
+                        <td>${s.employee_name || '-'}</td>
+                        <td><span class="badge badge-info">${getShiftText(s.shift)}</span></td>
+                        <td>${s.start_time || '-'}</td>
+                        <td>${s.end_time || '-'}</td>
+                        <td><span class="badge ${s.status === 'confirmed' ? 'badge-success' : 'badge-warning'}">${s.status === 'confirmed' ? '已确认' : '待确认'}</span></td>
+                        <td>
+                            <button class="btn btn-default" onclick="editSchedule(${s.id})">编辑</button>
+                            <button class="btn btn-danger" onclick="deleteSchedule(${s.id})">删除</button>
+                        </td>
+                    </tr>
+                `).join('');
+            }
+        } catch (error) {
+            console.error('加载排班失败:', error);
+        }
+    }
+
+    function getShiftText(shift) {
+        const map = {
+            'morning': '早班',
+            'afternoon': '中班',
+            'night': '晚班'
+        };
+        return map[shift] || shift;
+    }
+
+    async function addSchedule() {
+        const employeeId = document.getElementById('scheduleEmployeeId').value;
+        const shiftId = document.getElementById('scheduleShift').value;
+        const date = document.getElementById('scheduleDateInput').value;
+
+        try {
+            const result = await post('/schedule/schedules/', {
+                employee: parseInt(employeeId),
+                shift: shiftId ? parseInt(shiftId) : null,
+                date
+            });
+            
+            if (result.code === 200) {
+                showToast('排班成功', 'success');
+                hideModal('addScheduleModal');
+                document.getElementById('addScheduleForm').reset();
+                await loadSchedule();
+            } else {
+                showToast(result.msg, 'error');
+            }
+        } catch (error) {
+            showToast(error.message, 'error');
+        }
+    }
+
+    async function deleteSchedule(id) {
+        if (!confirm('确定要删除该排班吗？')) return;
+        
+        try {
+            const result = await del(`/schedule/schedules/${id}/`);
+            if (result.code === 200) {
+                showToast('删除成功', 'success');
+                await loadSchedule();
+            } else {
+                showToast(result.msg, 'error');
+            }
+        } catch (error) {
+            showToast(error.message, 'error');
+        }
+    }
+
+    function editSchedule(id) {
+        showToast('编辑功能开发中', 'info');
+    }
+
+    async function loadLeave() {
+        try {
+            const result = await get('/schedule/leaves/');
+            if (result.code === 200) {
+                const leaves = result.data.results || [];
+                const tbody = document.getElementById('leaveList');
+                
+                if (leaves.length === 0) {
+                    tbody.innerHTML = '<tr><td colspan="7" class="empty-state"><i class="fa-solid fa-inbox"></i><br>暂无请假记录</td></tr>';
+                    return;
+                }
+                
+                tbody.innerHTML = leaves.map(l => `
+                    <tr>
+                        <td>${l.employee_name || '-'}</td>
+                        <td><span class="badge ${l.type === 'sick' ? 'badge-red' : 'badge-info'}">${l.type === 'sick' ? '病假' : '事假'}</span></td>
+                        <td>${formatDate(l.start_date)}</td>
+                        <td>${formatDate(l.end_date)}</td>
+                        <td>${l.reason || '-'}</td>
+                        <td><span class="badge ${getLeaveStatusBadge(l.status)}">${getLeaveStatusText(l.status)}</span></td>
+                        <td>
+                            ${l.status === 'pending' ? `<button class="btn btn-success" onclick="approveLeave(${l.id})">批准</button>` : ''}
+                            ${l.status === 'pending' ? `<button class="btn btn-danger" onclick="rejectLeave(${l.id})">拒绝</button>` : ''}
+                        </td>
+                    </tr>
+                `).join('');
+            }
+        } catch (error) {
+            console.error('加载请假记录失败:', error);
+        }
+    }
+
+    function getLeaveStatusText(status) {
+        const map = {
+            'pending': '待审批',
+            'approved': '已批准',
+            'rejected': '已拒绝'
+        };
+        return map[status] || status;
+    }
+
+    function getLeaveStatusBadge(status) {
+        const map = {
+            'pending': 'badge-warning',
+            'approved': 'badge-success',
+            'rejected': 'badge-danger'
+        };
+        return map[status] || 'badge-info';
+    }
+
+    async function approveLeave(id) {
+        try {
+            const result = await post(`/schedule/leaves/${id}/approve/`);
+            if (result.code === 200) {
+                showToast('已批准', 'success');
+                await loadLeave();
+            } else {
+                showToast(result.msg, 'error');
+            }
+        } catch (error) {
+            showToast(error.message, 'error');
+        }
+    }
+
+    async function rejectLeave(id) {
+        if (!confirm('确定要拒绝该请假申请吗？')) return;
+        
+        try {
+            const result = await post(`/schedule/leaves/${id}/reject/`);
+            if (result.code === 200) {
+                showToast('已拒绝', 'success');
+                await loadLeave();
+            } else {
+                showToast(result.msg, 'error');
+            }
+        } catch (error) {
+            showToast(error.message, 'error');
+        }
+    }
+
+    async function loadAttendance() {
+        const date = document.getElementById('attendanceDate').value;
+        try {
+            const result = await get('/schedule/attendances/', { date });
+            if (result.code === 200) {
+                const attendances = result.data.results || [];
+                const tbody = document.getElementById('attendanceList');
+                
+                if (attendances.length === 0) {
+                    tbody.innerHTML = '<tr><td colspan="5" class="empty-state"><i class="fa-solid fa-inbox"></i><br>暂无考勤记录</td></tr>';
+                    return;
+                }
+                
+                tbody.innerHTML = attendances.map(a => `
+                    <tr>
+                        <td>${a.employee_name || '-'}</td>
+                        <td>${a.check_in_time || '-'}</td>
+                        <td>${a.check_out_time || '-'}</td>
+                        <td><span class="badge ${getAttendanceStatusBadge(a.status)}">${getAttendanceStatusText(a.status)}</span></td>
+                        <td>${a.note || '-'}</td>
+                    </tr>
+                `).join('');
+            }
+        } catch (error) {
+            console.error('加载考勤记录失败:', error);
+        }
+    }
+
+    function getAttendanceStatusText(status) {
+        const map = {
+            'normal': '正常',
+            'late': '迟到',
+            'early_leave': '早退',
+            'absent': '缺勤',
+            'overtime': '加班'
+        };
+        return map[status] || status;
+    }
+
+    function getAttendanceStatusBadge(status) {
+        const map = {
+            'normal': 'badge-success',
+            'late': 'badge-warning',
+            'early_leave': 'badge-warning',
+            'absent': 'badge-danger',
+            'overtime': 'badge-info'
+        };
+        return map[status] || 'badge-info';
+    }
+
+    // ============ 客服排班 ============
+    async function loadCSSchedule() {
+        try {
+            const result = await get('/schedule/cs-schedules/');
+            if (result.code === 200) {
+                const schedules = result.data || [];
+                const tbody = document.getElementById('csScheduleList');
+
+                if (schedules.length === 0) {
+                    tbody.innerHTML = '<tr><td colspan="6" class="empty-state"><i class="fa-solid fa-inbox"></i><br>暂无客服排班</td></tr>';
+                    return;
+                }
+
+                tbody.innerHTML = schedules.map(s => `
+                    <tr>
+                        <td>${s.employee_name || '-'}</td>
+                        <td>${s.day_name || '-'}</td>
+                        <td>${s.start_time || '-'}</td>
+                        <td>${s.end_time || '-'}</td>
+                        <td><span class="badge ${s.status ? 'badge-success' : 'badge-secondary'}">${s.status ? '启用' : '禁用'}</span></td>
+                        <td>
+                            <button class="btn btn-danger" onclick="deleteCSSchedule(${s.id})">删除</button>
+                        </td>
+                    </tr>
+                `).join('');
+            }
+        } catch (error) {
+            console.error('加载客服排班失败:', error);
+        }
+    }
+
+    async function loadCScheduleEmployees() {
+        try {
+            const result = await get('/employee/employees/', { page_size: 100 });
+            if (result.code === 200) {
+                const employees = result.data.results || [];
+                const select = document.getElementById('csScheduleEmployeeId');
+                select.innerHTML = '<option value="">请选择客服人员</option>' +
+                    employees.map(e => `<option value="${e.id}">${e.nickname || e.real_name}</option>`).join('');
+            }
+        } catch (error) {
+            console.error('加载员工列表失败:', error);
+        }
+    }
+
+    async function addCSSchedule() {
+        const employeeId = document.getElementById('csScheduleEmployeeId').value;
+        const dayOfWeek = document.getElementById('csScheduleDay').value;
+        const startTime = document.getElementById('csScheduleStartTime').value;
+        const endTime = document.getElementById('csScheduleEndTime').value;
+
+        if (!employeeId || dayOfWeek === '' || !startTime || !endTime) {
+            showToast('请填写完整信息', 'error');
+            return;
+        }
+
+        try {
+            const result = await post('/schedule/cs-schedules/', {
+                employee_id: employeeId,
+                day_of_week: parseInt(dayOfWeek),
+                start_time: startTime,
+                end_time: endTime
+            });
+            if (result.code === 200) {
+                showToast('添加成功', 'success');
+                hideModal('addCSScheduleModal');
+                await loadCSSchedule();
+            } else {
+                showToast(result.msg || '添加失败', 'error');
+            }
+        } catch (error) {
+            showToast('添加失败: ' + error.message, 'error');
+        }
+    }
+
+    async function deleteCSSchedule(id) {
+        if (!confirm('确定要删除该排班吗？')) return;
+
+        try {
+            const result = await del(`/schedule/cs-schedules/${id}/`);
+            if (result.code === 200) {
+                showToast('删除成功', 'success');
+                await loadCSSchedule();
+            } else {
+                showToast(result.msg, 'error');
+            }
+        } catch (error) {
+            showToast('删除失败: ' + error.message, 'error');
+        }
+    }
+
+    // 加载员工列表
+    document.addEventListener('DOMContentLoaded', function() {
+        loadCScheduleEmployees();
+        loadCSSchedule();
+    });
+</script>
+{% endblock %}

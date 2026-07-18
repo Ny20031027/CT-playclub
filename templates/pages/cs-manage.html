@@ -1,0 +1,262 @@
+{% extends 'layout.html' %}
+
+{% block content %}
+<script>
+    document.getElementById('pageTitle').textContent = '客服管理';
+</script>
+
+<div class="card">
+    <div class="card-header">
+        <div class="card-title">客服列表</div>
+        <div class="card-actions">
+            <input type="text" class="search-input" id="csSearchInput" placeholder="搜索客服" oninput="debounce(loadCSList, 300)()">
+            <button class="btn btn-primary" onclick="showAddCSModal()">
+                <i class="fa-solid fa-plus"></i> 添加客服
+            </button>
+        </div>
+    </div>
+    <div class="table-container">
+        <table>
+            <thead>
+                <tr>
+                    <th>ID</th>
+                    <th>头像</th>
+                    <th>昵称</th>
+                    <th>手机号</th>
+                    <th>状态</th>
+                    <th>操作</th>
+                </tr>
+            </thead>
+            <tbody id="csList">
+                <tr><td colspan="6" class="empty-state"><i class="fa-solid fa-spinner fa-spin"></i><br>加载中...</td></tr>
+            </tbody>
+        </table>
+    </div>
+    <div class="table-pagination" id="csPagination">
+        <button class="pagination-btn" onclick="csPrevPage()">上一页</button>
+        <span id="csPageInfo">第 1 页 / 共 1 页</span>
+        <button class="pagination-btn" onclick="csNextPage()">下一页</button>
+    </div>
+</div>
+
+<!-- 添加客服弹窗 -->
+<div class="modal-overlay" id="addCSModal">
+    <div class="modal">
+        <div class="modal-header">
+            <div class="modal-title">添加客服</div>
+            <div class="modal-close" onclick="hideModal('addCSModal')">&times;</div>
+        </div>
+        <div class="modal-body">
+            <div class="form-group">
+                <label>搜索客户</label>
+                <input type="text" id="csCustomerSearch" placeholder="输入昵称/手机号搜索" oninput="debounce(searchCSCustomers, 300)()">
+            </div>
+            <div class="form-group">
+                <label>选择客户</label>
+                <div id="csCustomerList" class="customer-select-list">
+                    <div class="empty-hint">请先搜索客户</div>
+                </div>
+            </div>
+            <div id="selectedCSInfo" style="display:none; margin-top: 12px; padding: 12px; background: #f0f7ff; border-radius: 8px;">
+                <strong>已选择：</strong><span id="selectedCSName"></span>
+            </div>
+        </div>
+        <div class="modal-footer">
+            <button class="btn btn-default" onclick="hideModal('addCSModal')">取消</button>
+            <button class="btn btn-primary" onclick="addCS()" id="confirmCSBtn" disabled>确认添加</button>
+        </div>
+    </div>
+</div>
+
+<style>
+    .customer-select-list {
+        max-height: 200px;
+        overflow-y: auto;
+        border: 1px solid #ddd;
+        border-radius: 6px;
+    }
+    .customer-select-item {
+        padding: 10px 12px;
+        cursor: pointer;
+        border-bottom: 1px solid #f0f0f0;
+        display: flex;
+        align-items: center;
+        gap: 10px;
+    }
+    .customer-select-item:hover {
+        background: #f5f5f5;
+    }
+    .customer-select-item.selected {
+        background: #e3f2fd;
+        border-color: #2196f3;
+    }
+    .customer-select-item img {
+        width: 32px;
+        height: 32px;
+        border-radius: 50%;
+        object-fit: cover;
+    }
+    .empty-hint {
+        padding: 20px;
+        text-align: center;
+        color: #999;
+    }
+</style>
+
+<script>
+    let csCurrentPage = 1;
+    let csTotalPages = 1;
+    let selectedCSCustomerId = null;
+
+    document.addEventListener('DOMContentLoaded', async function() {
+        await loadCSList();
+    });
+
+    async function loadCSList() {
+        const keyword = document.getElementById('csSearchInput').value;
+        try {
+            const result = await get('/customer/cs-list/', { page: csCurrentPage, keyword: keyword });
+            if (result.code === 200) {
+                const list = result.data.results || [];
+                const tbody = document.getElementById('csList');
+                
+                if (list.length === 0) {
+                    tbody.innerHTML = '<tr><td colspan="6" class="empty-state"><i class="fa-solid fa-inbox"></i><br>暂无客服</td></tr>';
+                    return;
+                }
+
+                tbody.innerHTML = list.map(cs => `
+                    <tr>
+                        <td>${cs.id}</td>
+                        <td>${cs.avatar ? `<img src="${cs.avatar}" style="width:40px;height:40px;border-radius:50%;object-fit:cover;">` : '<i class="fa-solid fa-user-circle" style="font-size:40px;color:#ccc;"></i>'}</td>
+                        <td>${cs.nickname || '-'}</td>
+                        <td>${cs.phone || '-'}</td>
+                        <td><span class="badge ${cs.status === 'online' ? 'badge-success' : 'badge-secondary'}">${cs.status === 'online' ? '在线' : '离线'}</span></td>
+                        <td>
+                            <button class="btn btn-danger" onclick="removeCS(${cs.id})">移除</button>
+                        </td>
+                    </tr>
+                `).join('');
+
+                csTotalPages = result.data.pages || 1;
+                document.getElementById('csPageInfo').textContent = `第 ${csCurrentPage} 页 / 共 ${csTotalPages} 页`;
+            }
+        } catch (error) {
+            console.error('加载客服列表失败:', error);
+        }
+    }
+
+    function showAddCSModal() {
+        selectedCSCustomerId = null;
+        document.getElementById('selectedCSInfo').style.display = 'none';
+        document.getElementById('confirmCSBtn').disabled = true;
+        document.getElementById('csCustomerSearch').value = '';
+        document.getElementById('csCustomerList').innerHTML = '<div class="empty-hint">请先搜索客户</div>';
+        showModal('addCSModal');
+        loadCSustomerList();
+    }
+
+    async function loadCSustomerList() {
+        try {
+            const result = await get('/customer/customers/', { page_size: 50 });
+            if (result.code === 200) {
+                const customers = result.data.results || [];
+                renderCSustomerList(customers);
+            }
+        } catch (error) {
+            console.error('加载客户列表失败:', error);
+        }
+    }
+
+    async function searchCSCustomers() {
+        const keyword = document.getElementById('csCustomerSearch').value;
+        try {
+            const result = await get('/customer/customers/', { keyword, page_size: 50 });
+            if (result.code === 200) {
+                const customers = result.data.results || [];
+                renderCSustomerList(customers);
+            }
+        } catch (error) {
+            console.error('搜索客户失败:', error);
+        }
+    }
+
+    function renderCSustomerList(customers) {
+        const list = document.getElementById('csCustomerList');
+        if (customers.length === 0) {
+            list.innerHTML = '<div class="empty-hint">未找到客户</div>';
+            return;
+        }
+        list.innerHTML = customers.map(c => `
+            <div class="customer-select-item ${selectedCSCustomerId === c.id ? 'selected' : ''}" 
+                 onclick="selectCSCustomer(${c.id}, '${(c.nickname || '').replace(/'/g, "\\'")}')">
+                ${c.avatar ? `<img src="${c.avatar}">` : '<i class="fa-solid fa-user" style="font-size:32px;color:#ccc;"></i>'}
+                <div>
+                    <div><strong>${c.nickname || '未设置昵称'}</strong></div>
+                    <div style="font-size:12px;color:#999;">${c.phone || '未绑定手机'} | ID: ${c.id}</div>
+                </div>
+            </div>
+        `).join('');
+    }
+
+    function selectCSCustomer(id, nickname) {
+        selectedCSCustomerId = id;
+        document.getElementById('selectedCSName').textContent = nickname || '客户 #' + id;
+        document.getElementById('selectedCSInfo').style.display = 'block';
+        document.getElementById('confirmCSBtn').disabled = false;
+        
+        document.querySelectorAll('.customer-select-item').forEach(el => el.classList.remove('selected'));
+        event.currentTarget.classList.add('selected');
+    }
+
+    async function addCS() {
+        if (!selectedCSCustomerId) {
+            showToast('请先选择客户', 'error');
+            return;
+        }
+
+        try {
+            const result = await post('/customer/cs-add/', { customer_id: selectedCSCustomerId });
+            if (result.code === 200) {
+                showToast('添加成功', 'success');
+                hideModal('addCSModal');
+                await loadCSList();
+            } else {
+                showToast(result.msg || '添加失败', 'error');
+            }
+        } catch (error) {
+            showToast(error.message || '添加失败', 'error');
+        }
+    }
+
+    async function removeCS(id) {
+        if (!confirm('确定要移除该客服吗？')) return;
+
+        try {
+            const result = await post(`/customer/cs-remove/${id}/`);
+            if (result.code === 200) {
+                showToast('移除成功', 'success');
+                await loadCSList();
+            } else {
+                showToast(result.msg, 'error');
+            }
+        } catch (error) {
+            showToast(error.message, 'error');
+        }
+    }
+
+    function csPrevPage() {
+        if (csCurrentPage > 1) {
+            csCurrentPage--;
+            loadCSList();
+        }
+    }
+
+    function csNextPage() {
+        if (csCurrentPage < csTotalPages) {
+            csCurrentPage++;
+            loadCSList();
+        }
+    }
+</script>
+{% endblock %}

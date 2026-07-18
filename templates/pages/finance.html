@@ -1,0 +1,331 @@
+{% extends 'layout.html' %}
+
+{% block content %}
+<script>
+    document.getElementById('pageTitle').textContent = '财务管理';
+</script>
+
+<div class="stat-cards">
+    <div class="stat-card blue">
+        <div class="stat-icon">
+            <i class="fa-solid fa-wallet"></i>
+        </div>
+        <div class="stat-value" id="totalRevenue">0.00</div>
+        <div class="stat-label">总收入</div>
+    </div>
+    <div class="stat-card green">
+        <div class="stat-icon">
+            <i class="fa-solid fa-hand-holding-dollar"></i>
+        </div>
+        <div class="stat-value" id="totalWithdraw">0.00</div>
+        <div class="stat-label">总提现</div>
+    </div>
+    <div class="stat-card orange">
+        <div class="stat-icon">
+            <i class="fa-solid fa-coins"></i>
+        </div>
+        <div class="stat-value" id="balance">0.00</div>
+        <div class="stat-label">余额</div>
+    </div>
+    <div class="stat-card red">
+        <div class="stat-icon">
+            <i class="fa-solid fa-file-invoice-dollar"></i>
+        </div>
+        <div class="stat-value" id="pendingWithdraw">0.00</div>
+        <div class="stat-label">待处理提现</div>
+    </div>
+</div>
+
+<div class="tabs">
+    <div class="tab-item active" onclick="switchTab('revenue')">收入记录</div>
+    <div class="tab-item" onclick="switchTab('withdraw')">提现记录</div>
+</div>
+
+<div id="revenueTab" style="display: block;">
+    <div class="card">
+        <div class="card-header">
+            <div class="card-title">收入记录</div>
+        </div>
+        <div class="table-container">
+            <table>
+                <thead>
+                    <tr>
+                        <th>ID</th>
+                        <th>订单号</th>
+                        <th>客户</th>
+                        <th>金额</th>
+                        <th>类型</th>
+                        <th>时间</th>
+                    </tr>
+                </thead>
+                <tbody id="revenueList">
+                    <tr><td colspan="6" class="empty-state"><i class="fa-solid fa-spinner fa-spin"></i><br>加载中...</td></tr>
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
+<div id="withdrawTab" style="display: none;">
+    <div class="card">
+        <div class="card-header">
+            <div class="card-title">提现记录</div>
+            <div class="card-actions">
+                <button class="btn btn-primary" onclick="showModal('addWithdrawModal')">
+                    <i class="fa-solid fa-plus"></i> 申请提现
+                </button>
+            </div>
+        </div>
+        <div class="table-container">
+            <table>
+                <thead>
+                    <tr>
+                        <th>ID</th>
+                        <th>陪玩师</th>
+                        <th>金额</th>
+                        <th>状态</th>
+                        <th>申请时间</th>
+                        <th>操作</th>
+                    </tr>
+                </thead>
+                <tbody id="withdrawList">
+                    <tr><td colspan="6" class="empty-state"><i class="fa-solid fa-spinner fa-spin"></i><br>加载中...</td></tr>
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
+<div class="modal-overlay" id="addWithdrawModal">
+    <div class="modal">
+        <div class="modal-header">
+            <div class="modal-title">申请提现</div>
+            <div class="modal-close" onclick="hideModal('addWithdrawModal')">&times;</div>
+        </div>
+        <div class="modal-body">
+            <form id="addWithdrawForm">
+                <div class="form-group">
+                    <label>陪玩师</label>
+                    <select id="withdrawEmployee" required>
+                        <option value="">请选择陪玩师</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label>金额</label>
+                    <input type="number" id="withdrawAmount" step="0.01" min="0.01" required>
+                </div>
+                <div class="form-group">
+                    <label>提现方式</label>
+                    <select id="withdrawMethod">
+                        <option value="alipay">支付宝</option>
+                        <option value="wechat">微信</option>
+                        <option value="bank">银行卡</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label>账户名称</label>
+                    <input type="text" id="withdrawAccountName" required>
+                </div>
+                <div class="form-group">
+                    <label>账号</label>
+                    <input type="text" id="withdrawAccountNo" required>
+                </div>
+            </form>
+        </div>
+        <div class="modal-footer">
+            <button class="btn btn-default" onclick="hideModal('addWithdrawModal')">取消</button>
+            <button class="btn btn-primary" onclick="addWithdraw()">确定</button>
+        </div>
+    </div>
+</div>
+
+<script>
+    document.addEventListener('DOMContentLoaded', async function() {
+        await loadOverview();
+        await loadRevenue();
+        await loadWithdraws();
+        await loadEmployeeOptions();
+    });
+
+    async function loadOverview() {
+        try {
+            const result = await get('/finance/overview/');
+            if (result.code === 200) {
+                const data = result.data;
+                document.getElementById('totalRevenue').textContent = formatMoney(data.monthIncome);
+                document.getElementById('totalWithdraw').textContent = formatMoney(data.monthExpense);
+                document.getElementById('balance').textContent = formatMoney(data.balance);
+                document.getElementById('pendingWithdraw').textContent = formatMoney(data.pendingSettlement);
+            }
+        } catch (error) {
+            console.error('加载财务概览失败:', error);
+        }
+    }
+
+    async function loadEmployeeOptions() {
+        try {
+            const result = await get('/employee/employees/', { page_size: 100 });
+            if (result.code === 200) {
+                const list = result.data.results || [];
+                const select = document.getElementById('withdrawEmployee');
+                select.innerHTML = '<option value="">请选择陪玩师</option>' +
+                    list.map(e => `<option value="${e.id}">${e.nickname || e.real_name}</option>`).join('');
+            }
+        } catch (error) { console.error('加载陪玩师列表失败:', error); }
+    }
+
+    async function loadRevenue() {
+        try {
+            const result = await get('/finance/transactions/', { type: 'income' });
+            if (result.code === 200) {
+                const transactions = result.data.results || [];
+                const tbody = document.getElementById('revenueList');
+                
+                if (transactions.length === 0) {
+                    tbody.innerHTML = '<tr><td colspan="6" class="empty-state"><i class="fa-solid fa-inbox"></i><br>暂无数据</td></tr>';
+                    return;
+                }
+                
+                tbody.innerHTML = transactions.map(t => `
+                    <tr>
+                        <td>${t.id}</td>
+                        <td>${t.order_no || '-'}</td>
+                        <td>${t.employee_name || '-'}</td>
+                        <td>¥${formatMoney(t.amount)}</td>
+                        <td><span class="badge badge-success">${t.type_text || '收入'}</span></td>
+                        <td>${formatDate(t.created_at)}</td>
+                    </tr>
+                `).join('');
+            }
+        } catch (error) {
+            console.error('加载收入记录失败:', error);
+        }
+    }
+
+    async function loadWithdraws() {
+        try {
+            const result = await get('/finance/withdraws/');
+            if (result.code === 200) {
+                const withdraws = result.data.results || [];
+                const tbody = document.getElementById('withdrawList');
+                
+                if (withdraws.length === 0) {
+                    tbody.innerHTML = '<tr><td colspan="6" class="empty-state"><i class="fa-solid fa-inbox"></i><br>暂无数据</td></tr>';
+                    return;
+                }
+                
+                tbody.innerHTML = withdraws.map(w => `
+                    <tr>
+                        <td>${w.id}</td>
+                        <td>${w.employee_name || '-'}</td>
+                        <td>¥${formatMoney(w.amount)}</td>
+                        <td><span class="badge ${getWithdrawStatusBadge(w.status)}">${getWithdrawStatusText(w.status)}</span></td>
+                        <td>${formatDate(w.created_at)}</td>
+                        <td>
+                            ${w.status === 'pending' ? `<button class="btn btn-success" onclick="approveWithdraw(${w.id})">审核通过</button>` : ''}
+                            ${w.status === 'pending' ? `<button class="btn btn-danger" onclick="rejectWithdraw(${w.id})">拒绝</button>` : ''}
+                        </td>
+                    </tr>
+                `).join('');
+            }
+        } catch (error) {
+            console.error('加载提现记录失败:', error);
+        }
+    }
+
+    function getWithdrawStatusText(status) {
+        const map = {
+            'pending': '待审核',
+            'approved': '已通过',
+            'paid': '已打款',
+            'rejected': '已拒绝'
+        };
+        return map[status] || status;
+    }
+
+    function getWithdrawStatusBadge(status) {
+        const map = {
+            'pending': 'badge-warning',
+            'approved': 'badge-info',
+            'paid': 'badge-success',
+            'rejected': 'badge-danger'
+        };
+        return map[status] || 'badge-info';
+    }
+
+    function switchTab(tab) {
+        document.querySelectorAll('.tab-item').forEach(t => t.classList.remove('active'));
+        event.target.classList.add('active');
+        
+        document.getElementById('revenueTab').style.display = tab === 'revenue' ? 'block' : 'none';
+        document.getElementById('withdrawTab').style.display = tab === 'withdraw' ? 'block' : 'none';
+    }
+
+    async function addWithdraw() {
+        const employeeId = document.getElementById('withdrawEmployee').value;
+        const amount = document.getElementById('withdrawAmount').value;
+        const method = document.getElementById('withdrawMethod').value;
+        const accountName = document.getElementById('withdrawAccountName').value;
+        const accountNo = document.getElementById('withdrawAccountNo').value;
+
+        if (!employeeId) {
+            showToast('请选择陪玩师', 'error');
+            return;
+        }
+        
+        try {
+            const result = await post('/finance/withdraws/', {
+                employee: parseInt(employeeId),
+                amount: parseFloat(amount),
+                withdraw_method: method,
+                account_name: accountName,
+                account_no: accountNo
+            });
+            
+            if (result.code === 200) {
+                showToast('提现申请已提交', 'success');
+                hideModal('addWithdrawModal');
+                document.getElementById('addWithdrawForm').reset();
+                await loadWithdraws();
+                await loadOverview();
+            } else {
+                showToast(result.msg, 'error');
+            }
+        } catch (error) {
+            showToast(error.message, 'error');
+        }
+    }
+
+    async function approveWithdraw(id) {
+        try {
+            const result = await post(`/finance/withdraws/${id}/approve/`);
+            if (result.code === 200) {
+                showToast('审核通过', 'success');
+                await loadWithdraws();
+                await loadOverview();
+            } else {
+                showToast(result.msg, 'error');
+            }
+        } catch (error) {
+            showToast(error.message, 'error');
+        }
+    }
+
+    async function rejectWithdraw(id) {
+        if (!confirm('确定要拒绝该提现申请吗？')) return;
+        
+        try {
+            const result = await post(`/finance/withdraws/${id}/reject/`);
+            if (result.code === 200) {
+                showToast('已拒绝', 'success');
+                await loadWithdraws();
+                await loadOverview();
+            } else {
+                showToast(result.msg, 'error');
+            }
+        } catch (error) {
+            showToast(error.message, 'error');
+        }
+    }
+</script>
+{% endblock %}

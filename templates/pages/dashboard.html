@@ -1,0 +1,192 @@
+{% extends 'layout.html' %}
+
+{% block content %}
+<script>
+    document.getElementById('pageTitle').textContent = '数据概览';
+</script>
+
+<div class="stat-cards">
+    <div class="stat-card blue">
+        <div class="stat-icon">
+            <i class="fa-solid fa-file-text"></i>
+        </div>
+        <div class="stat-value" id="orderCount">0</div>
+        <div class="stat-label">今日订单</div>
+    </div>
+    <div class="stat-card green">
+        <div class="stat-icon">
+            <i class="fa-solid fa-users"></i>
+        </div>
+        <div class="stat-value" id="customerCount">0</div>
+        <div class="stat-label">今日客户</div>
+    </div>
+    <div class="stat-card orange">
+        <div class="stat-icon">
+            <i class="fa-solid fa-wallet"></i>
+        </div>
+        <div class="stat-value" id="revenue">0.00</div>
+        <div class="stat-label">今日收入</div>
+    </div>
+    <div class="stat-card red">
+        <div class="stat-icon">
+            <i class="fa-solid fa-gamepad"></i>
+        </div>
+        <div class="stat-value" id="onlineCount">0</div>
+        <div class="stat-label">在线陪玩师</div>
+    </div>
+</div>
+
+<div class="card">
+    <div class="card-header">
+        <div class="card-title">最近订单</div>
+    </div>
+    <div class="table-container">
+        <table>
+            <thead>
+                <tr>
+                    <th>订单号</th>
+                    <th>客户</th>
+                    <th>陪玩师</th>
+                    <th>金额</th>
+                    <th>状态</th>
+                    <th>创建时间</th>
+                </tr>
+            </thead>
+            <tbody id="recentOrders">
+                <tr><td colspan="6" class="empty-state"><i class="fa-solid fa-inbox"></i><br>暂无数据</td></tr>
+            </tbody>
+        </table>
+    </div>
+</div>
+
+<div class="card">
+    <div class="card-header">
+        <div class="card-title">收入统计</div>
+    </div>
+    <div class="chart-container">
+        <canvas id="revenueChart"></canvas>
+    </div>
+</div>
+
+<script>
+    document.addEventListener('DOMContentLoaded', async function() {
+        await loadStats();
+        await loadRecentOrders();
+        initChart();
+    });
+
+    async function loadStats() {
+        try {
+            const result = await get('/statistics/stats/overview/');
+            if (result.code === 200) {
+                const data = result.data;
+                document.getElementById('orderCount').textContent = data.today_orders || 0;
+                document.getElementById('customerCount').textContent = data.today_customers || 0;
+                document.getElementById('revenue').textContent = formatMoney(data.today_revenue);
+                document.getElementById('onlineCount').textContent = data.online_employees || 0;
+            }
+        } catch (error) {
+            console.error('加载统计数据失败:', error);
+        }
+    }
+
+    async function loadRecentOrders() {
+        try {
+            const result = await get('/order/orders/', { page_size: 5 });
+            if (result.code === 200) {
+                const orders = result.data.results || [];
+                const tbody = document.getElementById('recentOrders');
+                
+                if (orders.length === 0) {
+                    tbody.innerHTML = '<tr><td colspan="6" class="empty-state"><i class="fa-solid fa-inbox"></i><br>暂无数据</td></tr>';
+                    return;
+                }
+                
+                tbody.innerHTML = orders.map(order => `
+                    <tr>
+                        <td>${order.order_no}</td>
+                        <td>${order.customer_name || '-'}</td>
+                        <td>${order.employee_name || '-'}</td>
+                        <td>¥${formatMoney(order.total_amount)}</td>
+                        <td><span class="badge ${getOrderStatusBadge(order.status)}">${getOrderStatusText(order.status)}</span></td>
+                        <td>${formatDate(order.created_at)}</td>
+                    </tr>
+                `).join('');
+            }
+        } catch (error) {
+            console.error('加载订单数据失败:', error);
+        }
+    }
+
+    function getOrderStatusText(status) {
+        const map = {
+            'pending': '待支付',
+            'allocated': '待分配',
+            'in_progress': '进行中',
+            'completed': '已完成',
+            'cancelled': '已取消',
+            'refunded': '已退款'
+        };
+        return map[status] || status;
+    }
+
+    function getOrderStatusBadge(status) {
+        const map = {
+            'pending': 'badge-warning',
+            'allocated': 'badge-info',
+            'in_progress': 'badge-blue',
+            'completed': 'badge-success',
+            'cancelled': 'badge-danger',
+            'refunded': 'badge-danger'
+        };
+        return map[status] || 'badge-info';
+    }
+
+    function initChart() {
+        const ctx = document.getElementById('revenueChart');
+        if (!ctx) return;
+        
+        const labels = ['1月', '2月', '3月', '4月', '5月', '6月', '7月', '8月', '9月', '10月', '11月', '12月'];
+        const data = [12000, 15000, 18000, 22000, 19000, 25000, 28000, 32000, 29000, 35000, 40000, 45000];
+        
+        const gradient = ctx.getContext('2d').createLinearGradient(0, 0, 0, 300);
+        gradient.addColorStop(0, 'rgba(64, 158, 255, 0.5)');
+        gradient.addColorStop(1, 'rgba(64, 158, 255, 0.05)');
+        
+        ctx.getContext('2d').fillStyle = '#fff';
+        ctx.getContext('2d').fillRect(0, 0, ctx.width, ctx.height);
+        
+        const chartWidth = ctx.width - 60;
+        const chartHeight = ctx.height - 40;
+        const barWidth = chartWidth / labels.length * 0.6;
+        const gap = chartWidth / labels.length;
+        
+        const maxValue = Math.max(...data) * 1.2;
+        
+        ctx.getContext('2d').strokeStyle = '#ebeef5';
+        for (let i = 0; i <= 4; i++) {
+            const y = 20 + (chartHeight / 4) * i;
+            ctx.getContext('2d').beginPath();
+            ctx.getContext('2d').moveTo(50, y);
+            ctx.getContext('2d').lineTo(ctx.width - 10, y);
+            ctx.getContext('2d').stroke();
+        }
+        
+        ctx.getContext('2d').fillStyle = '#409eff';
+        data.forEach((value, index) => {
+            const x = 50 + gap * index + (gap - barWidth) / 2;
+            const height = (value / maxValue) * chartHeight;
+            const y = 20 + chartHeight - height;
+            
+            ctx.getContext('2d').fillRect(x, y, barWidth, height);
+        });
+        
+        ctx.getContext('2d').fillStyle = '#909399';
+        ctx.getContext('2d').font = '12px sans-serif';
+        labels.forEach((label, index) => {
+            const x = 50 + gap * index + (gap - barWidth) / 2;
+            ctx.getContext('2d').fillText(label, x, ctx.height - 10);
+        });
+    }
+</script>
+{% endblock %}
