@@ -2116,6 +2116,7 @@ def update_profile(request):
     nickname = request.data.get('nickname')
     avatar = request.data.get('avatar')
     intro = request.data.get('intro')
+    gender = request.data.get('gender')
 
     if nickname:
         user.nickname = nickname
@@ -2126,6 +2127,10 @@ def update_profile(request):
             wx_user.save(update_fields=['nickname'])
         except WxUser.DoesNotExist:
             pass
+
+    if gender:
+        user.gender = gender
+        user.save(update_fields=['gender'])
 
     if avatar:
         # 保存到user表
