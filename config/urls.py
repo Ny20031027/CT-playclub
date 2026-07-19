@@ -2,6 +2,7 @@ from django.contrib import admin
 from django.urls import path, include, re_path
 from django.conf import settings
 from django.conf.urls.static import static
+from django.views.static import serve
 from django.views.generic import TemplateView
 from django.shortcuts import render
 from datetime import date
@@ -60,8 +61,6 @@ urlpatterns = [
     path('api/system/', include('apps.system.urls')),
     path('api/wx/', include('apps.wx.urls')),
     re_path(r'^$', login_view),
+    # 生产环境也提供媒体文件访问
+    re_path(r'^media/(?P<path>.*)$', serve, {'document_root': settings.MEDIA_ROOT}),
 ]
-
-if settings.DEBUG:
-    urlpatterns += static(settings.MEDIA_URL, document_root=settings.MEDIA_ROOT)
-    urlpatterns += static(settings.STATIC_URL, document_root=settings.STATIC_ROOT)

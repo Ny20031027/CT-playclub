@@ -2128,6 +2128,9 @@ def update_profile(request):
             pass
 
     if avatar:
+        # 保存到user表
+        user.avatar = avatar
+        user.save(update_fields=['avatar'])
         # 保存到wx_user表
         try:
             wx_user = user.wx_user
