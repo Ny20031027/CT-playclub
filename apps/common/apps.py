@@ -30,3 +30,21 @@ class CommonConfig(AppConfig):
         except Exception as e:
             import logging
             logging.getLogger('django').warning(f'Auto migrate failed: {e}')
+        # 自动创建超级管理员（如果不存在）
+        self._create_default_admin()
+
+    def _create_default_admin(self):
+        try:
+            from apps.account.models import User
+            if not User.objects.filter(is_superuser=True).exists():
+                User.objects.create_superuser(
+                    username='admin',
+                    password='admin123456',
+                    phone='13800000000',
+                    is_staff=True,
+                )
+                import logging
+                logging.getLogger('django').info('Default admin created: admin / admin123456')
+        except Exception as e:
+            import logging
+            logging.getLogger('django').warning(f'Create admin failed: {e}')
