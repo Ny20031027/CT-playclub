@@ -2262,6 +2262,7 @@ def user_profile(request):
         'nickname': nickname,
         'avatar': avatar,
         'phone': phone,
+        'gender': user.gender or 'unknown',
         'user_type': user_type,
         'order_count': order_count,
         'total_spent': round(total_spent, 2),
