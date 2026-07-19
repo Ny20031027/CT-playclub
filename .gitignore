@@ -18,6 +18,10 @@ media/
 logs/
 *.log
 
+# Environment variables (敏感信息)
+.env
+.env.*
+
 # Node
 node_modules/
 

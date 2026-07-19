@@ -4,12 +4,8 @@ DEBUG = False
 
 ALLOWED_HOSTS = ['*']
 
-DATABASES = {
-    'default': {
-        'ENGINE': 'django.db.backends.sqlite3',
-        'NAME': BASE_DIR / 'db.sqlite3',
-    }
-}
+# 生产环境使用微信云托管 MySQL，通过环境变量配置
+# DB_NAME, DB_USER, DB_PASSWORD, DB_HOST, DB_PORT
 
 CACHES = {
     'default': {
