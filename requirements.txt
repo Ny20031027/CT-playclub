@@ -9,3 +9,4 @@ gunicorn>=21.2,<22.0
 python-dotenv>=1.0,<2.0
 requests>=2.31,<3.0
 whitenoise>=6.5,<7.0
+cos-python-sdk-v5>=1.9,<2.0
