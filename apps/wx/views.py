@@ -167,7 +167,7 @@ def get_wx_openid(code):
         'grant_type': 'authorization_code',
     }
     try:
-        resp = requests.get(url, params=params, timeout=10)
+        resp = requests.get(url, params=params, timeout=10, verify=False)
         data = resp.json()
         logger.info(f'WeChat login response: {data}')
         if 'openid' in data:
