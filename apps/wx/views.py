@@ -267,8 +267,9 @@ def wx_login(request):
         'user_info': {
             'id': user.id,
             'nickname': wx_user.nickname or user.nickname or f'用户{openid[-6:]}',
-            'avatar': wx_user.avatar or '',
-            'phone': wx_user.phone or '',
+            'avatar': wx_user.avatar or user.avatar or '',
+            'phone': wx_user.phone or user.phone or '',
+            'gender': user.gender or 'unknown',
             'user_type': user_type,
             'customer_id': customer.id if customer else None,
         }
@@ -2112,11 +2113,16 @@ def user_profile(request):
 @permission_classes([IsAuthenticated])
 def update_profile(request):
     """更新用户信息"""
+    import logging
+    logger = logging.getLogger(__name__)
+    
     user = request.user
     nickname = request.data.get('nickname')
     avatar = request.data.get('avatar')
     intro = request.data.get('intro')
     gender = request.data.get('gender')
+    
+    logger.info(f'Update profile: user={user.id}, nickname={nickname}, gender={gender}, avatar={bool(avatar)}')
 
     if nickname:
         user.nickname = nickname
@@ -2136,8 +2142,9 @@ def update_profile(request):
             employee = user.employee
             employee.gender = gender
             employee.save(update_fields=['gender'])
-        except Exception:
-            pass
+            logger.info(f'Gender synced to employee: {employee.id}')
+        except Exception as e:
+            logger.warning(f'Failed to sync gender to employee: {e}')
 
     if avatar:
         # 保存到user表
