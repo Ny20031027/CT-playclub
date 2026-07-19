@@ -2131,6 +2131,13 @@ def update_profile(request):
     if gender:
         user.gender = gender
         user.save(update_fields=['gender'])
+        # 同步到 Employee 表
+        try:
+            employee = user.employee
+            employee.gender = gender
+            employee.save(update_fields=['gender'])
+        except Exception:
+            pass
 
     if avatar:
         # 保存到user表
