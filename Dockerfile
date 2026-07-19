@@ -5,6 +5,14 @@ ENV PYTHONUNBUFFERED=1
 
 WORKDIR /app
 
+# 安装 CA 证书（解决 SSL 验证问题）
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    ca-certificates \
+    && rm -rf /var/lib/apt/lists/*
+
+# 更新 CA 证书
+RUN update-ca-certificates
+
 # 创建日志和媒体目录
 RUN mkdir -p /app/logs /app/media /app/static
 
