@@ -38,6 +38,151 @@ ACTIVE_ORDER_MEMBER_STATUSES = ['accepted', 'in_progress']
 FORMAL_ORDER_STATUSES = ['confirming', 'claimed', 'in_progress', 'completed', 'reviewed']
 
 
+def is_default_nickname(nickname):
+    if not nickname:
+        return True
+    nickname = str(nickname).strip()
+    if nickname == '测试用户':
+        return True
+    return bool(re.fullmatch(r'用户[\w-]{1,12}', nickname))
+
+
+def field_file_url(value):
+    if not value:
+        return ''
+    value_str = str(value)
+    if value_str.startswith('http') or value_str.startswith('/'):
+        return value_str
+    try:
+        return value.url
+    except Exception:
+        return value_str
+
+
+def get_profile_wx_user(user):
+    try:
+        return user.wx_user
+    except WxUser.DoesNotExist:
+        return None
+
+
+def get_related_profile_objects(user):
+    objects = {'wx_user': None, 'customer': None, 'employee': None}
+    try:
+        objects['wx_user'] = user.wx_user
+    except WxUser.DoesNotExist:
+        pass
+    try:
+        objects['customer'] = user.customer
+    except Exception:
+        pass
+    try:
+        objects['employee'] = user.employee
+    except Exception:
+        pass
+    return objects
+
+
+def choose_display_nickname(user, wx_user=None, customer=None, employee=None, fallback=''):
+    candidates = [
+        wx_user.nickname if wx_user else '',
+        user.nickname,
+        employee.nickname if employee else '',
+        customer.nickname if customer else '',
+    ]
+    for nickname in candidates:
+        if nickname and not is_default_nickname(nickname):
+            return nickname
+    for nickname in candidates:
+        if nickname:
+            return nickname
+    return fallback or f'用户{user.id}'
+
+
+def sync_profile_tables(user, nickname=None, avatar=None, phone=None, gender=None):
+    user_fields = []
+    if nickname and user.nickname != nickname:
+        user.nickname = nickname
+        user_fields.append('nickname')
+    if avatar and str(user.avatar) != avatar:
+        user.avatar = avatar
+        user_fields.append('avatar')
+    if phone and user.phone != phone:
+        user.phone = phone
+        user_fields.append('phone')
+    if gender and user.gender != gender:
+        user.gender = gender
+        user_fields.append('gender')
+    if user_fields:
+        user.save(update_fields=user_fields)
+
+    wx_user = get_profile_wx_user(user)
+    if wx_user:
+        wx_fields = []
+        if nickname and wx_user.nickname != nickname:
+            wx_user.nickname = nickname
+            wx_fields.append('nickname')
+        if avatar and wx_user.avatar != avatar:
+            wx_user.avatar = avatar
+            wx_fields.append('avatar')
+        if phone and wx_user.phone != phone:
+            wx_user.phone = phone
+            wx_fields.append('phone')
+        if gender:
+            gender_value = {'male': 1, 'female': 2, 'unknown': 0}.get(gender)
+            if gender_value is not None and wx_user.gender != gender_value:
+                wx_user.gender = gender_value
+                wx_fields.append('gender')
+        if wx_fields:
+            wx_user.save(update_fields=wx_fields)
+
+    try:
+        customer = user.customer
+        customer_fields = []
+        if nickname and customer.nickname != nickname:
+            customer.nickname = nickname
+            customer_fields.append('nickname')
+        if avatar and str(customer.avatar) != avatar:
+            customer.avatar = avatar
+            customer_fields.append('avatar')
+        if phone and customer.phone != phone:
+            customer.phone = phone
+            customer_fields.append('phone')
+        if gender and customer.gender != gender:
+            customer.gender = gender
+            customer_fields.append('gender')
+        if customer_fields:
+            customer.save(update_fields=customer_fields)
+    except Exception:
+        pass
+
+    try:
+        employee = user.employee
+        employee_fields = []
+        if nickname and employee.nickname != nickname:
+            employee.nickname = nickname
+            employee_fields.append('nickname')
+        if phone and employee.phone != phone:
+            employee.phone = phone
+            employee_fields.append('phone')
+        if gender and employee.gender != gender:
+            employee.gender = gender
+            employee_fields.append('gender')
+        if avatar:
+            avatar_name = avatar
+            if '/media/' in avatar:
+                avatar_name = avatar.split('/media/')[-1]
+            if str(employee.avatar) != avatar_name:
+                employee.avatar.name = avatar_name
+                employee_fields.append('avatar')
+        if employee_fields:
+            employee.save(update_fields=employee_fields)
+    except Exception:
+        pass
+
+    return wx_user
+
+
 def parse_member_slots(member):
     if not member:
         return 0
@@ -249,6 +394,21 @@ def wx_login(request):
             customer.phone = wx_user.phone
         customer.save()
 
+    related = get_related_profile_objects(user)
+    display_nickname = choose_display_nickname(
+        user,
+        wx_user=wx_user,
+        customer=customer,
+        employee=related['employee'],
+        fallback=f'用户{openid[-6:]}',
+    )
+    wx_user = sync_profile_tables(
+        user,
+        nickname=display_nickname,
+        avatar=wx_user.avatar or field_file_url(user.avatar) or field_file_url(customer.avatar),
+        phone=wx_user.phone or user.phone or customer.phone,
+    )
+
     # 生成 JWT token
     refresh = RefreshToken.for_user(user)
     token = str(refresh.access_token)
@@ -266,9 +426,9 @@ def wx_login(request):
         'refresh': str(refresh),
         'user_info': {
             'id': user.id,
-            'nickname': wx_user.nickname or user.nickname or f'用户{openid[-6:]}',
-            'avatar': wx_user.avatar or user.avatar or '',
-            'phone': wx_user.phone or user.phone or '',
+            'nickname': display_nickname,
+            'avatar': wx_user.avatar or field_file_url(user.avatar) or field_file_url(customer.avatar),
+            'phone': wx_user.phone or user.phone or customer.phone or '',
             'gender': user.gender or 'unknown',
             'user_type': user_type,
             'customer_id': customer.id if customer else None,
@@ -319,25 +479,24 @@ def test_login(request):
     user.last_login = timezone.now()
     user.save(update_fields=['last_login'])
 
-    # 获取用户信息
-    nickname = user.nickname or f'测试用户'
-    avatar = ''
-    phone = ''
+    related = get_related_profile_objects(user)
+    nickname = choose_display_nickname(
+        user,
+        wx_user=related['wx_user'],
+        customer=related['customer'],
+        employee=related['employee'],
+        fallback='测试用户',
+    )
+    avatar = (
+        related['wx_user'].avatar if related['wx_user'] else ''
+    ) or field_file_url(user.avatar) or field_file_url(related['customer'].avatar if related['customer'] else '') or field_file_url(related['employee'].avatar if related['employee'] else '')
+    phone = (
+        related['wx_user'].phone if related['wx_user'] else ''
+    ) or user.phone or (related['customer'].phone if related['customer'] else '') or (related['employee'].phone if related['employee'] else '')
 
-    try:
-        wx_user = user.wx_user
-        nickname = wx_user.nickname or nickname
-        avatar = wx_user.avatar or ''
-        phone = wx_user.phone or ''
-    except WxUser.DoesNotExist:
-        pass
-
-    # 获取客户ID
     customer_id = None
-    try:
-        customer_id = user.customer.id
-    except Exception:
-        pass
+    if related['customer']:
+        customer_id = related['customer'].id
 
     return success_response({
         'token': token,
@@ -358,25 +517,16 @@ def test_login(request):
 def wx_update_user(request):
     """更新微信用户信息"""
     user = request.user
-    try:
-        wx_user = user.wx_user
-    except WxUser.DoesNotExist:
-        return error_response(msg='用户不存在')
-
     nickname = request.data.get('nickname')
     avatar = request.data.get('avatar')
     gender = request.data.get('gender')
 
-    if nickname:
-        wx_user.nickname = nickname
-        user.nickname = nickname
-    if avatar:
-        wx_user.avatar = avatar
-    if gender is not None:
-        wx_user.gender = gender
-
-    wx_user.save()
-    user.save(update_fields=['nickname'])
+    sync_profile_tables(
+        user,
+        nickname=nickname,
+        avatar=avatar,
+        gender={'1': 'male', '2': 'female', '0': 'unknown'}.get(str(gender)) if gender is not None else None,
+    )
 
     return success_response(msg='更新成功')
 
@@ -2030,22 +2180,26 @@ def send_cs_reply(request):
 def user_profile(request):
     """用户信息"""
     user = request.user
-    try:
-        wx_user = user.wx_user
-        nickname = wx_user.nickname or user.nickname or f'用户{user.id}'
-        avatar = wx_user.avatar or ''
-        phone = wx_user.phone or ''
-    except WxUser.DoesNotExist:
-        nickname = user.nickname or f'用户{user.id}'
-        avatar = ''
-        phone = user.phone or ''
+    related = get_related_profile_objects(user)
+    nickname = choose_display_nickname(
+        user,
+        wx_user=related['wx_user'],
+        customer=related['customer'],
+        employee=related['employee'],
+    )
+    avatar = (
+        related['wx_user'].avatar if related['wx_user'] else ''
+    ) or field_file_url(user.avatar) or field_file_url(related['customer'].avatar if related['customer'] else '') or field_file_url(related['employee'].avatar if related['employee'] else '')
+    phone = (
+        related['wx_user'].phone if related['wx_user'] else ''
+    ) or user.phone or (related['customer'].phone if related['customer'] else '') or (related['employee'].phone if related['employee'] else '')
 
     # 判断用户类型
     user_type = 'customer'
-    employee_obj = None
+    employee_obj = related['employee']
     try:
-        employee_obj = user.employee
-        user_type = 'dasher'
+        if employee_obj:
+            user_type = 'dasher'
     except Exception:
         pass
 
@@ -2124,57 +2278,7 @@ def update_profile(request):
     
     logger.info(f'Update profile: user={user.id}, nickname={nickname}, gender={gender}, avatar={bool(avatar)}')
 
-    if nickname:
-        user.nickname = nickname
-        user.save(update_fields=['nickname'])
-        try:
-            wx_user = user.wx_user
-            wx_user.nickname = nickname
-            wx_user.save(update_fields=['nickname'])
-        except WxUser.DoesNotExist:
-            pass
-
-    if gender:
-        user.gender = gender
-        user.save(update_fields=['gender'])
-        # 同步到 Employee 表
-        try:
-            employee = user.employee
-            employee.gender = gender
-            employee.save(update_fields=['gender'])
-            logger.info(f'Gender synced to employee: {employee.id}')
-        except Exception as e:
-            logger.warning(f'Failed to sync gender to employee: {e}')
-
-    if avatar:
-        # 保存到user表
-        user.avatar = avatar
-        user.save(update_fields=['avatar'])
-        # 保存到wx_user表
-        try:
-            wx_user = user.wx_user
-            wx_user.avatar = avatar
-            wx_user.save(update_fields=['avatar'])
-        except WxUser.DoesNotExist:
-            # 如果没有wx_user记录，创建一个
-            WxUser.objects.create(
-                user=user,
-                openid=f'test_{user.id}',
-                avatar=avatar,
-                nickname=nickname or '',
-            )
-        # 如果是打手，同步更新Employee头像
-        try:
-            employee = user.employee
-            # 从完整URL中提取相对路径，或直接使用相对路径
-            if '/media/' in avatar:
-                relative_path = avatar.split('/media/')[-1]
-                employee.avatar.name = relative_path
-            elif avatar.startswith('uploads/'):
-                employee.avatar.name = avatar
-            employee.save(update_fields=['avatar'])
-        except Exception:
-            pass
+    sync_profile_tables(user, nickname=nickname, avatar=avatar, gender=gender)
 
     # 如果是打手，保存个人介绍
     if intro is not None:
