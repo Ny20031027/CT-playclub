@@ -531,7 +531,7 @@ def employee_list(request):
             'id': emp.id,
             'nickname': emp.nickname or emp.real_name,
             'avatar': emp.avatar.url if emp.avatar else '',
-            'gender': emp.gender,
+            'gender': emp.gender if emp.gender != 'unknown' else (emp.user.gender if emp.user else 'unknown'),
             'age': emp.age,
             'level': emp.level,
             'level_num': emp.level_num,

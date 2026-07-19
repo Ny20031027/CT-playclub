@@ -70,7 +70,8 @@ class Employee(BaseModel):
     gender = models.CharField(max_length=10, choices=[
         ('male', '男'),
         ('female', '女'),
-    ], default='female', verbose_name='性别')
+        ('unknown', '未知'),
+    ], default='unknown', verbose_name='性别')
     age = models.IntegerField(default=18, verbose_name='年龄')
     birthday = models.DateField(null=True, blank=True, verbose_name='生日')
     id_card = models.CharField(max_length=30, blank=True, verbose_name='身份证号')
