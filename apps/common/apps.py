@@ -26,10 +26,12 @@ class CommonConfig(AppConfig):
             except Exception:
                 time.sleep(2)
         try:
-            call_command('migrate', '--run-syncdb', verbosity=0)
+            # 只执行 migrate，不要用 --run-syncdb（避免重复创建表）
+            call_command('migrate', verbosity=0)
         except Exception as e:
             import logging
             logging.getLogger('django').warning(f'Auto migrate failed: {e}')
+            return
         # 自动创建超级管理员（如果不存在）
         self._create_default_admin()
 
