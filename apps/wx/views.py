@@ -100,6 +100,10 @@ def choose_display_nickname(user, wx_user=None, customer=None, employee=None, fa
 
 
 def sync_profile_tables(user, nickname=None, avatar=None, phone=None, gender=None):
+    import logging
+    logger = logging.getLogger(__name__)
+    logger.info(f'sync_profile_tables: user={user.id}, gender={gender}')
+    
     user_fields = []
     if nickname and user.nickname != nickname:
         user.nickname = nickname
@@ -110,11 +114,13 @@ def sync_profile_tables(user, nickname=None, avatar=None, phone=None, gender=Non
     if phone and user.phone != phone:
         user.phone = phone
         user_fields.append('phone')
-    if gender and user.gender != gender:
+    if gender is not None and user.gender != gender:
         user.gender = gender
         user_fields.append('gender')
+        logger.info(f'User gender updated to: {gender}')
     if user_fields:
         user.save(update_fields=user_fields)
+        logger.info(f'User saved with fields: {user_fields}')
 
     wx_user = get_profile_wx_user(user)
     if wx_user:
@@ -128,13 +134,15 @@ def sync_profile_tables(user, nickname=None, avatar=None, phone=None, gender=Non
         if phone and wx_user.phone != phone:
             wx_user.phone = phone
             wx_fields.append('phone')
-        if gender:
+        if gender is not None:
             gender_value = {'male': 1, 'female': 2, 'unknown': 0}.get(gender)
             if gender_value is not None and wx_user.gender != gender_value:
                 wx_user.gender = gender_value
                 wx_fields.append('gender')
+                logger.info(f'WxUser gender updated to: {gender_value}')
         if wx_fields:
             wx_user.save(update_fields=wx_fields)
+            logger.info(f'WxUser saved with fields: {wx_fields}')
 
     try:
         customer = user.customer
@@ -148,13 +156,15 @@ def sync_profile_tables(user, nickname=None, avatar=None, phone=None, gender=Non
         if phone and customer.phone != phone:
             customer.phone = phone
             customer_fields.append('phone')
-        if gender and customer.gender != gender:
+        if gender is not None and customer.gender != gender:
             customer.gender = gender
             customer_fields.append('gender')
+            logger.info(f'Customer gender updated to: {gender}')
         if customer_fields:
             customer.save(update_fields=customer_fields)
-    except Exception:
-        pass
+            logger.info(f'Customer saved with fields: {customer_fields}')
+    except Exception as e:
+        logger.warning(f'Failed to sync customer: {e}')
 
     try:
         employee = user.employee
@@ -165,9 +175,10 @@ def sync_profile_tables(user, nickname=None, avatar=None, phone=None, gender=Non
         if phone and employee.phone != phone:
             employee.phone = phone
             employee_fields.append('phone')
-        if gender and employee.gender != gender:
+        if gender is not None and employee.gender != gender:
             employee.gender = gender
             employee_fields.append('gender')
+            logger.info(f'Employee gender updated to: {gender}')
         if avatar:
             avatar_name = avatar
             if '/media/' in avatar:
@@ -177,8 +188,9 @@ def sync_profile_tables(user, nickname=None, avatar=None, phone=None, gender=Non
                 employee_fields.append('avatar')
         if employee_fields:
             employee.save(update_fields=employee_fields)
-    except Exception:
-        pass
+            logger.info(f'Employee saved with fields: {employee_fields}')
+    except Exception as e:
+        logger.warning(f'Failed to sync employee: {e}')
 
     return wx_user
 
