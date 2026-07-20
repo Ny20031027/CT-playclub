@@ -595,7 +595,7 @@ def home_data(request):
         employee_list.append({
             'id': emp.id,
             'nickname': emp.nickname or emp.real_name,
-            'avatar': emp.avatar.url if emp.avatar else '',
+            'avatar': str(emp.avatar) if emp.avatar else '',
             'gender': emp.gender,
             'level': emp.level,
             'level_num': emp.level_num,
@@ -750,7 +750,7 @@ def employee_detail(request, emp_id):
             'content': c.content,
             'tags': tags_list,
             'customer_name': c.customer.nickname if not c.is_anonymous else '匿名用户',
-            'customer_avatar': c.customer.avatar.url if c.customer.avatar else '',
+            'customer_avatar': str(c.customer.avatar) if c.customer.avatar else '',
             'created_at': c.created_at.strftime('%Y-%m-%d %H:%M'),
         })
 
@@ -764,7 +764,7 @@ def employee_detail(request, emp_id):
         'id': emp.id,
         'nickname': emp.nickname or emp.real_name,
         'real_name': emp.real_name,
-        'avatar': emp.avatar.url if emp.avatar else '',
+        'avatar': str(emp.avatar) if emp.avatar else '',
         'gender': emp.gender,
         'age': emp.age,
         'level': emp.level,
@@ -1026,7 +1026,7 @@ def my_orders(request):
             members.append({
                 'id': m.id,
                 'employee_name': m.employee.nickname or m.employee.real_name,
-                'employee_avatar': m.employee.avatar.url if m.employee.avatar else '',
+                'employee_avatar': str(m.employee.avatar) if m.employee.avatar else '',
                 'status': m.status,
             })
         order_list.append({
@@ -1093,7 +1093,7 @@ def employee_orders(request):
             members.append({
                 'id': m.id,
                 'employee_name': m.employee.nickname or m.employee.real_name,
-                'employee_avatar': m.employee.avatar.url if m.employee.avatar else '',
+                'employee_avatar': str(m.employee.avatar) if m.employee.avatar else '',
                 'status': m.status,
             })
         order_list.append({
@@ -1110,7 +1110,7 @@ def employee_orders(request):
             'pay_method': o.pay_method,
             'game_name': o.game_name,
             'customer_name': o.customer.nickname if o.customer else '',
-            'customer_avatar': o.customer.avatar.url if o.customer and o.customer.avatar else '',
+            'customer_avatar': str(o.customer.avatar) if o.customer and o.customer.avatar else '',
             'members': members,
             'created_at': o.created_at.strftime('%Y-%m-%d %H:%M'),
             'pay_time': o.pay_time.strftime('%Y-%m-%d %H:%M') if o.pay_time else None,
@@ -1179,7 +1179,7 @@ def order_detail(request, order_id):
             'id': m.id,
             'employee_id': m.employee.id,
             'employee_name': m.employee.nickname or m.employee.real_name,
-            'employee_avatar': m.employee.avatar.url if m.employee.avatar else '',
+            'employee_avatar': str(m.employee.avatar) if m.employee.avatar else '',
             'skill_name': m.skill.name if m.skill else '',
             'unit_price': float(m.unit_price),
             'duration': m.duration,
@@ -2078,7 +2078,7 @@ def get_cs_chat_list(request):
             if avatar_str.startswith('http'):
                 customer_avatar = avatar_str
             else:
-                customer_avatar = customer.avatar.url if customer.avatar else ''
+                customer_avatar = str(customer.avatar) if customer.avatar else ''
 
         chat_list.append({
             'customer_id': customer.id,
@@ -2132,7 +2132,7 @@ def get_cs_chat_messages(request):
         if avatar_str.startswith('http'):
             customer_avatar = avatar_str
         else:
-            customer_avatar = customer.avatar.url if customer.avatar else ''
+            customer_avatar = str(customer.avatar) if customer.avatar else ''
 
     return success_response({
         'messages': data,
@@ -2455,7 +2455,7 @@ def get_my_team(request):
     member_list = [{
         'id': m.employee.id,
         'nickname': m.employee.nickname or m.employee.real_name,
-        'avatar': m.employee.avatar.url if m.employee.avatar else '',
+        'avatar': str(m.employee.avatar) if m.employee.avatar else '',
         'is_leader': m.employee.id == team.leader_id,
     } for m in members]
 
