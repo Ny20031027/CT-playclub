@@ -1298,7 +1298,7 @@ def pay_order(request, order_id):
 @api_view(['POST'])
 @permission_classes([IsAuthenticated])
 def cancel_order(request, order_id):
-    """取消订单"""
+    """取消订单（仅限未被接取的订单）"""
     user = request.user
     try:
         customer = user.customer
@@ -1310,21 +1310,24 @@ def cancel_order(request, order_id):
     except Order.DoesNotExist:
         return error_response(msg='订单不存在')
 
-    if order.status not in ['published', 'confirming']:
-        return error_response(msg='当前状态不可取消')
+    # 只允许取消未被接取的订单（published状态且无打手接取）
+    if order.status != 'published':
+        return error_response(msg='订单已被接取，无法取消')
+
+    # 检查是否有打手已接取
+    from apps.order.models import OrderMember
+    claimed_count = OrderMember.objects.filter(
+        order=order, is_deleted=False,
+        status__in=['accepted', 'in_progress']
+    ).count()
+    if claimed_count > 0:
+        return error_response(msg='订单已被打手接取，无法取消')
 
     reason = request.data.get('reason', '')
     order.status = OrderStatus.CANCELLED
     order.cancel_time = timezone.now()
     order.cancel_reason = reason
     order.save(update_fields=['status', 'cancel_time', 'cancel_reason', 'updated_at'])
-
-    # 释放陪玩师
-    for member in order.order_members.filter(is_deleted=False):
-        member.status = 'cancelled'
-        member.save(update_fields=['status'])
-        member.employee.status = 'idle'
-        member.employee.save(update_fields=['status'])
 
     return success_response(msg='取消成功')
 
