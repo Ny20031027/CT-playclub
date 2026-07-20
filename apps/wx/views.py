@@ -2501,6 +2501,7 @@ def create_team(request):
 @permission_classes([IsAuthenticated])
 def invite_to_team(request):
     """邀请打手加入队伍"""
+    import json
     user = request.user
     try:
         employee = user.employee
@@ -2522,7 +2523,7 @@ def invite_to_team(request):
 
     # 获取目标打手
     try:
-        target = Employee.objects.get(id=target_id)
+        target = Employee.objects.select_related('user').get(id=target_id)
     except Employee.DoesNotExist:
         return error_response(msg='目标打手不存在')
 
@@ -2536,6 +2537,27 @@ def invite_to_team(request):
 
     # 创建邀请
     TeamMember.objects.create(team=team, employee=target, status='invited')
+
+    # 发送通知给目标打手
+    notice = Notice.objects.create(
+        title='组队邀请',
+        content=f'{employee.nickname or employee.real_name} 邀请你加入队伍「{team.name}」，请确认是否接受。',
+        type='order',
+        level='info',
+        sender=user,
+        target_type='user',
+        target_ids=str(target.user_id),
+        extra=json.dumps({
+            'type': 'team_invite',
+            'team_id': team.id,
+            'team_name': team.name,
+            'invite_from': employee.id,
+            'invite_from_name': employee.nickname or employee.real_name,
+            'target_id': target.id,
+        }),
+        publish_time=timezone.now(),
+    )
+    UserNotice.objects.create(notice=notice, user=target.user)
 
     return success_response(msg='邀请已发送')
 
