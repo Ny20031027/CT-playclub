@@ -1,6 +1,7 @@
 import { defineStore } from 'pinia'
 import { ref } from 'vue'
 import { loginApi, getUserInfoApi, getMenusApi } from '@/api/account'
+import { flattenMenuTree, getMenuPaths, getFirstMenuPath } from '@/utils/menu'
 
 export const useUserStore = defineStore('user', () => {
   const token = ref(localStorage.getItem('token') || '')
@@ -26,6 +27,12 @@ export const useUserStore = defineStore('user', () => {
     return res
   }
 
+  const getFlatMenus = () => flattenMenuTree(menus.value)
+
+  const getAllowedPaths = () => getMenuPaths(menus.value)
+
+  const getDefaultPath = () => getFirstMenuPath(menus.value)
+
   const logout = () => {
     token.value = ''
     userInfo.value = {}
@@ -40,6 +47,9 @@ export const useUserStore = defineStore('user', () => {
     login,
     getUserInfo,
     getMenus,
+    getFlatMenus,
+    getAllowedPaths,
+    getDefaultPath,
     logout
   }
 })

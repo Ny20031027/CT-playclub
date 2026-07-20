@@ -1,10 +1,11 @@
 from django.urls import path
 from . import views
+from .role_views import wx_login, test_login, user_profile
 
 urlpatterns = [
     # 登录
-    path('login/', views.wx_login, name='wx-login'),
-    path('test-login/', views.test_login, name='wx-test-login'),
+    path('login/', wx_login, name='wx-login'),
+    path('test-login/', test_login, name='wx-test-login'),
     path('update-user/', views.wx_update_user, name='wx-update-user'),
     path('bind-phone/', views.wx_bind_phone, name='wx-bind-phone'),
 
@@ -57,7 +58,7 @@ urlpatterns = [
     path('cs/reply/', views.send_cs_reply, name='wx-cs-reply'),
 
     # 个人中心
-    path('profile/', views.user_profile, name='wx-profile'),
+    path('profile/', user_profile, name='wx-profile'),
     path('profile/update/', views.update_profile, name='wx-update-profile'),
     path('skills/my/', views.get_my_skills, name='wx-get-my-skills'),
     path('skills/all/', views.get_all_skills, name='wx-get-all-skills'),

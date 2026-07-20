@@ -1,5 +1,6 @@
 import { createRouter, createWebHashHistory } from 'vue-router'
 import { useUserStore } from '@/store/user'
+import { getMenuPaths, getFirstMenuPath } from '@/utils/menu'
 
 const routes = [
   {
@@ -70,18 +71,58 @@ const router = createRouter({
   routes
 })
 
-router.beforeEach((to, from, next) => {
+router.beforeEach(async (to, from, next) => {
   const userStore = useUserStore()
-  
+
   if (to.path === '/login') {
     next()
-  } else {
-    if (userStore.token) {
-      next()
-    } else {
+    return
+  }
+
+  if (!userStore.token) {
+    next('/login')
+    return
+  }
+
+  if (!userStore.userInfo.id) {
+    try {
+      await userStore.getUserInfo()
+    } catch (error) {
+      userStore.logout()
       next('/login')
+      return
     }
   }
+
+  if (!userStore.menus.length) {
+    try {
+      await userStore.getMenus()
+    } catch (error) {
+      userStore.logout()
+      next('/login')
+      return
+    }
+  }
+
+  if (userStore.userInfo.is_superuser) {
+    next()
+    return
+  }
+
+  const allowedPaths = getMenuPaths(userStore.menus)
+  const currentPath = to.path === '/' ? '/dashboard' : to.path
+
+  if (!allowedPaths.length) {
+    next('/login')
+    return
+  }
+
+  if (!allowedPaths.includes(currentPath)) {
+    next(getFirstMenuPath(userStore.menus))
+    return
+  }
+
+  next()
 })
 
 export default router

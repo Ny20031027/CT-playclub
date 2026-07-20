@@ -1,5 +1,7 @@
+from django.db.models import Q
 from rest_framework import viewsets
 from rest_framework.decorators import action
+
 from apps.common.response import success_response
 from apps.common.viewsets import BaseModelViewSet
 from .models import (
@@ -20,6 +22,16 @@ class EmployeeViewSet(BaseModelViewSet):
     filterset_fields = ['status', 'level', 'gender', 'department', 'id_card_verified']
     search_fields = ['nickname', 'real_name', 'employee_no', 'phone']
     ordering_fields = ['sort', 'rating', 'order_count', 'created_at']
+
+    def get_queryset(self):
+        queryset = super().get_queryset()
+        # 排除客户和客服身份的用户，确保每个用户只存在于一个列表
+        return queryset.filter(
+            Q(user__isnull=True) | (
+                Q(user__customer__isnull=True) &
+                Q(user__customer_service__isnull=True)
+            )
+        )
 
     @action(detail=False, methods=['get'], url_path='simple')
     def simple_list(self, request):
@@ -47,8 +59,8 @@ class EmployeeViewSet(BaseModelViewSet):
     @action(detail=True, methods=['post'], url_path='add-skill')
     def add_skill(self, request, pk=None):
         employee = self.get_object()
-        skill_id = request.data.get('skill')
-        level = request.data.get('level', 'skilled')
+        skill_id = request.data.get('skill_id')
+        level = request.data.get('level', '')
         unit_price = request.data.get('unit_price', 0)
         relation, created = EmployeeSkillRelation.objects.get_or_create(
             employee=employee,
@@ -72,6 +84,7 @@ class EmployeeViewSet(BaseModelViewSet):
     def convert_customer(self, request):
         """将客户转换为打手"""
         from apps.customer.models import Customer
+
         customer_id = request.data.get('customer_id')
         level_num = request.data.get('level_num', 0)
 
@@ -87,17 +100,12 @@ class EmployeeViewSet(BaseModelViewSet):
             return success_response(code=400, msg='该客户未关联用户账号')
 
         user = customer.user
-
-        # 检查是否已经是打手
         if Employee.objects.filter(user=user).exists():
             return success_response(code=400, msg='该用户已经是打手')
 
-        # 生成工号
         import time
         employee_no = f'DS{int(time.time())}'
-
-        # 创建打手记录
-        employee = Employee.objects.create(
+        Employee.objects.create(
             user=user,
             employee_no=employee_no,
             real_name=customer.nickname or user.nickname or f'用户{user.id}',
@@ -106,10 +114,7 @@ class EmployeeViewSet(BaseModelViewSet):
             level_num=level_num,
             status='idle',
         )
-
-        # 将客户彻底删除（硬删除，因为已转为打手）
         customer.hard_delete()
-
         return success_response(msg='转换成功')
 
     @action(detail=True, methods=['post'], url_path='remove')
@@ -118,23 +123,15 @@ class EmployeeViewSet(BaseModelViewSet):
         employee = self.get_object()
         user = employee.user
 
-        from apps.customer.models import Customer
+        from apps.customer.models import Customer, CustomerService
 
-        # 检查是否已有关联的活跃客户记录
-        existing_customer = Customer.objects.filter(user=user, is_deleted=False).first()
-
-        if existing_customer:
-            # 已有客户记录，直接使用
-            customer = existing_customer
-        else:
-            # 检查是否有软删除的客户记录，恢复它
-            soft_deleted = Customer.objects.filter(user=user, is_deleted=True).first()
-            if soft_deleted:
-                soft_deleted.is_deleted = False
-                soft_deleted.save(update_fields=['is_deleted', 'updated_at'])
-                customer = soft_deleted
+        customer = Customer.objects.filter(user=user, is_deleted=False).first()
+        if customer is None:
+            customer = Customer.objects.filter(user=user, is_deleted=True).first()
+            if customer:
+                customer.is_deleted = False
+                customer.save(update_fields=['is_deleted', 'updated_at'])
             else:
-                # 创建新的客户记录
                 customer = Customer.objects.create(
                     user=user,
                     nickname=employee.nickname or employee.real_name,
@@ -142,9 +139,8 @@ class EmployeeViewSet(BaseModelViewSet):
                     source='打手转客户',
                 )
 
-        # 删除打手记录
+        CustomerService.objects.filter(customer=customer).delete()
         employee.hard_delete()
-
         return success_response(msg='已恢复为客户身份')
 
     @action(detail=True, methods=['get'], url_path='wallet')
@@ -182,7 +178,6 @@ class EmployeeSkillViewSet(BaseModelViewSet):
     def create(self, request, *args, **kwargs):
         levels_data = request.data.get('levels', [])
         name = request.data.get('name', '')
-        # 清理同名的软删除记录，避免唯一约束冲突
         if name:
             EmployeeSkill.objects.filter(name=name, is_deleted=True).delete()
 

@@ -63,7 +63,7 @@ const handleLogin = async () => {
     await userStore.getUserInfo()
     await userStore.getMenus()
     ElMessage.success('登录成功')
-    router.push('/dashboard')
+    router.push(userStore.getDefaultPath())
   } catch (error) {
     ElMessage.error('登录失败，请检查账号密码')
   } finally {

@@ -6,7 +6,15 @@
           <el-icon v-if="isCollapse"><Menu /></el-icon>
           <span v-else>陪玩店管理</span>
         </div>
-        <el-menu :default-active="activeMenu" :collapse="isCollapse" mode="vertical" background-color="#2a3038" text-color="#bfcbd9" active-text-color="#409eff" @select="handleMenuSelect">
+        <el-menu
+          :default-active="activeMenu"
+          :collapse="isCollapse"
+          mode="vertical"
+          background-color="#2a3038"
+          text-color="#bfcbd9"
+          active-text-color="#409eff"
+          @select="handleMenuSelect"
+        >
           <el-menu-item v-for="item in menuList" :key="item.path" :index="item.path">
             <el-icon><component :is="getIcon(item.icon)" /></el-icon>
             <template #title>{{ item.title }}</template>
@@ -51,8 +59,9 @@
 import { ref, computed, onMounted } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import { useUserStore } from '@/store/user'
+import { flattenMenuTree, normalizeMenuPath } from '@/utils/menu'
 import { ElMessage } from 'element-plus'
-import { 
+import {
   Menu, ArrowDown, User,
   DataBoard, User as UserIcon, UserFilled,
   ShoppingCart, Wallet, Calendar, PieChart, Setting
@@ -76,28 +85,21 @@ const iconMap = {
 }
 
 const menuList = computed(() => {
-  return [
-    { path: '/dashboard', title: '数据概览', icon: 'el-icon-data-board' },
-    { path: '/employees', title: '陪玩师管理', icon: 'el-icon-user' },
-    { path: '/customers', title: '客户管理', icon: 'el-icon-customers' },
-    { path: '/orders', title: '订单管理', icon: 'el-icon-s-order' },
-    { path: '/finance', title: '财务管理', icon: 'el-icon-money' },
-    { path: '/schedule', title: '排班管理', icon: 'el-icon-date' },
-    { path: '/statistics', title: '数据统计', icon: 'el-icon-pie-chart' },
-    { path: '/system', title: '系统设置', icon: 'el-icon-setting' }
-  ]
+  return flattenMenuTree(userStore.menus).map((item) => ({
+    path: normalizeMenuPath(item.path),
+    title: item.name || item.title || item.remark || item.path,
+    icon: item.icon || 'el-icon-data-board'
+  }))
 })
 
 const activeMenu = computed(() => route.path)
 
 const currentTitle = computed(() => {
-  const menu = menuList.value.find(m => m.path === route.path)
+  const menu = menuList.value.find((m) => m.path === route.path)
   return menu ? menu.title : ''
 })
 
-const getIcon = (iconName) => {
-  return iconMap[iconName] || DataBoard
-}
+const getIcon = (iconName) => iconMap[iconName] || DataBoard
 
 const handleMenuSelect = (index) => {
   router.push(index)
@@ -112,6 +114,9 @@ const handleLogout = () => {
 onMounted(async () => {
   if (!userStore.userInfo.id) {
     await userStore.getUserInfo()
+  }
+  if (!userStore.menus.length) {
+    await userStore.getMenus()
   }
 })
 </script>

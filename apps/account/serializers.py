@@ -78,13 +78,17 @@ class WxLoginSerializer(serializers.Serializer):
 class UserInfoSerializer(serializers.ModelSerializer):
     roles = serializers.SerializerMethodField()
     permissions = serializers.SerializerMethodField()
+    user_type = serializers.SerializerMethodField()
+    customer_id = serializers.SerializerMethodField()
+    employee_id = serializers.SerializerMethodField()
     department_name = serializers.CharField(source='department.name', read_only=True)
 
     class Meta:
         model = User
         fields = ['id', 'username', 'nickname', 'email', 'phone', 'avatar',
                   'gender', 'is_active', 'is_online', 'department', 'department_name',
-                  'roles', 'permissions', 'last_login', 'last_login_ip', 'created_at']
+                  'roles', 'permissions', 'user_type', 'customer_id', 'employee_id',
+                  'is_superuser', 'last_login', 'last_login_ip', 'created_at']
         read_only_fields = ['id', 'username', 'last_login', 'last_login_ip', 'created_at']
 
     def get_roles(self, obj):
@@ -93,21 +97,41 @@ class UserInfoSerializer(serializers.ModelSerializer):
     def get_permissions(self, obj):
         return list(obj.get_user_permissions())
 
+    def get_user_type(self, obj):
+        return obj.get_primary_identity_code()
+
+    def get_customer_id(self, obj):
+        try:
+            return obj.customer.id
+        except Exception:
+            return None
+
+    def get_employee_id(self, obj):
+        try:
+            return obj.employee.id
+        except Exception:
+            return None
+
 
 class UserSerializer(serializers.ModelSerializer):
     role_names = serializers.SerializerMethodField()
+    user_type = serializers.SerializerMethodField()
     department_name = serializers.CharField(source='department.name', read_only=True)
 
     class Meta:
         model = User
         fields = ['id', 'username', 'nickname', 'email', 'phone', 'avatar',
                   'gender', 'is_active', 'is_online', 'department', 'department_name',
-                  'roles', 'role_names', 'last_login', 'last_login_ip', 'created_at', 'updated_at']
+                  'roles', 'role_names', 'user_type', 'is_superuser',
+                  'last_login', 'last_login_ip', 'created_at', 'updated_at']
         read_only_fields = ['id', 'last_login', 'last_login_ip', 'created_at', 'updated_at']
         extra_kwargs = {'password': {'write_only': True, 'required': False}}
 
     def get_role_names(self, obj):
         return list(obj.roles.filter(status=True).values_list('name', flat=True))
+
+    def get_user_type(self, obj):
+        return obj.get_primary_identity_code()
 
     def create(self, validated_data):
         roles = validated_data.pop('roles', [])

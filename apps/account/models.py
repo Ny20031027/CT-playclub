@@ -75,6 +75,8 @@ class Permission(BaseModel):
 
 
 class User(AbstractUser, BaseModel):
+    IDENTITY_ROLE_CODES = ('customer', 'dasher', 'cs')
+    IDENTITY_ROLE_PRIORITY = ('cs', 'dasher', 'customer')
     phone = models.CharField(max_length=20, blank=True, verbose_name='手机号')
     avatar = models.ImageField(upload_to='avatars/', blank=True, verbose_name='头像')
     nickname = models.CharField(max_length=100, blank=True, verbose_name='昵称')
@@ -98,6 +100,37 @@ class User(AbstractUser, BaseModel):
 
     def __str__(self):
         return self.username
+
+    def get_role_codes(self):
+        return list(self.roles.filter(status=True, is_deleted=False).values_list('code', flat=True))
+
+    def get_primary_identity_code(self, customer=None, employee=None):
+        role_codes = [code for code in self.get_role_codes() if code in self.IDENTITY_ROLE_CODES]
+        for code in self.IDENTITY_ROLE_PRIORITY:
+            if code in role_codes:
+                return code
+
+        if employee is None:
+            try:
+                employee = self.employee
+            except Exception:
+                employee = None
+        if employee:
+            return 'dasher'
+
+        if customer is None:
+            try:
+                customer = self.customer
+            except Exception:
+                customer = None
+        if customer:
+            try:
+                customer.cs_profile
+                return 'cs'
+            except Exception:
+                return 'customer'
+
+        return 'customer'
 
     def get_user_permissions(self):
         perms = set()

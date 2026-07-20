@@ -1,14 +1,14 @@
+from django.db.models import Q
 from rest_framework import viewsets
-from rest_framework.decorators import action
-from apps.common.response import success_response
+from rest_framework.decorators import action, api_view, permission_classes
+from rest_framework.permissions import AllowAny
+
+from apps.common.response import success_response, error_response
 from apps.common.viewsets import BaseModelViewSet
-from .models import (
-    Customer, CustomerLevel, CustomerTag, Blacklist, CustomerConsumeRecord
-)
+from .models import Customer, CustomerLevel, CustomerTag, Blacklist, CustomerConsumeRecord, CustomerService
 from .serializers import (
     CustomerSerializer, CustomerLevelSerializer, CustomerTagSerializer,
-    BlacklistSerializer, CustomerConsumeRecordSerializer,
-    CustomerSimpleSerializer
+    BlacklistSerializer, CustomerConsumeRecordSerializer, CustomerSimpleSerializer
 )
 
 
@@ -18,6 +18,18 @@ class CustomerViewSet(BaseModelViewSet):
     filterset_fields = ['level', 'gender', 'status', 'source']
     search_fields = ['nickname', 'phone', 'wechat', 'qq']
     ordering_fields = ['total_amount', 'total_orders', 'created_at', 'last_order_date']
+
+    def get_queryset(self):
+        queryset = super().get_queryset()
+        # 排除打手和客服身份的用户，确保每个用户只存在于一个列表
+        return queryset.filter(
+            cs_profile__isnull=True
+        ).filter(
+            Q(user__isnull=True) | (
+                Q(user__employee__isnull=True) &
+                Q(user__customer_service__isnull=True)
+            )
+        )
 
     @action(detail=False, methods=['get'], url_path='simple')
     def simple_list(self, request):
@@ -29,6 +41,7 @@ class CustomerViewSet(BaseModelViewSet):
     def customer_orders(self, request, pk=None):
         from apps.order.models import Order
         from apps.order.serializers import OrderSerializer
+
         customer = self.get_object()
         orders = Order.objects.filter(customer=customer).order_by('-created_at')
         page = self.paginate_queryset(orders)
@@ -75,16 +88,16 @@ class CustomerViewSet(BaseModelViewSet):
     @action(detail=True, methods=['post'], url_path='recharge')
     def recharge(self, request, pk=None):
         customer = self.get_object()
-        amount = request.data.get('amount', 0)
-        if float(amount) <= 0:
+        amount = float(request.data.get('amount', 0) or 0)
+        if amount <= 0:
             return success_response(code=400, msg='充值金额必须大于0')
-        customer.balance += float(amount)
+        customer.balance += amount
         customer.save(update_fields=['balance'])
         CustomerConsumeRecord.objects.create(
             customer=customer,
             amount=amount,
             type='recharge',
-            remark='充值'
+            remark='充值',
         )
         return success_response(msg='充值成功')
 
@@ -120,12 +133,6 @@ class CustomerConsumeRecordViewSet(BaseModelViewSet):
     ordering_fields = ['amount', 'created_at']
 
 
-from rest_framework.decorators import api_view, permission_classes
-from rest_framework.permissions import AllowAny, IsAuthenticated
-from apps.common.response import success_response, error_response
-from .models import CustomerService
-
-
 @api_view(['GET'])
 @permission_classes([AllowAny])
 def cs_list(request):
@@ -134,26 +141,31 @@ def cs_list(request):
     page = int(request.GET.get('page', 1))
     page_size = int(request.GET.get('page_size', 10))
 
-    queryset = CustomerService.objects.select_related('customer').all()
+    # 排除打手和普通客户，确保每个用户只存在于一个列表
+    queryset = CustomerService.objects.select_related('customer', 'customer__user').filter(
+        Q(customer__user__isnull=True) | (
+            Q(customer__user__employee__isnull=True) &
+            Q(customer__user__customer__isnull=True)
+        )
+    )
     if keyword:
-        from django.db.models import Q
         queryset = queryset.filter(
             Q(customer__nickname__icontains=keyword) | Q(customer__phone__icontains=keyword)
         )
 
     total = queryset.count()
     start = (page - 1) * page_size
-    cs_list = queryset[start:start + page_size]
+    records = queryset[start:start + page_size]
 
     data = []
-    for cs in cs_list:
+    for record in records:
         data.append({
-            'id': cs.id,
-            'customer_id': cs.customer_id,
-            'nickname': cs.customer.nickname,
-            'avatar': cs.customer.avatar.url if cs.customer.avatar else '',
-            'phone': cs.customer.phone,
-            'status': cs.status,
+            'id': record.id,
+            'customer_id': record.customer_id,
+            'nickname': record.customer.nickname,
+            'avatar': record.customer.avatar.url if record.customer.avatar else '',
+            'phone': record.customer.phone,
+            'status': record.status,
         })
 
     return success_response({
@@ -176,7 +188,9 @@ def cs_add(request):
     except Customer.DoesNotExist:
         return error_response(msg='客户不存在')
 
-    # 检查是否已经是客服
+    if customer.user and hasattr(customer.user, 'employee'):
+        return error_response(msg='该客户已经是打手，无法设置为客服')
+
     if CustomerService.objects.filter(customer=customer).exists():
         return error_response(msg='该客户已经是客服')
 
