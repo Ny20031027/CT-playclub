@@ -50,39 +50,32 @@ def is_default_nickname(nickname):
 def field_file_url(value):
     if not value:
         return ''
-    value_str = str(value)
-    if value_str.startswith('http'):
+    value_str = str(value).strip()
+    if value_str.startswith('http://') or value_str.startswith('https://'):
         return value_str
-    if value_str.startswith('/'):
-        return value_str
-    # 补全 COS 域名（处理旧的本地路径）
-    import os
-    cos_bucket = os.environ.get('COS_BUCKET', '') or getattr(__import__('django.conf', fromlist=['settings']), 'settings', None) and getattr(__import__('django.conf', fromlist=['settings']).settings, 'COS_BUCKET', '')
-    cos_region = os.environ.get('COS_REGION', 'ap-guangzhou')
-    if cos_bucket:
-        return f'https://{cos_bucket}.cos.{cos_region}.myqcloud.com/{value_str}'
-    return value_str
+    return ''
 
 
 def employee_avatar_url(employee):
     if not employee:
         return ''
-    avatar = field_file_url(employee.avatar)
-    if avatar:
-        return avatar
-
     user = getattr(employee, 'user', None)
-    if not user:
-        return ''
+    candidates = [employee.avatar]
     try:
-        wx_avatar = user.wx_user.avatar
-        if wx_avatar:
-            return wx_avatar
+        if user:
+            candidates.append(user.wx_user.avatar)
     except WxUser.DoesNotExist:
         pass
     except Exception:
         pass
-    return field_file_url(user.avatar)
+    if user:
+        candidates.append(user.avatar)
+
+    for avatar in candidates:
+        url = field_file_url(avatar)
+        if url:
+            return url
+    return ''
 
 
 def get_profile_wx_user(user):
@@ -206,9 +199,7 @@ def sync_profile_tables(user, nickname=None, avatar=None, phone=None, gender=Non
             employee_fields.append('gender')
             logger.info(f'Employee gender updated to: {gender}')
         if avatar:
-            avatar_name = avatar
-            if '/media/' in avatar:
-                avatar_name = avatar.split('/media/')[-1]
+            avatar_name = str(avatar).strip()
             if str(employee.avatar) != avatar_name:
                 employee.avatar = avatar_name
                 employee_fields.append('avatar')
@@ -776,7 +767,7 @@ def employee_detail(request, emp_id):
             'content': c.content,
             'tags': tags_list,
             'customer_name': c.customer.nickname if not c.is_anonymous else '匿名用户',
-            'customer_avatar': str(c.customer.avatar) if c.customer.avatar else '',
+            'customer_avatar': field_file_url(c.customer.avatar),
             'created_at': c.created_at.strftime('%Y-%m-%d %H:%M'),
         })
 
@@ -1136,7 +1127,7 @@ def employee_orders(request):
             'pay_method': o.pay_method,
             'game_name': o.game_name,
             'customer_name': o.customer.nickname if o.customer else '',
-            'customer_avatar': str(o.customer.avatar) if o.customer and o.customer.avatar else '',
+            'customer_avatar': field_file_url(o.customer.avatar if o.customer else ''),
             'members': members,
             'created_at': o.created_at.strftime('%Y-%m-%d %H:%M'),
             'pay_time': o.pay_time.strftime('%Y-%m-%d %H:%M') if o.pay_time else None,
