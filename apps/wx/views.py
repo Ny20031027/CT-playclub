@@ -1336,7 +1336,12 @@ def cancel_order(request, order_id):
 @permission_classes([IsAuthenticated])
 @transaction.atomic
 def claim_order(request, order_id):
-    """打手领取订单（支持多人订单的席位锁定）"""
+    """打手领取订单（支持多人订单的席位锁定）
+    规则：
+    - 第一个接取的人自动成为队长
+    - 队长可以锁定除自己外的剩余席位（如3人单，队长可锁定2个席位）
+    - 锁定后的席位其他打手无法接取，只能由队长邀请分配
+    """
     user = request.user
     try:
         employee = user.employee
@@ -1357,6 +1362,16 @@ def claim_order(request, order_id):
     if remaining_slots <= 0:
         return error_response(msg='该订单席位已满')
 
+    # 检查该打手是否已经接取过此订单
+    existing_member = OrderMember.objects.filter(
+        order=order, employee=employee, is_deleted=False, status__in=['accepted', 'in_progress']
+    ).first()
+    if existing_member:
+        return error_response(msg='您已经接取过该订单')
+
+    # 判断是否为第一个接取者（将成为队长）
+    is_first_claimer = not order.leader
+
     # 获取打手要锁定的席位数
     slots = request.data.get('slots', 1)
     slots = int(slots) if slots else 1
@@ -1364,17 +1379,19 @@ def claim_order(request, order_id):
     # 验证席位数
     if slots <= 0:
         return error_response(msg='锁定席位数必须大于0')
-    if slots > 1:
-        return error_response(msg='每个打手只能接取1个席位，多人订单需所有打手分别就位')
-    if slots > remaining_slots:
-        return error_response(msg=f'剩余席位不足，当前剩余{remaining_slots}个席位')
-
-    # 检查该打手是否已经接取过此订单
-    existing_member = OrderMember.objects.filter(
-        order=order, employee=employee, is_deleted=False, status__in=['accepted', 'in_progress']
-    ).first()
-    if existing_member:
-        return error_response(msg='您已经接取过该订单')
+    
+    if is_first_claimer:
+        # 第一个接取者（队长）可以锁定除自己外的所有剩余席位
+        # 例如：3人单，队长占1个，最多可锁定2个
+        max_slots_for_leader = remaining_slots  # 队长自己占1个，剩余都可锁定
+        if slots > max_slots_for_leader:
+            return error_response(msg=f'最多可锁定{max_slots_for_leader}个席位')
+    else:
+        # 非队长只能接取1个席位
+        if slots > 1:
+            return error_response(msg='每个打手只能接取1个席位，剩余席位需由队长邀请分配')
+        if slots > remaining_slots:
+            return error_response(msg=f'剩余席位不足，当前剩余{remaining_slots}个席位')
 
     # 计算金额（按席位比例）
     amount_per_slot = order.pay_amount / order.quantity if order.quantity > 0 else 0
@@ -1411,8 +1428,9 @@ def claim_order(request, order_id):
         )
     else:
         order.save(update_fields=['locked_slots', 'leader', 'updated_at'])
+        msg = f'已锁定{slots}个席位，还需{remaining}名打手就位' if is_first_claimer else f'已接取1个席位，还需{remaining}名打手就位'
         return success_response(
-            msg=f'已接取1个席位，还需{remaining}名打手就位',
+            msg=msg,
             data={'locked_slots': order.locked_slots, 'remaining_slots': remaining, 'member_id': member.id}
         )
 
@@ -1489,9 +1507,9 @@ def give_up_order(request, order_id):
     except Order.DoesNotExist:
         return error_response(msg='订单不存在')
 
-    # 检查订单状态是否可放弃
+    # 检查订单状态是否可放弃（in_progress之前都可以放弃）
     if order.status not in ['published', 'confirming', 'claimed']:
-        return error_response(msg='当前订单状态不可放弃')
+        return error_response(msg='订单已开始服务，无法放弃')
 
     # 查找该打手的订单成员记录
     member = OrderMember.objects.filter(
@@ -1501,11 +1519,11 @@ def give_up_order(request, order_id):
     if not member:
         return error_response(msg='您没有接取过该订单')
 
+    is_leader = order.leader_id == employee.id
     is_formal_order = order.status in ['confirming', 'claimed']
-    if is_formal_order and order.leader_id != employee.id:
-        return error_response(msg='订单正式接取后，仅队长可以进行状态操作')
 
-    if is_formal_order and order.leader_id == employee.id:
+    # 队长放弃正式接取的订单 → 删除所有成员，回退到 published
+    if is_formal_order and is_leader:
         OrderMember.objects.filter(order=order, is_deleted=False, status__in=ACTIVE_ORDER_MEMBER_STATUSES).delete()
         order.status = 'published'
         order.locked_slots = 0
@@ -1539,7 +1557,7 @@ def give_up_order(request, order_id):
         order.save(update_fields=['status', 'locked_slots', 'leader', 'customer_confirmed', 'dasher_confirmed', 'updated_at'])
     else:
         # 还有其他成员，如果放弃的是队长，需要转移队长
-        if order.leader_id == employee.id:
+        if is_leader:
             # 找到下一个成员作为队长
             next_member = OrderMember.objects.filter(order=order, is_deleted=False, status__in=ACTIVE_ORDER_MEMBER_STATUSES).order_by('id').first()
             if next_member:
