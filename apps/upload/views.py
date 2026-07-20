@@ -19,7 +19,10 @@ IMAGE_EXTS = {'.jpg', '.jpeg', '.png', '.gif', '.webp'}
 
 def upload_to_cos(file_obj, file_path):
     """上传文件到腾讯云 COS"""
-    from qcloud_cos import CosConfig, CosS3Client
+    try:
+        from qcloud_cos import CosConfig, CosS3Client
+    except ImportError as exc:
+        raise RuntimeError('COS SDK is not installed. Please install cos-python-sdk-v5.') from exc
     config = CosConfig(
         Region=settings.COS_REGION,
         SecretId=settings.COS_SECRET_ID,
@@ -94,8 +97,14 @@ class UploadViewSet(BaseModelViewSet):
                 storage_type = 'cos'
                 logger.info(f'COS upload success: {file_path}')
             except Exception as e:
-                logger.error(f'COS upload failed: {e}')
-                return error_response(msg='文件上传失败')
+                logger.exception(
+                    'COS upload failed: bucket=%s region=%s key=%s error=%s',
+                    settings.COS_BUCKET,
+                    settings.COS_REGION,
+                    file_path,
+                    e,
+                )
+                return error_response(msg='COS文件上传失败，请检查后端日志')
         else:
             # 本地存储（容器重启后会丢失，建议配置 COS）
             logger.warning('Using local storage - files will be lost on container restart. Configure COS for persistent storage.')
