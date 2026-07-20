@@ -4,11 +4,13 @@ from rest_framework.parsers import MultiPartParser, FormParser
 from django.conf import settings
 import os
 import hashlib
-import time
+import logging
 from apps.common.response import success_response, error_response
 from apps.common.viewsets import BaseModelViewSet
 from .models import UploadFile
 from .serializers import UploadFileSerializer
+
+logger = logging.getLogger(__name__)
 
 
 def upload_to_cos(file_obj, file_path):
@@ -82,29 +84,19 @@ class UploadViewSet(BaseModelViewSet):
                 file_obj.seek(0)
                 full_url = upload_to_cos(file_obj, file_path)
                 storage_type = 'cos'
-                local_url = ''
+                logger.info(f'COS upload success: {file_path}')
             except Exception as e:
-                import logging
-                logging.getLogger('django').error(f'COS upload failed: {e}')
+                logger.error(f'COS upload failed: {e}')
                 return error_response(msg='文件上传失败')
         else:
-            # 本地存储
-            upload = UploadFile.objects.create(
-                file=file_obj,
-                file_name=file_name,
-                file_size=file_size,
-                file_type=file_type,
-                mime_type=file_obj.content_type or '',
-                md5=md5,
-                uploader=request.user if request.user.is_authenticated else None,
-                category=category,
-                storage_type='local',
-                url='',
-            )
-            local_url = upload.file.url
+            # 本地存储（容器重启后会丢失，建议配置 COS）
+            logger.warning('Using local storage - files will be lost on container restart. Configure COS for persistent storage.')
+            # 保存到本地
+            from django.core.files.storage import default_storage
+            local_path = default_storage.save(file_path, file_obj)
             scheme = request.scheme
             host = request.get_host()
-            full_url = f'{scheme}://{host}{local_url}'
+            full_url = f'{scheme}://{host}/media/{local_path}'
             storage_type = 'local'
         
         # 保存记录

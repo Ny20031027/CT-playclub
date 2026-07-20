@@ -4,7 +4,7 @@ from apps.account.models import User
 
 
 class UploadFile(BaseModel):
-    file = models.FileField(upload_to='uploads/%Y/%m/%d/', verbose_name='文件')
+    file = models.FileField(upload_to='uploads/%Y/%m/%d/', blank=True, verbose_name='文件')
     file_name = models.CharField(max_length=255, verbose_name='文件名')
     file_size = models.BigIntegerField(default=0, verbose_name='文件大小(字节)')
     file_type = models.CharField(max_length=50, verbose_name='文件类型')
