@@ -588,8 +588,8 @@ def wx_bind_phone(request):
 @permission_classes([AllowAny])
 def home_data(request):
     """首页聚合数据"""
-    banners = Banner.objects.filter(status=True)[:5]
-    announcements = Announcement.objects.filter(status=True)[:3]
+    banners = Banner.objects.filter(status=True, is_deleted=False)[:5]
+    announcements = Announcement.objects.filter(status=True, is_deleted=False)[:3]
     games = GameCategory.objects.filter(status=True, is_deleted=False).order_by('sort', 'id')
 
     # 推荐陪玩师（在线且评分高）
