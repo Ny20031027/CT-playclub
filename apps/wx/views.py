@@ -1336,11 +1336,12 @@ def cancel_order(request, order_id):
 @permission_classes([IsAuthenticated])
 @transaction.atomic
 def claim_order(request, order_id):
-    """打手领取订单（支持多人订单的席位锁定）
+    """打手领取订单
     规则：
     - 第一个接取的人自动成为队长
-    - 队长可以锁定除自己外的剩余席位（如3人单，队长可锁定2个席位）
-    - 锁定后的席位其他打手无法接取，只能由队长邀请分配
+    - 每个打手只能接取1个席位
+    - 队长接取后可以邀请其他打手来填满剩余席位
+    - 所有席位填满后订单进入确认状态
     """
     user = request.user
     try:
@@ -1369,29 +1370,8 @@ def claim_order(request, order_id):
     if existing_member:
         return error_response(msg='您已经接取过该订单')
 
-    # 判断是否为第一个接取者（将成为队长）
-    is_first_claimer = not order.leader
-
-    # 获取打手要锁定的席位数
-    slots = request.data.get('slots', 1)
-    slots = int(slots) if slots else 1
-
-    # 验证席位数
-    if slots <= 0:
-        return error_response(msg='锁定席位数必须大于0')
-    
-    if is_first_claimer:
-        # 第一个接取者（队长）可以锁定除自己外的所有剩余席位
-        # 例如：3人单，队长占1个，最多可锁定2个
-        max_slots_for_leader = remaining_slots  # 队长自己占1个，剩余都可锁定
-        if slots > max_slots_for_leader:
-            return error_response(msg=f'最多可锁定{max_slots_for_leader}个席位')
-    else:
-        # 非队长只能接取1个席位
-        if slots > 1:
-            return error_response(msg='每个打手只能接取1个席位，剩余席位需由队长邀请分配')
-        if slots > remaining_slots:
-            return error_response(msg=f'剩余席位不足，当前剩余{remaining_slots}个席位')
+    # 每个打手只能接取1个席位
+    slots = 1
 
     # 计算金额（按席位比例）
     amount_per_slot = order.pay_amount / order.quantity if order.quantity > 0 else 0
@@ -1428,7 +1408,8 @@ def claim_order(request, order_id):
         )
     else:
         order.save(update_fields=['locked_slots', 'leader', 'updated_at'])
-        msg = f'已锁定{slots}个席位，还需{remaining}名打手就位' if is_first_claimer else f'已接取1个席位，还需{remaining}名打手就位'
+        is_leader = order.leader_id == employee.id
+        msg = f'已接取1个席位，还需邀请{remaining}名打手' if is_leader else f'已接取1个席位，还需{remaining}名打手就位'
         return success_response(
             msg=msg,
             data={'locked_slots': order.locked_slots, 'remaining_slots': remaining, 'member_id': member.id}
