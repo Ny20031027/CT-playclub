@@ -213,14 +213,10 @@ def sync_profile_tables(user, nickname=None, avatar=None, phone=None, gender=Non
 
 
 def parse_member_slots(member):
+    """解析成员占用的席位数（每人只占1个席位）"""
     if not member:
         return 0
-    if not member.remark:
-        return 1
-    match = re.search(r'\d+', member.remark)
-    if not match:
-        return 1
-    return max(1, int(match.group(0)))
+    return 1
 
 
 def get_active_order_members(order):
