@@ -8,7 +8,7 @@ from .models import (
 class SkillLevelSerializer(serializers.ModelSerializer):
     class Meta:
         model = SkillLevel
-        fields = ['id', 'skill', 'name', 'price_min', 'price_max', 'sort']
+        fields = ['id', 'skill', 'name', 'unit_price', 'sort']
         read_only_fields = ['id']
 
 

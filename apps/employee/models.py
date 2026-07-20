@@ -47,8 +47,7 @@ class SkillLevel(BaseModel):
     skill = models.ForeignKey(EmployeeSkill, on_delete=models.CASCADE,
                               related_name='levels', verbose_name='所属技能')
     name = models.CharField(max_length=50, verbose_name='段位名称')
-    price_min = models.DecimalField(max_digits=10, decimal_places=2, default=0, verbose_name='最低时薪')
-    price_max = models.DecimalField(max_digits=10, decimal_places=2, default=0, verbose_name='最高时薪')
+    unit_price = models.DecimalField(max_digits=10, decimal_places=2, default=0, verbose_name='时薪(元/小时)')
     sort = models.IntegerField(default=0, verbose_name='排序')
 
     class Meta:
