@@ -13,6 +13,10 @@ from .serializers import UploadFileSerializer
 logger = logging.getLogger(__name__)
 
 
+IMAGE_MIME_TYPES = {'image/jpeg', 'image/png', 'image/gif', 'image/webp'}
+IMAGE_EXTS = {'.jpg', '.jpeg', '.png', '.gif', '.webp'}
+
+
 def upload_to_cos(file_obj, file_path):
     """上传文件到腾讯云 COS"""
     from qcloud_cos import CosConfig, CosS3Client
@@ -22,10 +26,11 @@ def upload_to_cos(file_obj, file_path):
         SecretKey=settings.COS_SECRET_KEY,
     )
     client = CosS3Client(config)
-    client.upload_file(
+    client.put_object(
         Bucket=settings.COS_BUCKET,
         Key=file_path,
         Body=file_obj,
+        ContentType=getattr(file_obj, 'content_type', '') or 'application/octet-stream',
         EnableMD5=False,
     )
     # 构建访问 URL
@@ -45,7 +50,7 @@ class UploadViewSet(BaseModelViewSet):
 
     @action(detail=False, methods=['post'], url_path='image')
     def upload_image(self, request):
-        return self._handle_upload(request, 'image', ['image/jpeg', 'image/png', 'image/gif', 'image/webp'])
+        return self._handle_upload(request, 'image', IMAGE_MIME_TYPES)
 
     @action(detail=False, methods=['post'], url_path='file')
     def upload_file(self, request):
@@ -53,7 +58,7 @@ class UploadViewSet(BaseModelViewSet):
 
     @action(detail=False, methods=['post'], url_path='avatar')
     def upload_avatar(self, request):
-        return self._handle_upload(request, 'avatar', ['image/jpeg', 'image/png', 'image/gif', 'image/webp'])
+        return self._handle_upload(request, 'avatar', IMAGE_MIME_TYPES)
 
     def _handle_upload(self, request, category, allowed_mime_types=None):
         if 'file' not in request.FILES:
@@ -61,12 +66,15 @@ class UploadViewSet(BaseModelViewSet):
         file_obj = request.FILES['file']
         if file_obj.size > 100 * 1024 * 1024:
             return error_response(msg='文件大小不能超过100MB')
-        if allowed_mime_types and file_obj.content_type not in allowed_mime_types:
-            return error_response(msg=f'不支持的文件类型: {file_obj.content_type}')
         
         file_name = file_obj.name
         file_size = file_obj.size
         file_ext = os.path.splitext(file_name)[1].lower()
+        detected_ext, detected_mime = self._detect_image_type(file_obj)
+        if allowed_mime_types and not self._is_allowed_image(file_obj.content_type, file_ext, detected_mime):
+            return error_response(msg=f'Unsupported file type: {file_obj.content_type or "unknown"}')
+        if allowed_mime_types and detected_ext and file_ext not in IMAGE_EXTS:
+            file_ext = detected_ext
         file_type = self._get_file_type(file_ext)
         md5 = self._calculate_md5(file_obj)
         
@@ -145,3 +153,24 @@ class UploadViewSet(BaseModelViewSet):
             md5.update(chunk)
         file_obj.seek(0)
         return md5.hexdigest()
+
+    def _detect_image_type(self, file_obj):
+        pos = file_obj.tell()
+        header = file_obj.read(512)
+        file_obj.seek(pos)
+        if header.startswith(b'\xff\xd8\xff'):
+            return '.jpg', 'image/jpeg'
+        if header.startswith(b'\x89PNG\r\n\x1a\n'):
+            return '.png', 'image/png'
+        if header.startswith((b'GIF87a', b'GIF89a')):
+            return '.gif', 'image/gif'
+        if header.startswith(b'RIFF') and header[8:12] == b'WEBP':
+            return '.webp', 'image/webp'
+        return '', ''
+
+    def _is_allowed_image(self, content_type, file_ext, detected_mime):
+        if content_type in IMAGE_MIME_TYPES or detected_mime in IMAGE_MIME_TYPES:
+            return True
+        if content_type and content_type.startswith('image/') and file_ext in IMAGE_EXTS:
+            return True
+        return file_ext in IMAGE_EXTS
