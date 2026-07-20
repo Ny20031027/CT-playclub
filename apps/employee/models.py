@@ -67,7 +67,7 @@ class Employee(BaseModel):
     real_name = models.CharField(max_length=100, verbose_name='真实姓名')
     nickname = models.CharField(max_length=100, blank=True, verbose_name='艺名')
     phone = models.CharField(max_length=20, blank=True, verbose_name='联系电话')
-    avatar = models.ImageField(upload_to='employees/avatars/', blank=True, verbose_name='头像')
+    avatar = models.CharField(max_length=500, blank=True, verbose_name='头像')
     gender = models.CharField(max_length=10, choices=[
         ('male', '男'),
         ('female', '女'),

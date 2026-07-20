@@ -46,7 +46,7 @@ class Customer(BaseModel):
     user = models.OneToOneField(User, on_delete=models.CASCADE, related_name='customer',
                                 null=True, blank=True, verbose_name='关联用户')
     nickname = models.CharField(max_length=100, verbose_name='昵称')
-    avatar = models.ImageField(upload_to='customers/avatars/', blank=True, verbose_name='头像')
+    avatar = models.CharField(max_length=500, blank=True, verbose_name='头像')
     phone = models.CharField(max_length=20, blank=True, verbose_name='手机号')
     email = models.EmailField(max_length=100, blank=True, verbose_name='邮箱')
     gender = models.CharField(max_length=10, choices=[
