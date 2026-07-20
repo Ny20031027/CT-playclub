@@ -236,11 +236,13 @@ def get_order_member_count(order):
 
 
 def get_effective_locked_slots(order):
+    """获取有效锁定席位数（基于实际接取人数）"""
     active_slots = sum(parse_member_slots(member) for member in get_active_order_members(order))
-    return max(int(order.locked_slots or 0), active_slots)
+    return active_slots
 
 
 def get_remaining_slots(order):
+    """获取剩余可接取席位数"""
     return max(0, int(order.quantity or 0) - get_effective_locked_slots(order))
 
 
@@ -1339,9 +1341,9 @@ def claim_order(request, order_id):
     """打手领取订单
     规则：
     - 第一个接取的人自动成为队长
-    - 队长可以锁定多个席位（包括自己的），但只占1个席位
+    - 队长可以锁定多个席位，但只占1个席位
     - 锁定的席位其他打手无法接取，只能由队长邀请填满
-    - 所有席位填满后订单进入确认状态
+    - 只有所有席位都被实际接取后，订单才进入确认状态
     """
     user = request.user
     try:
@@ -1358,7 +1360,7 @@ def claim_order(request, order_id):
     if order.status != 'published':
         return error_response(msg='订单当前状态不可接取')
 
-    # 计算剩余席位
+    # 计算剩余可接取的席位（未被锁定的）
     remaining_slots = get_remaining_slots(order)
     if remaining_slots <= 0:
         return error_response(msg='该订单席位已满')
@@ -1382,11 +1384,9 @@ def claim_order(request, order_id):
         return error_response(msg='锁定席位数必须大于0')
     
     if is_first_claimer:
-        # 队长可以锁定除自己外的剩余席位
-        # 例如：5人单，队长锁定3个（自己占1个+锁定2个），剩余2个需邀请
-        max_slots_for_leader = remaining_slots
-        if slots > max_slots_for_leader:
-            return error_response(msg=f'最多可锁定{max_slots_for_leader}个席位')
+        # 队长可以锁定席位（包括自己的），但最多不能超过总需求
+        if slots > order.quantity:
+            return error_response(msg=f'最多可锁定{order.quantity}个席位')
     else:
         # 非队长只能接取1个席位
         if slots > 1:
@@ -1396,7 +1396,6 @@ def claim_order(request, order_id):
 
     # 计算金额（按席位比例）
     amount_per_slot = order.pay_amount / order.quantity if order.quantity > 0 else 0
-    amount = amount_per_slot * slots
 
     # 创建订单成员记录（队长只占1个席位）
     member = OrderMember.objects.create(
@@ -1405,37 +1404,44 @@ def claim_order(request, order_id):
         skill=order.skill,
         unit_price=order.unit_price,
         duration=order.duration,
-        amount=round(amount_per_slot, 2),  # 队长只付1个席位的钱
+        amount=round(amount_per_slot, 2),
         status='accepted',
         remark=f'slots:{slots}',
     )
 
     # 更新已锁定席位数（队长锁定的总数）
-    order.locked_slots += slots
+    order.locked_slots = slots
 
     # 如果是第一个接取的人，设为队长
     if not order.leader:
         order.leader = employee
 
-    # 检查是否所有席位都已锁定
-    remaining = get_remaining_slots(order)
-    if remaining <= 0:
-        # 所有席位已锁定，订单状态变为 confirming（待确认）
+    order.save(update_fields=['locked_slots', 'leader', 'updated_at'])
+
+    # 计算实际接取的人数（不包括锁定的）
+    actual_members = OrderMember.objects.filter(
+        order=order, is_deleted=False, status__in=['accepted', 'in_progress']
+    ).count()
+    
+    # 剩余需要邀请的人数
+    remaining_to_invite = order.quantity - actual_members
+
+    if remaining_to_invite <= 0:
+        # 所有席位都被实际接取，订单进入确认状态
         order.status = 'confirming'
-        order.save(update_fields=['status', 'locked_slots', 'leader', 'updated_at'])
+        order.save(update_fields=['status', 'updated_at'])
         return success_response(
             msg='所有打手已就位，订单正式接取',
             data={'locked_slots': order.locked_slots, 'status': 'confirming', 'member_id': member.id}
         )
     else:
-        order.save(update_fields=['locked_slots', 'leader', 'updated_at'])
         if is_first_claimer:
-            msg = f'已锁定{slots}个席位，还需邀请{remaining}名打手'
+            msg = f'已锁定{slots}个席位，还需邀请{remaining_to_invite}名打手'
         else:
-            msg = f'已接取1个席位，还需{remaining}名打手就位'
+            msg = f'已接取1个席位，还需{remaining_to_invite}名打手就位'
         return success_response(
             msg=msg,
-            data={'locked_slots': order.locked_slots, 'remaining_slots': remaining, 'member_id': member.id}
+            data={'locked_slots': order.locked_slots, 'remaining_slots': remaining_to_invite, 'member_id': member.id}
         )
 
 
