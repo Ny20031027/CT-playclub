@@ -63,6 +63,27 @@ def field_file_url(value):
     return value_str
 
 
+def employee_avatar_url(employee):
+    if not employee:
+        return ''
+    avatar = field_file_url(employee.avatar)
+    if avatar:
+        return avatar
+
+    user = getattr(employee, 'user', None)
+    if not user:
+        return ''
+    try:
+        wx_avatar = user.wx_user.avatar
+        if wx_avatar:
+            return wx_avatar
+    except WxUser.DoesNotExist:
+        pass
+    except Exception:
+        pass
+    return field_file_url(user.avatar)
+
+
 def get_profile_wx_user(user):
     try:
         return user.wx_user
@@ -188,7 +209,7 @@ def sync_profile_tables(user, nickname=None, avatar=None, phone=None, gender=Non
             if '/media/' in avatar:
                 avatar_name = avatar.split('/media/')[-1]
             if str(employee.avatar) != avatar_name:
-                employee.avatar.name = avatar_name
+                employee.avatar = avatar_name
                 employee_fields.append('avatar')
         if employee_fields:
             employee.save(update_fields=employee_fields)
@@ -583,7 +604,7 @@ def home_data(request):
     employees = Employee.objects.filter(
         status__in=['idle', 'busy'],
         is_deleted=False
-    ).select_related('user').prefetch_related('skills', 'tags').order_by('-rating', 'sort')[:8]
+    ).select_related('user', 'user__wx_user').prefetch_related('skills', 'tags').order_by('-rating', 'sort')[:8]
 
     employee_list = []
     for emp in employees:
@@ -599,7 +620,7 @@ def home_data(request):
         employee_list.append({
             'id': emp.id,
             'nickname': emp.nickname or emp.real_name,
-            'avatar': str(emp.avatar) if emp.avatar else '',
+            'avatar': employee_avatar_url(emp),
             'gender': emp.gender,
             'level': emp.level,
             'level_num': emp.level_num,
@@ -645,7 +666,7 @@ def employee_list(request):
     queryset = Employee.objects.filter(
         status__in=['idle', 'busy'],
         is_deleted=False
-    ).select_related('user').prefetch_related('skills', 'tags')
+    ).select_related('user', 'user__wx_user').prefetch_related('skills', 'tags')
 
     if skill_id:
         queryset = queryset.filter(skill_relations__skill_id=skill_id)
@@ -697,7 +718,7 @@ def employee_list(request):
         employee_list.append({
             'id': emp.id,
             'nickname': emp.nickname or emp.real_name,
-            'avatar': str(emp.avatar) if emp.avatar else '',
+            'avatar': employee_avatar_url(emp),
             'gender': emp.gender if emp.gender != 'unknown' else (emp.user.gender if emp.user else 'unknown'),
             'age': emp.age,
             'level': emp.level,
@@ -724,7 +745,7 @@ def employee_list(request):
 def employee_detail(request, emp_id):
     """陪玩师详情"""
     try:
-        emp = Employee.objects.select_related('user').get(id=emp_id, is_deleted=False)
+        emp = Employee.objects.select_related('user', 'user__wx_user').get(id=emp_id, is_deleted=False)
     except Employee.DoesNotExist:
         return error_response(msg='陪玩师不存在')
 
@@ -768,7 +789,7 @@ def employee_detail(request, emp_id):
         'id': emp.id,
         'nickname': emp.nickname or emp.real_name,
         'real_name': emp.real_name,
-        'avatar': str(emp.avatar) if emp.avatar else '',
+        'avatar': employee_avatar_url(emp),
         'gender': emp.gender,
         'age': emp.age,
         'level': emp.level,
@@ -1030,7 +1051,7 @@ def my_orders(request):
             members.append({
                 'id': m.id,
                 'employee_name': m.employee.nickname or m.employee.real_name,
-                'employee_avatar': str(m.employee.avatar) if m.employee.avatar else '',
+                'employee_avatar': employee_avatar_url(m.employee),
                 'status': m.status,
             })
         order_list.append({
@@ -1097,7 +1118,7 @@ def employee_orders(request):
             members.append({
                 'id': m.id,
                 'employee_name': m.employee.nickname or m.employee.real_name,
-                'employee_avatar': str(m.employee.avatar) if m.employee.avatar else '',
+                'employee_avatar': employee_avatar_url(m.employee),
                 'status': m.status,
             })
         order_list.append({
@@ -1183,7 +1204,7 @@ def order_detail(request, order_id):
             'id': m.id,
             'employee_id': m.employee.id,
             'employee_name': m.employee.nickname or m.employee.real_name,
-            'employee_avatar': str(m.employee.avatar) if m.employee.avatar else '',
+            'employee_avatar': employee_avatar_url(m.employee),
             'skill_name': m.skill.name if m.skill else '',
             'unit_price': float(m.unit_price),
             'duration': m.duration,
@@ -2459,7 +2480,7 @@ def get_my_team(request):
     member_list = [{
         'id': m.employee.id,
         'nickname': m.employee.nickname or m.employee.real_name,
-        'avatar': str(m.employee.avatar) if m.employee.avatar else '',
+        'avatar': employee_avatar_url(m.employee),
         'is_leader': m.employee.id == team.leader_id,
     } for m in members]
 
