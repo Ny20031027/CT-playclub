@@ -51,12 +51,16 @@ def field_file_url(value):
     if not value:
         return ''
     value_str = str(value)
-    if value_str.startswith('http') or value_str.startswith('/'):
+    if value_str.startswith('http'):
         return value_str
-    try:
-        return value.url
-    except Exception:
+    if value_str.startswith('/'):
         return value_str
+    # 补全 COS 域名（处理旧的本地路径）
+    from django.conf import settings
+    if hasattr(settings, 'COS_BUCKET') and settings.COS_BUCKET:
+        cos_base = f'https://{settings.COS_BUCKET}.cos.{settings.COS_REGION}.myqcloud.com'
+        return f'{cos_base}/{value_str}'
+    return value_str
 
 
 def get_profile_wx_user(user):
