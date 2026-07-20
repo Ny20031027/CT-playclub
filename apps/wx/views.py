@@ -1860,6 +1860,8 @@ def my_notices(request):
             'type': n.notice.type if n.notice else '',
             'level': n.notice.level if n.notice else '',
             'is_read': n.is_read,
+            'extra': n.notice.extra if n.notice else '',
+            'jump_url': n.notice.jump_url if n.notice else '',
             'created_at': n.created_at.strftime('%Y-%m-%d %H:%M'),
         })
 
