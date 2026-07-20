@@ -24,9 +24,9 @@ def upload_to_cos(file_obj, file_path):
     except ImportError as exc:
         raise RuntimeError('COS SDK is not installed. Please install cos-python-sdk-v5.') from exc
     config = CosConfig(
-        Region=settings.COS_REGION,
-        SecretId=settings.COS_SECRET_ID,
-        SecretKey=settings.COS_SECRET_KEY,
+        Region=settings.COS_REGION.strip(),
+        SecretId=settings.COS_SECRET_ID.strip(),
+        SecretKey=settings.COS_SECRET_KEY.strip(),
     )
     client = CosS3Client(config)
     client.put_object(
