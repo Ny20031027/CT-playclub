@@ -26,6 +26,8 @@ class EmployeeSkill(BaseModel):
         'wx.GameCategory', on_delete=models.SET_NULL, null=True, blank=True,
         related_name='skills', verbose_name='游戏分类'
     )
+    unit_price = models.DecimalField(max_digits=10, decimal_places=2, default=0,
+                                     verbose_name='单价(元/小时)')
     icon = models.ImageField(upload_to='skills/', blank=True, verbose_name='图标')
     sort = models.IntegerField(default=0, verbose_name='排序')
     status = models.BooleanField(default=True, verbose_name='状态')
