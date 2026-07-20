@@ -198,9 +198,8 @@ WX_APPID = 'wxdbf7e10a41f58d08'
 WX_SECRET = 'fdbf9056fd4febf52cde291b7d221207'
 
 # 腾讯云 COS 配置
-COS_SECRET_ID = os.environ.get('COS_SECRET_ID', '')
-COS_SECRET_KEY = os.environ.get('COS_SECRET_KEY', '')
-COS_BUCKET = os.environ.get('COS_BUCKET', '')
-COS_REGION = os.environ.get('COS_REGION', 'ap-guangzhou')
-COS_DOMAIN = os.environ.get('COS_DOMAIN', '')  # 自定义域名或 CDN 域名
-
+COS_SECRET_ID = os.environ.get('COS_SECRET_ID', '').strip()
+COS_SECRET_KEY = os.environ.get('COS_SECRET_KEY', '').strip()
+COS_BUCKET = os.environ.get('COS_BUCKET', '').strip()
+COS_REGION = os.environ.get('COS_REGION', 'ap-guangzhou').strip()
+COS_DOMAIN = os.environ.get('COS_DOMAIN', '').strip()  # 自定义域名或 CDN 域名
