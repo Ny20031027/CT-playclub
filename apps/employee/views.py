@@ -29,7 +29,7 @@ class EmployeeViewSet(BaseModelViewSet):
         return queryset.filter(
             Q(user__isnull=True) | (
                 Q(user__customer__isnull=True) &
-                Q(user__customer_service__isnull=True)
+                Q(user__customer__cs_profile__isnull=True)
             )
         )
 

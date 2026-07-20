@@ -27,7 +27,7 @@ class CustomerViewSet(BaseModelViewSet):
         ).filter(
             Q(user__isnull=True) | (
                 Q(user__employee__isnull=True) &
-                Q(user__customer_service__isnull=True)
+                Q(user__customer__cs_profile__isnull=True)
             )
         )
 
