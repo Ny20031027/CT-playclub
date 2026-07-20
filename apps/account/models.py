@@ -78,7 +78,7 @@ class User(AbstractUser, BaseModel):
     IDENTITY_ROLE_CODES = ('customer', 'dasher', 'cs')
     IDENTITY_ROLE_PRIORITY = ('cs', 'dasher', 'customer')
     phone = models.CharField(max_length=20, blank=True, verbose_name='手机号')
-    avatar = models.ImageField(upload_to='avatars/', blank=True, verbose_name='头像')
+    avatar = models.CharField(max_length=500, blank=True, verbose_name='头像')
     nickname = models.CharField(max_length=100, blank=True, verbose_name='昵称')
     gender = models.CharField(max_length=10, choices=[
         ('male', '男'),
