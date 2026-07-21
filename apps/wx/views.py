@@ -1254,6 +1254,8 @@ def order_detail(request, order_id):
         'game_name': order.game_name,
         'server': order.server,
         'remark': order.remark,
+        'transfer_reason': order.transfer_reason or '',
+        'is_transfer': bool(order.transfer_reason),
         'members': members,
         'comment': comment,
         'user_type': 'dasher' if is_dasher else 'customer',
