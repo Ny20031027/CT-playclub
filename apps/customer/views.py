@@ -21,11 +21,9 @@ class CustomerViewSet(BaseModelViewSet):
 
     def get_queryset(self):
         queryset = super().get_queryset()
-        # 排除打手和客服身份的用户，确保每个用户只存在于一个列表
+        # 后台管理显示所有客户
         return queryset.filter(
             cs_profile__isnull=True
-        ).filter(
-            Q(user__isnull=True) | Q(user__employee__isnull=True)
         )
 
     @action(detail=False, methods=['get'], url_path='simple')
