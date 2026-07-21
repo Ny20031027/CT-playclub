@@ -19,39 +19,40 @@ class CommonConfig(AppConfig):
         import logging
         logger = logging.getLogger('django')
         from django.core.management import call_command
+        from django.db import connections
+        
         # 等待数据库就绪
         for i in range(30):
             try:
-                from django.db import connections
                 connections['default'].ensure_connection()
                 break
             except Exception:
                 time.sleep(2)
         
-        # 先尝试合并冲突迁移
+        # 直接用 SQL 确保关键列存在
         try:
-            logger.info('Attempting to merge migrations...')
-            call_command('makemigrations', '--merge', '--noinput', verbosity=0)
+            cursor = connections['default'].cursor()
+            # 检查 assigned_employee_id 列是否存在
+            cursor.execute("""
+                SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS 
+                WHERE TABLE_SCHEMA = DATABASE() 
+                AND TABLE_NAME = 'ord_order' 
+                AND COLUMN_NAME = 'assigned_employee_id'
+            """)
+            if cursor.fetchone()[0] == 0:
+                logger.info('Adding assigned_employee_id column...')
+                cursor.execute("ALTER TABLE ord_order ADD COLUMN assigned_employee_id int NULL")
+                logger.info('Column added successfully')
         except Exception as e:
-            logger.warning(f'Merge migrations failed (may be no conflicts): {e}')
+            logger.error(f'Failed to add column via SQL: {e}')
         
-        # 执行迁移
+        # 然后执行标准迁移
         try:
-            logger.info('Starting auto migrate...')
             call_command('migrate', verbosity=1)
-            logger.info('Auto migrate completed successfully')
+            logger.info('Auto migrate completed')
         except Exception as e:
             logger.error(f'Auto migrate failed: {e}')
-            # 尝试单独迁移每个应用
-            for app_name in ['account', 'order', 'employee', 'customer', 'notice', 'system', 'finance', 'schedule', 'statistics', 'upload', 'wx']:
-                try:
-                    call_command('migrate', app_name, verbosity=0)
-                    logger.info(f'Migrated {app_name} successfully')
-                except Exception as e2:
-                    logger.error(f'Failed to migrate {app_name}: {e2}')
-            return
         
-        # 自动创建超级管理员（如果不存在）
         self._create_default_admin()
 
     def _create_default_admin(self):
