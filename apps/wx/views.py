@@ -1026,9 +1026,6 @@ def dispatch_hall(request):
             'can_claim': can_claim,
             'assigned_employee_name': o.assigned_employee.nickname if o.assigned_employee else '',
         })
-                'can_claim': can_claim,
-                'assigned_employee_name': o.assigned_employee.nickname if o.assigned_employee else '',
-            })
 
     return success_response({
         'total': len(order_list),
