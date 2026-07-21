@@ -27,13 +27,30 @@ class CommonConfig(AppConfig):
                 break
             except Exception:
                 time.sleep(2)
+        
+        # 先尝试合并冲突迁移
+        try:
+            logger.info('Attempting to merge migrations...')
+            call_command('makemigrations', '--merge', '--noinput', verbosity=0)
+        except Exception as e:
+            logger.warning(f'Merge migrations failed (may be no conflicts): {e}')
+        
+        # 执行迁移
         try:
             logger.info('Starting auto migrate...')
             call_command('migrate', verbosity=1)
             logger.info('Auto migrate completed successfully')
         except Exception as e:
             logger.error(f'Auto migrate failed: {e}')
+            # 尝试单独迁移每个应用
+            for app_name in ['account', 'order', 'employee', 'customer', 'notice', 'system', 'finance', 'schedule', 'statistics', 'upload', 'wx']:
+                try:
+                    call_command('migrate', app_name, verbosity=0)
+                    logger.info(f'Migrated {app_name} successfully')
+                except Exception as e2:
+                    logger.error(f'Failed to migrate {app_name}: {e2}')
             return
+        
         # 自动创建超级管理员（如果不存在）
         self._create_default_admin()
 
