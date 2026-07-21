@@ -977,52 +977,55 @@ def dispatch_hall(request):
             continue
         remaining_slots = get_remaining_slots(o)
         # 只显示还有剩余席位的订单
-        if remaining_slots > 0:
-            # 如果是预约订单，只显示给被预约的打手
-            if o.assigned_employee_id:
-                if current_employee and o.assigned_employee_id != current_employee.id:
-                    continue
-                # 如果当前打手就是被预约的，允许显示
+        if remaining_slots <= 0:
+            continue
 
-            # 检查当前打手是否已预订该订单
-            my_claimed = False
-            my_claimed_slots = 0
-            if request.user.is_authenticated:
-                try:
-                    employee = request.user.employee
-                    member = OrderMember.objects.filter(
-                        order=o, employee=employee, is_deleted=False, status__in=['accepted', 'in_progress']
-                    ).first()
-                    if member:
-                        my_claimed = True
-                        my_claimed_slots = parse_member_slots(member)
-                except Exception:
-                    pass
+        # 如果是预约订单，只显示给被预约的打手
+        if o.assigned_employee_id and current_employee and o.assigned_employee_id != current_employee.id:
+            continue
 
-            # 判断是否为预约订单（只能被预约的打手接取）
-            is_reserved = bool(o.assigned_employee_id)
-            can_claim = not is_reserved or (current_employee and o.assigned_employee_id == current_employee.id)
+        # 检查当前打手是否已预订该订单
+        my_claimed = False
+        my_claimed_slots = 0
+        if request.user.is_authenticated:
+            try:
+                employee = request.user.employee
+                member = OrderMember.objects.filter(
+                    order=o, employee=employee, is_deleted=False, status__in=['accepted', 'in_progress']
+                ).first()
+                if member:
+                    my_claimed = True
+                    my_claimed_slots = parse_member_slots(member)
+            except Exception:
+                pass
 
-            order_list.append({
-                'id': o.id,
-                'order_no': o.order_no,
-                'title': o.title,
-                'game_name': o.game_name,
-                'content': o.remark,
-                'price': float(o.unit_price),
-                'duration': o.duration,
-                'quantity': o.quantity,
-                'locked_slots': o.locked_slots,
-                'remaining_slots': remaining_slots,
-                'is_formally_claimed': False,
-                'total_amount': float(o.total_amount),
-                'customer_name': o.customer.nickname if o.customer else '',
-                'created_at': o.created_at.strftime('%Y-%m-%d %H:%M'),
-                'my_claimed': my_claimed,
-                'my_claimed_slots': my_claimed_slots,
-                'transfer_reason': o.transfer_reason or '',
-                'is_transfer': bool(o.transfer_reason),
-                'is_reserved': is_reserved,
+        # 判断是否为预约订单（只能被预约的打手接取）
+        is_reserved = bool(o.assigned_employee_id)
+        can_claim = not is_reserved or (current_employee and o.assigned_employee_id == current_employee.id)
+
+        order_list.append({
+            'id': o.id,
+            'order_no': o.order_no,
+            'title': o.title,
+            'game_name': o.game_name,
+            'content': o.remark,
+            'price': float(o.unit_price),
+            'duration': o.duration,
+            'quantity': o.quantity,
+            'locked_slots': o.locked_slots,
+            'remaining_slots': remaining_slots,
+            'is_formally_claimed': False,
+            'total_amount': float(o.total_amount),
+            'customer_name': o.customer.nickname if o.customer else '',
+            'created_at': o.created_at.strftime('%Y-%m-%d %H:%M'),
+            'my_claimed': my_claimed,
+            'my_claimed_slots': my_claimed_slots,
+            'transfer_reason': o.transfer_reason or '',
+            'is_transfer': bool(o.transfer_reason),
+            'is_reserved': is_reserved,
+            'can_claim': can_claim,
+            'assigned_employee_name': o.assigned_employee.nickname if o.assigned_employee else '',
+        })
                 'can_claim': can_claim,
                 'assigned_employee_name': o.assigned_employee.nickname if o.assigned_employee else '',
             })
