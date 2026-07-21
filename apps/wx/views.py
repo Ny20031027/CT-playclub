@@ -818,6 +818,8 @@ def create_order(request):
 
     skill_id = request.data.get('skill_id')
     employee_id = request.data.get('employee_id')
+    if employee_id:
+        employee_id = int(employee_id)
     duration = request.data.get('duration', 60)
     quantity = request.data.get('quantity', 1)
     game_id = request.data.get('game_id', '')
@@ -977,8 +979,10 @@ def dispatch_hall(request):
         # 只显示还有剩余席位的订单
         if remaining_slots > 0:
             # 如果是预约订单，只显示给被预约的打手
-            if o.assigned_employee_id and current_employee and o.assigned_employee_id != current_employee.id:
-                continue
+            if o.assigned_employee_id:
+                if current_employee and o.assigned_employee_id != current_employee.id:
+                    continue
+                # 如果当前打手就是被预约的，允许显示
 
             # 检查当前打手是否已预订该订单
             my_claimed = False
