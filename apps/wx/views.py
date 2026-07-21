@@ -999,6 +999,8 @@ def dispatch_hall(request):
                 'created_at': o.created_at.strftime('%Y-%m-%d %H:%M'),
                 'my_claimed': my_claimed,
                 'my_claimed_slots': my_claimed_slots,
+                'transfer_reason': o.transfer_reason or '',
+                'is_transfer': bool(o.transfer_reason),
             })
 
     return success_response({
