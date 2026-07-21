@@ -32,30 +32,44 @@ class CommonConfig(AppConfig):
         # 直接用 SQL 确保关键列存在且允许 NULL
         try:
             cursor = connections['default'].cursor()
-            # 检查 assigned_employee_id 列是否存在
-            cursor.execute("""
-                SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS 
-                WHERE TABLE_SCHEMA = DATABASE() 
-                AND TABLE_NAME = 'ord_order' 
-                AND COLUMN_NAME = 'assigned_employee_id'
-            """)
-            if cursor.fetchone()[0] == 0:
-                logger.info('Adding assigned_employee_id column...')
-                cursor.execute("ALTER TABLE ord_order ADD COLUMN assigned_employee_id int NULL")
-                logger.info('Column added successfully')
-            
-            # 确保 OrderMember.employee_id 允许 NULL
+            # 确保 ord_order.assigned_employee_id 允许 NULL
             cursor.execute("""
                 SELECT IS_NULLABLE FROM INFORMATION_SCHEMA.COLUMNS 
-                WHERE TABLE_SCHEMA = DATABASE() 
-                AND TABLE_NAME = 'ord_ordermember' 
-                AND COLUMN_NAME = 'employee_id'
+                WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'ord_order' AND COLUMN_NAME = 'assigned_employee_id'
             """)
             result = cursor.fetchone()
-            if result and result[0] == 'NO':
-                logger.info('Making ordermember.employee_id nullable...')
-                cursor.execute("ALTER TABLE ord_ordermember MODIFY COLUMN employee_id int NULL")
-                logger.info('Column updated successfully')
+            if result is None:
+                logger.info('Adding assigned_employee_id column...')
+                cursor.execute("ALTER TABLE ord_order ADD COLUMN assigned_employee_id int NULL")
+            elif result[0] == 'NO':
+                cursor.execute("ALTER TABLE ord_order MODIFY COLUMN assigned_employee_id int NULL")
+                logger.info('ord_order.assigned_employee_id set to NULL')
+
+            # 确保所有 employee_id 列允许 NULL
+            tables_with_employee = [
+                'ord_ordermember', 'ord_ordercomment', 'fin_transaction',
+                'fin_settlement_detail', 'fin_salary', 'fin_withdraw',
+                'ord_order'
+            ]
+            for table in tables_with_employee:
+                cursor.execute(f"""
+                    SELECT IS_NULLABLE FROM INFORMATION_SCHEMA.COLUMNS 
+                    WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = '{table}' AND COLUMN_NAME = 'employee_id'
+                """)
+                result = cursor.fetchone()
+                if result and result[0] == 'NO':
+                    cursor.execute(f"ALTER TABLE {table} MODIFY COLUMN employee_id int NULL")
+                    logger.info(f'{table}.employee_id set to NULL')
+
+            # 确保 ord_order.assigned_employee_id 存在
+            cursor.execute("""
+                SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS 
+                WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'ord_order' AND COLUMN_NAME = 'assigned_employee_id'
+            """)
+            if cursor.fetchone()[0] == 0:
+                cursor.execute("ALTER TABLE ord_order ADD COLUMN assigned_employee_id int NULL")
+                logger.info('Added ord_order.assigned_employee_id column')
+
         except Exception as e:
             logger.error(f'Failed to update columns via SQL: {e}')
         
