@@ -137,9 +137,9 @@ def cs_list(request):
     page_size = int(request.GET.get('page_size', 10))
 
     # 排除打手和普通客户，确保每个用户只存在于一个列表
-    queryset = CustomerService.objects.select_related('customer', 'customer__user').filter(
+    queryset = CustomerService.objects.select_related('customer', 'customer__user').filter(is_deleted=False).filter(
         Q(customer__user__isnull=True) | (
-            Q(customer__user__employee__isnull=True) &
+            (Q(customer__user__employee__isnull=True) | Q(customer__user__employee__is_deleted=True)) &
             Q(customer__user__customer__isnull=True)
         )
     )
@@ -183,13 +183,19 @@ def cs_add(request):
     except Customer.DoesNotExist:
         return error_response(msg='客户不存在')
 
-    if customer.user and hasattr(customer.user, 'employee'):
+    if customer.user and customer.user.get_active_employee():
         return error_response(msg='该客户已经是打手，无法设置为客服')
 
-    if CustomerService.objects.filter(customer=customer).exists():
+    if CustomerService.objects.filter(customer=customer, is_deleted=False).exists():
         return error_response(msg='该客户已经是客服')
 
-    CustomerService.objects.create(customer=customer, status='online')
+    cs = CustomerService.objects.filter(customer=customer, is_deleted=True).first()
+    if cs:
+        cs.is_deleted = False
+        cs.status = 'online'
+        cs.save(update_fields=['is_deleted', 'status', 'updated_at'])
+    else:
+        CustomerService.objects.create(customer=customer, status='online')
     return success_response(msg='添加成功')
 
 

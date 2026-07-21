@@ -1,3 +1,4 @@
+from django.db import transaction
 from django.db.models import Q
 from rest_framework import viewsets
 from rest_framework.decorators import action
@@ -75,9 +76,11 @@ class EmployeeViewSet(BaseModelViewSet):
         return success_response(msg='技能已移除')
 
     @action(detail=False, methods=['post'], url_path='convert')
+    @transaction.atomic
     def convert_customer(self, request):
         """将客户转换为打手"""
-        from apps.customer.models import Customer
+        from apps.customer.models import Customer, CustomerService
+        from apps.account.models import Role
 
         customer_id = request.data.get('customer_id')
         level_num = request.data.get('level_num', 0)
@@ -94,8 +97,27 @@ class EmployeeViewSet(BaseModelViewSet):
             return success_response(code=400, msg='该客户未关联用户账号')
 
         user = customer.user
-        if Employee.objects.filter(user=user).exists():
+        if Employee.objects.filter(user=user, is_deleted=False).exists():
             return success_response(code=400, msg='该用户已经是打手')
+
+        restored = Employee.objects.filter(user=user, is_deleted=True).update(
+            is_deleted=False,
+            nickname=customer.nickname,
+            phone=customer.phone,
+            avatar=str(customer.avatar).strip(),
+            gender=customer.gender,
+            level_num=level_num,
+            status='idle',
+            online_status=False,
+        )
+        if restored:
+            CustomerService.objects.filter(customer=customer, is_deleted=False).update(is_deleted=True)
+            customer.delete()
+            user.roles.remove(*user.roles.filter(code='customer'))
+            dasher_role = Role.objects.filter(code='dasher', status=True, is_deleted=False).first()
+            if dasher_role:
+                user.roles.add(dasher_role)
+            return success_response(msg='转换成功')
 
         import time
         employee_no = f'DS{int(time.time())}'
@@ -105,19 +127,29 @@ class EmployeeViewSet(BaseModelViewSet):
             real_name=customer.nickname or user.nickname or f'用户{user.id}',
             nickname=customer.nickname,
             phone=customer.phone,
+            avatar=str(customer.avatar).strip(),
+            gender=customer.gender,
             level_num=level_num,
             status='idle',
         )
-        customer.hard_delete()
+        CustomerService.objects.filter(customer=customer, is_deleted=False).update(is_deleted=True)
+        customer.delete()
+        user.roles.remove(*user.roles.filter(code='customer'))
+        dasher_role = Role.objects.filter(code='dasher', status=True, is_deleted=False).first()
+        if dasher_role:
+            user.roles.add(dasher_role)
         return success_response(msg='转换成功')
 
     @action(detail=True, methods=['post'], url_path='remove')
+    @transaction.atomic
     def remove_employee(self, request, pk=None):
         """移除打手，恢复为客户身份"""
         employee = self.get_object()
+        employee = Employee.objects.select_for_update().get(pk=employee.pk)
         user = employee.user
 
         from apps.customer.models import Customer, CustomerService
+        from apps.account.models import Role
 
         customer = Customer.objects.filter(user=user, is_deleted=False).first()
         if customer is None:
@@ -133,8 +165,27 @@ class EmployeeViewSet(BaseModelViewSet):
                     source='打手转客户',
                 )
 
-        CustomerService.objects.filter(customer=customer).delete()
-        employee.hard_delete()
+        customer.nickname = customer.nickname or employee.nickname or employee.real_name or user.nickname or user.username
+        customer.phone = customer.phone or employee.phone or user.phone
+        customer.avatar = str(customer.avatar).strip() or str(employee.avatar).strip() or str(user.avatar).strip()
+        customer.gender = customer.gender or employee.gender or user.gender
+        customer.status = True
+        if not customer.source:
+            customer.source = '打手转客户'
+        customer.is_deleted = False
+        customer.save()
+
+        CustomerService.objects.filter(customer=customer, is_deleted=False).update(is_deleted=True)
+
+        employee.status = 'offline'
+        employee.online_status = False
+        employee.is_deleted = True
+        employee.save(update_fields=['status', 'online_status', 'is_deleted', 'updated_at'])
+
+        user.roles.remove(*user.roles.filter(code='dasher'))
+        customer_role = Role.objects.filter(code='customer', status=True, is_deleted=False).first()
+        if customer_role:
+            user.roles.add(customer_role)
         return success_response(msg='已恢复为客户身份')
 
     @action(detail=True, methods=['get'], url_path='wallet')

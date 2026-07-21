@@ -93,10 +93,14 @@ def get_related_profile_objects(user):
         pass
     try:
         objects['customer'] = user.customer
+        if getattr(objects['customer'], 'is_deleted', False):
+            objects['customer'] = None
     except Exception:
         pass
     try:
         objects['employee'] = user.employee
+        if getattr(objects['employee'], 'is_deleted', False):
+            objects['employee'] = None
     except Exception:
         pass
     return objects
@@ -186,7 +190,9 @@ def sync_profile_tables(user, nickname=None, avatar=None, phone=None, gender=Non
         logger.warning(f'Failed to sync customer: {e}')
 
     try:
-        employee = user.employee
+        employee = user.get_active_employee()
+        if not employee:
+            return wx_user
         employee_fields = []
         if nickname and employee.nickname != nickname:
             employee.nickname = nickname
@@ -401,7 +407,7 @@ def wx_login(request):
     user.save(update_fields=['last_login'])
 
     # 判断用户类型
-    is_dasher = hasattr(user, 'employee')
+    is_dasher = bool(user.get_active_employee())
 
     # 只有非打手用户才自动创建客户记录
     from apps.customer.models import Customer
@@ -426,7 +432,7 @@ def wx_login(request):
             customer.save()
     else:
         # 打手登录时，删除可能存在的 Customer 记录
-        Customer.objects.filter(user=user).delete()
+        Customer.objects.filter(user=user, is_deleted=False).update(is_deleted=True)
 
     related = get_related_profile_objects(user)
     display_nickname = choose_display_nickname(
@@ -439,8 +445,8 @@ def wx_login(request):
     wx_user = sync_profile_tables(
         user,
         nickname=display_nickname,
-        avatar=wx_user.avatar or field_file_url(user.avatar) or field_file_url(customer.avatar),
-        phone=wx_user.phone or user.phone or customer.phone,
+        avatar=wx_user.avatar or field_file_url(user.avatar) or field_file_url(customer.avatar if customer else ''),
+        phone=wx_user.phone or user.phone or (customer.phone if customer else ''),
     )
 
     # 生成 JWT token
@@ -450,7 +456,7 @@ def wx_login(request):
     # 判断用户身份
     user_type = 'customer'
     try:
-        if hasattr(user, 'employee'):
+        if user.get_active_employee():
             user_type = 'dasher'
     except Exception:
         pass
@@ -461,8 +467,8 @@ def wx_login(request):
         'user_info': {
             'id': user.id,
             'nickname': display_nickname,
-            'avatar': wx_user.avatar or field_file_url(user.avatar) or field_file_url(customer.avatar),
-            'phone': wx_user.phone or user.phone or customer.phone or '',
+            'avatar': wx_user.avatar or field_file_url(user.avatar) or field_file_url(customer.avatar if customer else ''),
+            'phone': wx_user.phone or user.phone or (customer.phone if customer else '') or '',
             'gender': user.gender or 'unknown',
             'user_type': user_type,
             'customer_id': customer.id if customer else None,
@@ -479,7 +485,7 @@ def test_login(request):
     if user_type == 'dasher':
         # 登录打手账号
         try:
-            employee = Employee.objects.select_related('user').first()
+            employee = Employee.objects.select_related('user').filter(is_deleted=False).first()
             if not employee:
                 return error_response(msg='没有打手账号，请先在后台创建')
             user = employee.user
@@ -489,7 +495,9 @@ def test_login(request):
         # 登录客服账号
         try:
             from apps.customer.models import CustomerService
-            cs = CustomerService.objects.select_related('customer__user').first()
+            cs = CustomerService.objects.select_related('customer__user').filter(is_deleted=False).exclude(
+                customer__user__employee__is_deleted=False
+            ).first()
             if not cs:
                 return error_response(msg='没有客服账号，请先在后台创建')
             user = cs.customer.user
@@ -499,7 +507,9 @@ def test_login(request):
         # 登录客户账号
         try:
             from apps.customer.models import Customer
-            customer = Customer.objects.select_related('user').first()
+            customer = Customer.objects.select_related('user').filter(is_deleted=False).exclude(
+                user__employee__is_deleted=False
+            ).first()
             if not customer:
                 return error_response(msg='没有客户账号，请先在后台创建')
             user = customer.user
@@ -954,10 +964,7 @@ def dispatch_hall(request):
     # 获取当前打手
     current_employee = None
     if request.user.is_authenticated:
-        try:
-            current_employee = request.user.employee
-        except Exception:
-            pass
+        current_employee = request.user.get_active_employee()
 
     queryset = Order.objects.filter(
         status='published',
@@ -994,17 +1001,13 @@ def dispatch_hall(request):
         # 检查当前打手是否已预订该订单
         my_claimed = False
         my_claimed_slots = 0
-        if request.user.is_authenticated:
-            try:
-                employee = request.user.employee
-                member = OrderMember.objects.filter(
-                    order=o, employee=employee, is_deleted=False, status__in=['accepted', 'in_progress']
-                ).first()
-                if member:
-                    my_claimed = True
-                    my_claimed_slots = parse_member_slots(member)
-            except Exception:
-                pass
+        if current_employee:
+            member = OrderMember.objects.filter(
+                order=o, employee=current_employee, is_deleted=False, status__in=['accepted', 'in_progress']
+            ).first()
+            if member:
+                my_claimed = True
+                my_claimed_slots = parse_member_slots(member)
 
         # 判断是否为预约订单（只能被预约的打手接取）
         is_reserved = bool(o.assigned_employee_id)
@@ -1108,9 +1111,8 @@ def my_orders(request):
 def employee_orders(request):
     """陪玩师订单列表 - 只显示已接取的订单"""
     user = request.user
-    try:
-        employee = user.employee
-    except Exception:
+    employee = user.get_active_employee()
+    if not employee:
         return error_response(msg='非陪玩师账号')
 
     order_status = request.GET.get('status')
@@ -1179,12 +1181,8 @@ def order_detail(request, order_id):
     user = request.user
 
     # 判断用户类型
-    is_dasher = False
-    try:
-        employee = user.employee
-        is_dasher = True
-    except Exception:
-        pass
+    employee = user.get_active_employee()
+    is_dasher = bool(employee)
 
     try:
         if is_dasher:
@@ -1378,7 +1376,9 @@ def claim_order(request, order_id):
     """
     user = request.user
     try:
-        employee = user.employee
+        employee = user.get_active_employee()
+        if not employee:
+            raise Exception()
     except Exception:
         return error_response(msg='您不是打手')
 
@@ -1486,7 +1486,9 @@ def invite_order_member(request, order_id):
     """邀请打手接取订单席位；邀请本身不锁定席位。"""
     user = request.user
     try:
-        employee = user.employee
+        employee = user.get_active_employee()
+        if not employee:
+            raise Exception()
     except Exception:
         return error_response(msg='您不是打手')
 
@@ -1543,7 +1545,9 @@ def give_up_order(request, order_id):
     """打手放弃订单（释放锁定的席位，返回派单大厅）"""
     user = request.user
     try:
-        employee = user.employee
+        employee = user.get_active_employee()
+        if not employee:
+            raise Exception()
     except Exception:
         return error_response(msg='您不是打手')
 
@@ -1645,7 +1649,9 @@ def transfer_order(request, order_id):
     """转单 - 将订单重新投放到派单大厅（只有队长可以转单）"""
     user = request.user
     try:
-        employee = user.employee
+        employee = user.get_active_employee()
+        if not employee:
+            raise Exception()
     except Exception:
         return error_response(msg='您不是打手')
 
@@ -1788,7 +1794,9 @@ def discount_order(request, order_id):
     """免单 - 打手对订单部分费用进行免除（只有队长可以免单）"""
     user = request.user
     try:
-        employee = user.employee
+        employee = user.get_active_employee()
+        if not employee:
+            raise Exception()
     except Exception:
         return error_response(msg='您不是打手')
 
@@ -1837,7 +1845,9 @@ def complete_order(request, order_id):
     """完结订单"""
     user = request.user
     try:
-        employee = user.employee
+        employee = user.get_active_employee()
+        if not employee:
+            raise Exception()
     except Exception:
         return error_response(msg='您不是打手')
 
@@ -1871,7 +1881,9 @@ def start_order(request, order_id):
     """打手开始订单（只有队长可以开始）"""
     user = request.user
     try:
-        employee = user.employee
+        employee = user.get_active_employee()
+        if not employee:
+            raise Exception()
     except Exception:
         return error_response(msg='您不是打手')
 
@@ -2464,9 +2476,10 @@ def update_profile(request):
     # 如果是打手，保存个人介绍
     if intro is not None:
         try:
-            employee = user.employee
-            employee.intro = intro
-            employee.save(update_fields=['intro'])
+            employee = user.get_active_employee()
+            if employee:
+                employee.intro = intro
+                employee.save(update_fields=['intro'])
         except Exception:
             pass
 
@@ -2474,8 +2487,9 @@ def update_profile(request):
     tags = request.data.get('tags')
     if tags is not None:
         try:
-            employee = user.employee
-            employee.tags.set(tags)
+            employee = user.get_active_employee()
+            if employee:
+                employee.tags.set(tags)
         except Exception:
             pass
 
@@ -2488,11 +2502,13 @@ def get_my_skills(request):
     """获取打手自己的技能设置"""
     user = request.user
     try:
-        employee = user.employee
+        employee = user.get_active_employee()
+        if not employee:
+            raise Exception()
     except Exception:
         return error_response(msg='您不是打手')
 
-    relations = EmployeeSkillRelation.objects.filter(employee=employee).select_related(
+    relations = EmployeeSkillRelation.objects.filter(employee=employee, is_deleted=False).select_related(
         'skill', 'skill__game_category', 'skill_level')
     my_skills = []
     for rel in relations:
@@ -2553,14 +2569,16 @@ def update_my_skills(request):
     """更新打手技能设置（增删改）"""
     user = request.user
     try:
-        employee = user.employee
+        employee = user.get_active_employee()
+        if not employee:
+            raise Exception()
     except Exception:
         return error_response(msg='您不是打手')
 
     skills_data = request.data.get('skills', [])
 
     # 先清空旧的
-    EmployeeSkillRelation.objects.filter(employee=employee).delete()
+    EmployeeSkillRelation.objects.filter(employee=employee, is_deleted=False).update(is_deleted=True)
 
     # 写入新的
     for item in skills_data:
@@ -2604,7 +2622,9 @@ def get_my_team(request):
     """获取我的组队信息"""
     user = request.user
     try:
-        employee = user.employee
+        employee = user.get_active_employee()
+        if not employee:
+            raise Exception()
     except Exception:
         return error_response(msg='您不是打手')
 
@@ -2643,7 +2663,9 @@ def create_team(request):
     """创建队伍"""
     user = request.user
     try:
-        employee = user.employee
+        employee = user.get_active_employee()
+        if not employee:
+            raise Exception()
     except Exception:
         return error_response(msg='您不是打手')
 
@@ -2672,7 +2694,9 @@ def invite_to_team(request):
     import json
     user = request.user
     try:
-        employee = user.employee
+        employee = user.get_active_employee()
+        if not employee:
+            raise Exception()
     except Exception:
         return error_response(msg='您不是打手')
 
@@ -2736,7 +2760,9 @@ def handle_team_invite(request):
     """处理组队邀请"""
     user = request.user
     try:
-        employee = user.employee
+        employee = user.get_active_employee()
+        if not employee:
+            raise Exception()
     except Exception:
         return error_response(msg='您不是打手')
 
@@ -2764,7 +2790,9 @@ def leave_team(request):
     """退出队伍"""
     user = request.user
     try:
-        employee = user.employee
+        employee = user.get_active_employee()
+        if not employee:
+            raise Exception()
     except Exception:
         return error_response(msg='您不是打手')
 

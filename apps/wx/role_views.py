@@ -177,20 +177,23 @@ def test_login(request):
     user_type = request.data.get('user_type', 'customer')
 
     if user_type == 'dasher':
-        employee = Employee.objects.select_related('user').filter(user__customer__isnull=True).first()
+        employee = Employee.objects.select_related('user').filter(is_deleted=False).exclude(
+            user__customer__is_deleted=False
+        ).first()
         if not employee:
             return error_response(msg='没有可用的打手账号')
         user = employee.user
     elif user_type == 'cs':
-        cs = CustomerService.objects.select_related('customer__user').filter(customer__user__employee__isnull=True).first()
+        cs = CustomerService.objects.select_related('customer__user').exclude(
+            customer__user__employee__is_deleted=False
+        ).first()
         if not cs:
             return error_response(msg='没有可用的客服账号')
         user = cs.customer.user
     else:
         customer = Customer.objects.select_related('user').filter(
             cs_profile__isnull=True,
-            user__employee__isnull=True,
-        ).first()
+        ).exclude(user__employee__is_deleted=False).first()
         if not customer:
             return error_response(msg='没有可用的客户账号')
         user = customer.user

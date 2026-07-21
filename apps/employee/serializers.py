@@ -140,7 +140,7 @@ class EmployeeSerializer(serializers.ModelSerializer):
         # 删除该用户的 Customer 记录，确保每个用户只存在于一张表
         if employee.user:
             from apps.customer.models import Customer
-            Customer.objects.filter(user=employee.user).delete()
+            Customer.objects.filter(user=employee.user, is_deleted=False).update(is_deleted=True)
         
         return employee
 

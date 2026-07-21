@@ -104,33 +104,77 @@ class User(AbstractUser, BaseModel):
     def get_role_codes(self):
         return list(self.roles.filter(status=True, is_deleted=False).values_list('code', flat=True))
 
+    @staticmethod
+    def _is_active_identity(identity):
+        return identity is not None and not getattr(identity, 'is_deleted', False)
+
     def get_primary_identity_code(self, customer=None, employee=None):
         role_codes = [code for code in self.get_role_codes() if code in self.IDENTITY_ROLE_CODES]
-        for code in self.IDENTITY_ROLE_PRIORITY:
-            if code in role_codes:
-                return code
 
         if employee is None:
             try:
                 employee = self.employee
             except Exception:
                 employee = None
-        if employee:
-            return 'dasher'
+        if not self._is_active_identity(employee):
+            employee = None
 
         if customer is None:
             try:
                 customer = self.customer
             except Exception:
                 customer = None
+        if not self._is_active_identity(customer):
+            customer = None
+
+        for code in self.IDENTITY_ROLE_PRIORITY:
+            if code in role_codes:
+                if code == 'dasher' and employee is None:
+                    continue
+                if code == 'cs':
+                    if customer is None:
+                        continue
+                    try:
+                        cs_profile = customer.cs_profile
+                    except Exception:
+                        continue
+                    if getattr(cs_profile, 'is_deleted', False):
+                        continue
+                if code in ('customer', 'cs') and customer is None:
+                    continue
+                return code
+
+        if employee:
+            return 'dasher'
+
         if customer:
             try:
-                customer.cs_profile
-                return 'cs'
+                cs_profile = customer.cs_profile
+                if not getattr(cs_profile, 'is_deleted', False):
+                    return 'cs'
             except Exception:
-                return 'customer'
+                pass
+            return 'customer'
 
         return 'customer'
+
+    def get_active_customer(self):
+        try:
+            customer = self.customer
+            if not getattr(customer, 'is_deleted', False):
+                return customer
+        except Exception:
+            pass
+        return None
+
+    def get_active_employee(self):
+        try:
+            employee = self.employee
+            if not getattr(employee, 'is_deleted', False):
+                return employee
+        except Exception:
+            pass
+        return None
 
     def get_user_permissions(self):
         perms = set()

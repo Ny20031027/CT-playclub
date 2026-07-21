@@ -101,16 +101,12 @@ class UserInfoSerializer(serializers.ModelSerializer):
         return obj.get_primary_identity_code()
 
     def get_customer_id(self, obj):
-        try:
-            return obj.customer.id
-        except Exception:
-            return None
+        customer = obj.get_active_customer()
+        return customer.id if customer else None
 
     def get_employee_id(self, obj):
-        try:
-            return obj.employee.id
-        except Exception:
-            return None
+        employee = obj.get_active_employee()
+        return employee.id if employee else None
 
 
 class UserSerializer(serializers.ModelSerializer):
