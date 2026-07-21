@@ -136,6 +136,12 @@ class EmployeeSerializer(serializers.ModelSerializer):
             employee.tags.set(tags)
         EmployeeWallet.objects.get_or_create(employee=employee)
         EmployeeStatus.objects.get_or_create(employee=employee)
+        
+        # 删除该用户的 Customer 记录，确保每个用户只存在于一张表
+        if employee.user:
+            from apps.customer.models import Customer
+            Customer.objects.filter(user=employee.user).delete()
+        
         return employee
 
     def update(self, instance, validated_data):

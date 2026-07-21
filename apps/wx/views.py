@@ -400,26 +400,33 @@ def wx_login(request):
     user.last_login = timezone.now()
     user.save(update_fields=['last_login'])
 
-    # 自动创建客户记录（如果不存在）
+    # 判断用户类型
+    is_dasher = hasattr(user, 'employee')
+
+    # 只有非打手用户才自动创建客户记录
     from apps.customer.models import Customer
-    customer, created = Customer.objects.get_or_create(
-        user=user,
-        defaults={
-            'nickname': wx_user.nickname or user.nickname or f'用户{openid[-6:]}',
-            'avatar': wx_user.avatar or '',
-            'phone': wx_user.phone or '',
-            'source': '小程序',
-        }
-    )
-    if not created:
-        # 更新客户信息
-        if wx_user.nickname and customer.nickname != wx_user.nickname:
-            customer.nickname = wx_user.nickname
-        if wx_user.avatar and customer.avatar != wx_user.avatar:
-            customer.avatar = wx_user.avatar
-        if wx_user.phone and customer.phone != wx_user.phone:
-            customer.phone = wx_user.phone
-        customer.save()
+    customer = None
+    if not is_dasher:
+        customer, created = Customer.objects.get_or_create(
+            user=user,
+            defaults={
+                'nickname': wx_user.nickname or user.nickname or f'用户{openid[-6:]}',
+                'avatar': wx_user.avatar or '',
+                'phone': wx_user.phone or '',
+                'source': '小程序',
+            }
+        )
+        if not created:
+            if wx_user.nickname and customer.nickname != wx_user.nickname:
+                customer.nickname = wx_user.nickname
+            if wx_user.avatar and customer.avatar != wx_user.avatar:
+                customer.avatar = wx_user.avatar
+            if wx_user.phone and customer.phone != wx_user.phone:
+                customer.phone = wx_user.phone
+            customer.save()
+    else:
+        # 打手登录时，删除可能存在的 Customer 记录
+        Customer.objects.filter(user=user).delete()
 
     related = get_related_profile_objects(user)
     display_nickname = choose_display_nickname(
