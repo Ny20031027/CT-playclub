@@ -16,6 +16,8 @@ class CommonConfig(AppConfig):
 
     def _auto_migrate(self):
         import time
+        import logging
+        logger = logging.getLogger('django')
         from django.core.management import call_command
         # 等待数据库就绪
         for i in range(30):
@@ -26,11 +28,11 @@ class CommonConfig(AppConfig):
             except Exception:
                 time.sleep(2)
         try:
-            # 只执行 migrate，不要用 --run-syncdb（避免重复创建表）
-            call_command('migrate', verbosity=0)
+            logger.info('Starting auto migrate...')
+            call_command('migrate', verbosity=1)
+            logger.info('Auto migrate completed successfully')
         except Exception as e:
-            import logging
-            logging.getLogger('django').warning(f'Auto migrate failed: {e}')
+            logger.error(f'Auto migrate failed: {e}')
             return
         # 自动创建超级管理员（如果不存在）
         self._create_default_admin()
