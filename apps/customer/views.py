@@ -25,10 +25,7 @@ class CustomerViewSet(BaseModelViewSet):
         return queryset.filter(
             cs_profile__isnull=True
         ).filter(
-            Q(user__isnull=True) | (
-                Q(user__employee__isnull=True) &
-                Q(user__customer__cs_profile__isnull=True)
-            )
+            Q(user__isnull=True) | Q(user__employee__isnull=True)
         )
 
     @action(detail=False, methods=['get'], url_path='simple')

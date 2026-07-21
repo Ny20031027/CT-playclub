@@ -25,12 +25,9 @@ class EmployeeViewSet(BaseModelViewSet):
 
     def get_queryset(self):
         queryset = super().get_queryset()
-        # 排除客户和客服身份的用户，确保每个用户只存在于一个列表
+        # 排除客户身份的用户，确保每个用户只存在于一个列表
         return queryset.filter(
-            Q(user__isnull=True) | (
-                Q(user__customer__isnull=True) &
-                Q(user__customer__cs_profile__isnull=True)
-            )
+            Q(user__isnull=True) | Q(user__customer__isnull=True)
         )
 
     @action(detail=False, methods=['get'], url_path='simple')
