@@ -29,7 +29,7 @@ class CommonConfig(AppConfig):
             except Exception:
                 time.sleep(2)
         
-        # 直接用 SQL 确保关键列存在
+        # 直接用 SQL 确保关键列存在且允许 NULL
         try:
             cursor = connections['default'].cursor()
             # 检查 assigned_employee_id 列是否存在
@@ -43,8 +43,21 @@ class CommonConfig(AppConfig):
                 logger.info('Adding assigned_employee_id column...')
                 cursor.execute("ALTER TABLE ord_order ADD COLUMN assigned_employee_id int NULL")
                 logger.info('Column added successfully')
+            
+            # 确保 OrderMember.employee_id 允许 NULL
+            cursor.execute("""
+                SELECT IS_NULLABLE FROM INFORMATION_SCHEMA.COLUMNS 
+                WHERE TABLE_SCHEMA = DATABASE() 
+                AND TABLE_NAME = 'ord_ordermember' 
+                AND COLUMN_NAME = 'employee_id'
+            """)
+            result = cursor.fetchone()
+            if result and result[0] == 'NO':
+                logger.info('Making ordermember.employee_id nullable...')
+                cursor.execute("ALTER TABLE ord_ordermember MODIFY COLUMN employee_id int NULL")
+                logger.info('Column updated successfully')
         except Exception as e:
-            logger.error(f'Failed to add column via SQL: {e}')
+            logger.error(f'Failed to update columns via SQL: {e}')
         
         # 然后执行标准迁移
         try:
