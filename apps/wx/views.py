@@ -1690,6 +1690,89 @@ def transfer_order(request, order_id):
 
 @api_view(['POST'])
 @permission_classes([IsAuthenticated])
+@transaction.atomic
+def kick_member(request, order_id):
+    """客户踢出订单中的打手（订单开始前）"""
+    user = request.user
+    try:
+        customer = user.customer
+    except Exception:
+        return error_response(msg='用户不存在')
+
+    try:
+        order = Order.objects.select_for_update().get(id=order_id, customer=customer, is_deleted=False)
+    except Order.DoesNotExist:
+        return error_response(msg='订单不存在')
+
+    # 只有订单开始前（in_progress之前）才能踢人
+    if order.status not in ['published', 'confirming', 'claimed']:
+        return error_response(msg='订单已开始，无法踢人')
+
+    member_id = request.data.get('member_id')
+    if not member_id:
+        return error_response(msg='请选择要踢出的打手')
+
+    try:
+        member = OrderMember.objects.get(id=member_id, order=order, is_deleted=False)
+    except OrderMember.DoesNotExist:
+        return error_response(msg='该打手不在订单中')
+
+    # 记录被踢打手信息
+    kicked_name = member.employee.nickname or member.employee.real_name
+
+    # 释放席位
+    slots_released = parse_member_slots(member)
+    order.locked_slots = max(0, order.locked_slots - slots_released)
+
+    # 删除订单成员记录
+    member.delete()
+
+    # 如果被踢的是队长，转移队长
+    if order.leader_id == member.employee_id:
+        next_member = OrderMember.objects.filter(
+            order=order, is_deleted=False, status__in=ACTIVE_ORDER_MEMBER_STATUSES
+        ).order_by('id').first()
+        if next_member:
+            order.leader = next_member.employee
+        else:
+            order.leader = None
+
+    # 如果踢人后没有成员了，恢复订单状态
+    remaining_members = OrderMember.objects.filter(
+        order=order, is_deleted=False, status__in=ACTIVE_ORDER_MEMBER_STATUSES
+    ).count()
+
+    if remaining_members == 0:
+        order.status = 'published'
+        order.leader = None
+        order.customer_confirmed = False
+        order.dasher_confirmed = False
+
+    order.save(update_fields=['status', 'locked_slots', 'leader', 'customer_confirmed', 'dasher_confirmed', 'updated_at'])
+
+    # 通知被踢的打手
+    try:
+        from apps.notice.models import Notice, UserNotice
+        notice = Notice.objects.create(
+            title='订单移除通知',
+            content=f'您已被从订单 {order.order_no} 中移除',
+            type='order',
+            level='warning',
+            sender=user,
+            target_type='user',
+            target_ids=str(member.employee.user_id),
+            jump_url=f'/pages/order-detail/order-detail?id={order.id}',
+            publish_time=timezone.now(),
+        )
+        UserNotice.objects.create(notice=notice, user=member.employee.user)
+    except Exception:
+        pass
+
+    return success_response(msg=f'已将{kicked_name}从订单中移除')
+
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
 def discount_order(request, order_id):
     """免单 - 打手对订单部分费用进行免除（只有队长可以免单）"""
     user = request.user
