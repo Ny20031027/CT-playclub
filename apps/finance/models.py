@@ -34,9 +34,8 @@ class Transaction(BaseModel):
     wallet = models.ForeignKey(Wallet, on_delete=models.PROTECT,
                                related_name='transactions', null=True, blank=True,
                                verbose_name='钱包')
-    employee = models.ForeignKey(Employee, on_delete=models.PROTECT,
-                                 related_name='transactions', null=True, blank=True,
-                                 verbose_name='陪玩师')
+    employee = models.ForeignKey(Employee, on_delete=models.SET_NULL, null=True, blank=True,
+                                 related_name='transactions', verbose_name='陪玩师')
     order_no = models.CharField(max_length=50, blank=True, verbose_name='关联订单号')
     transaction_no = models.CharField(max_length=50, unique=True, verbose_name='流水号')
     type = models.CharField(max_length=20, choices=[
@@ -106,7 +105,7 @@ class Settlement(BaseModel):
 class SettlementDetail(BaseModel):
     settlement = models.ForeignKey(Settlement, on_delete=models.CASCADE,
                                    related_name='details', verbose_name='结算单')
-    employee = models.ForeignKey(Employee, on_delete=models.PROTECT,
+    employee = models.ForeignKey(Employee, on_delete=models.SET_NULL, null=True, blank=True,
                                  related_name='settlement_details', verbose_name='陪玩师')
     order_count = models.IntegerField(default=0, verbose_name='订单数')
     total_duration = models.IntegerField(default=0, verbose_name='总时长(分钟)')
@@ -133,7 +132,7 @@ class SettlementDetail(BaseModel):
 
 class Salary(BaseModel):
     salary_no = models.CharField(max_length=50, unique=True, verbose_name='工资单号')
-    employee = models.ForeignKey(Employee, on_delete=models.PROTECT,
+    employee = models.ForeignKey(Employee, on_delete=models.SET_NULL, null=True, blank=True,
                                  related_name='salaries', verbose_name='陪玩师')
     month = models.CharField(max_length=7, verbose_name='月份(YYYY-MM)')
     base_salary = models.DecimalField(max_digits=10, decimal_places=2, default=0,
@@ -176,7 +175,7 @@ class Salary(BaseModel):
 
 class Withdraw(BaseModel):
     withdraw_no = models.CharField(max_length=50, unique=True, verbose_name='提现单号')
-    employee = models.ForeignKey(Employee, on_delete=models.PROTECT,
+    employee = models.ForeignKey(Employee, on_delete=models.SET_NULL, null=True, blank=True,
                                  related_name='withdrawals', verbose_name='陪玩师')
     amount = models.DecimalField(max_digits=10, decimal_places=2, verbose_name='提现金额')
     fee = models.DecimalField(max_digits=10, decimal_places=2, default=0,

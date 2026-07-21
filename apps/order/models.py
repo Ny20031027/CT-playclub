@@ -102,7 +102,7 @@ class Order(BaseModel):
 class OrderMember(BaseModel):
     order = models.ForeignKey(Order, on_delete=models.CASCADE,
                               related_name='order_members', verbose_name='订单')
-    employee = models.ForeignKey(Employee, on_delete=models.PROTECT,
+    employee = models.ForeignKey(Employee, on_delete=models.SET_NULL, null=True, blank=True,
                                  related_name='order_members', verbose_name='陪玩师')
     skill = models.ForeignKey(EmployeeSkill, on_delete=models.SET_NULL, null=True, blank=True,
                               related_name='order_members', verbose_name='技能')
@@ -167,7 +167,7 @@ class OrderComment(BaseModel):
                                  related_name='comment', verbose_name='订单')
     customer = models.ForeignKey(Customer, on_delete=models.PROTECT,
                                  related_name='comments', verbose_name='客户')
-    employee = models.ForeignKey(Employee, on_delete=models.PROTECT,
+    employee = models.ForeignKey(Employee, on_delete=models.SET_NULL, null=True, blank=True,
                                  related_name='comments', verbose_name='陪玩师')
     rating = models.IntegerField(default=5, verbose_name='评分(1-5)')
     content = models.TextField(blank=True, verbose_name='评价内容')
