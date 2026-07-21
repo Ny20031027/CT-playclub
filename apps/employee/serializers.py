@@ -79,23 +79,38 @@ class EmployeeSerializer(serializers.ModelSerializer):
     department_name = serializers.CharField(source='department.name', read_only=True)
     tag_names = serializers.SerializerMethodField()
     skill_list = serializers.SerializerMethodField()
+    avatar_url = serializers.SerializerMethodField()
     wallet = EmployeeWalletSerializer(read_only=True)
 
     class Meta:
         model = Employee
         fields = ['id', 'user', 'username', 'password', 'employee_no', 'real_name', 'nickname',
-                  'phone', 'avatar', 'gender', 'age', 'birthday', 'id_card',
+                  'phone', 'avatar', 'avatar_url', 'gender', 'age', 'birthday', 'id_card',
                   'id_card_verified', 'department', 'department_name', 'level', 'level_num', 'status',
                   'online_status', 'skills', 'tags', 'tag_names', 'skill_list',
                   'intro', 'rating', 'order_count', 'total_duration', 'join_date',
                   'bank_name', 'bank_card', 'alipay', 'wechat', 'qq', 'sort', 'remark',
                   'wallet', 'created_at', 'updated_at']
         read_only_fields = ['id', 'rating', 'order_count', 'total_duration',
-                            'online_status', 'created_at', 'updated_at', 'user', 'username']
+                            'online_status', 'created_at', 'updated_at', 'user', 'username', 'avatar_url']
         extra_kwargs = {
             'employee_no': {'required': False},
             'real_name': {'required': False},
         }
+
+    def get_avatar_url(self, obj):
+        import os
+        if not obj.avatar:
+            return ''
+        avatar_str = str(obj.avatar)
+        if avatar_str.startswith('http'):
+            return avatar_str
+        # 补全 COS 域名
+        cos_bucket = os.environ.get('COS_BUCKET', '')
+        cos_region = os.environ.get('COS_REGION', 'ap-guangzhou')
+        if cos_bucket:
+            return f'https://{cos_bucket}.cos.{cos_region}.myqcloud.com/{avatar_str}'
+        return avatar_str
 
     def get_tag_names(self, obj):
         return list(obj.tags.filter(status=True).values_list('name', flat=True))

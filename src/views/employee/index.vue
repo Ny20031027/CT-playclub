@@ -21,7 +21,7 @@
         <el-table-column prop="id" label="ID" width="60" />
         <el-table-column prop="avatar" label="头像" width="80">
           <template #default="scope">
-            <el-image :src="scope.row.avatar" fit="cover" style="width: 48px; height: 48px; border-radius: 50%" />
+            <el-image :src="scope.row.avatar_url || scope.row.avatar" fit="cover" style="width: 48px; height: 48px; border-radius: 50%" />
           </template>
         </el-table-column>
         <el-table-column prop="name" label="姓名" />
