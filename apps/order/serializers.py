@@ -1,4 +1,5 @@
 from rest_framework import serializers
+from apps.common.media import build_media_url
 from .models import (
     Order, OrderMember, OrderPrice, OrderComment, OrderRefund, OrderStatus
 )
@@ -10,9 +11,7 @@ class OrderMemberSerializer(serializers.ModelSerializer):
     skill_name = serializers.CharField(source='skill.name', read_only=True)
 
     def get_employee_avatar(self, obj):
-        if obj.employee and obj.employee.avatar:
-            return obj.employee.avatar.url
-        return ''
+        return build_media_url(obj.employee.avatar if obj.employee else '', self.context.get('request'))
 
     class Meta:
         model = OrderMember
@@ -32,9 +31,7 @@ class OrderSerializer(serializers.ModelSerializer):
     status_text = serializers.CharField(source='get_status_display', read_only=True)
 
     def get_customer_avatar(self, obj):
-        if obj.customer and obj.customer.avatar:
-            return obj.customer.avatar.url
-        return ''
+        return build_media_url(obj.customer.avatar if obj.customer else '', self.context.get('request'))
 
     class Meta:
         model = Order

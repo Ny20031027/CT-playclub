@@ -4,6 +4,7 @@ from rest_framework.decorators import action, api_view, permission_classes
 from rest_framework.permissions import AllowAny
 
 from apps.common.response import success_response, error_response
+from apps.common.media import build_media_url
 from apps.common.viewsets import BaseModelViewSet
 from .models import Customer, CustomerLevel, CustomerTag, Blacklist, CustomerConsumeRecord, CustomerService
 from .serializers import (
@@ -158,7 +159,8 @@ def cs_list(request):
             'id': record.id,
             'customer_id': record.customer_id,
             'nickname': record.customer.nickname,
-            'avatar': record.customer.avatar.url if record.customer.avatar else '',
+            'avatar': str(record.customer.avatar).strip() if record.customer.avatar else '',
+            'avatar_url': build_media_url(record.customer.avatar, request),
             'phone': record.customer.phone,
             'status': record.status,
         })

@@ -20,6 +20,7 @@
             <thead>
                 <tr>
                     <th>ID</th>
+                    <th>头像</th>
                     <th>昵称</th>
                     <th>手机号</th>
                     <th>等级</th>
@@ -30,7 +31,7 @@
                 </tr>
             </thead>
             <tbody id="customerList">
-                <tr><td colspan="8" class="empty-state"><i class="fa-solid fa-spinner fa-spin"></i><br>加载中...</td></tr>
+                <tr><td colspan="9" class="empty-state"><i class="fa-solid fa-spinner fa-spin"></i><br>加载中...</td></tr>
             </tbody>
         </table>
     </div>
@@ -87,13 +88,14 @@
                 const tbody = document.getElementById('customerList');
                 
                 if (customers.length === 0) {
-                    tbody.innerHTML = '<tr><td colspan="8" class="empty-state"><i class="fa-solid fa-inbox"></i><br>暂无数据</td></tr>';
+                    tbody.innerHTML = '<tr><td colspan="9" class="empty-state"><i class="fa-solid fa-inbox"></i><br>暂无数据</td></tr>';
                     return;
                 }
                 
                 tbody.innerHTML = customers.map(cust => `
                     <tr>
                         <td>${cust.id}</td>
+                        <td>${avatarHtml(cust, 40)}</td>
                         <td>${cust.nickname || '-'}</td>
                         <td>${cust.phone || '-'}</td>
                         <td><span class="badge ${getLevelBadge(cust.level)}">${getLevelText(cust.level)}</span></td>

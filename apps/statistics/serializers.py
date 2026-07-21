@@ -1,4 +1,5 @@
 from rest_framework import serializers
+from apps.common.media import build_media_url
 from .models import DailyStat, MonthlyStat, EmployeeRank
 
 
@@ -19,9 +20,7 @@ class EmployeeRankSerializer(serializers.ModelSerializer):
     employee_avatar = serializers.SerializerMethodField()
 
     def get_employee_avatar(self, obj):
-        if obj.employee and obj.employee.avatar:
-            return obj.employee.avatar.url
-        return ''
+        return build_media_url(obj.employee.avatar if obj.employee else '', self.context.get('request'))
 
     class Meta:
         model = EmployeeRank

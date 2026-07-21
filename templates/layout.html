@@ -74,6 +74,26 @@
 
     <script src="/static/js/api.js"></script>
     <script>
+        function escapeHtmlAttr(value) {
+            return String(value || '')
+                .replace(/&/g, '&amp;')
+                .replace(/"/g, '&quot;')
+                .replace(/</g, '&lt;')
+                .replace(/>/g, '&gt;');
+        }
+
+        function getAvatarUrl(record) {
+            return (record && (record.avatar_url || record.avatar)) || '';
+        }
+
+        function avatarHtml(record, size = 40) {
+            const url = escapeHtmlAttr(getAvatarUrl(record));
+            const iconSize = Math.max(28, size);
+            const icon = (display = 'inline-block') => `<i class="fa-solid fa-user-circle" style="display:${display};font-size:${iconSize}px;color:#ccc;"></i>`;
+            if (!url) return icon();
+            return `<img src="${url}" style="width:${size}px;height:${size}px;border-radius:50%;object-fit:cover;" onerror="this.style.display='none';this.nextElementSibling.style.display='inline-block';">${icon('none')}`;
+        }
+
         document.addEventListener('DOMContentLoaded', function() {
             const userInfo = getUserInfo();
             if (userInfo) {

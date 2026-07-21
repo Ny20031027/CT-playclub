@@ -6,6 +6,7 @@ from rest_framework.decorators import action
 from rest_framework.permissions import IsAuthenticated
 
 from apps.common.response import success_response
+from apps.common.media import build_media_url
 from apps.common.viewsets import BaseModelViewSet
 from .models import DailyStat, MonthlyStat, EmployeeRank
 from .serializers import DailyStatSerializer, MonthlyStatSerializer, EmployeeRankSerializer
@@ -134,7 +135,7 @@ class StatisticsViewSet(viewsets.ViewSet):
                     'rank': idx,
                     'employee_id': emp.id,
                     'employee_name': emp.nickname,
-                    'employee_avatar': emp.avatar.url if emp.avatar else '',
+                    'employee_avatar': build_media_url(emp.avatar, request),
                     'order_count': item['order_count'],
                     'total_duration': item['total_duration'] or 0,
                     'total_amount': float(item['total_amount'] or 0),

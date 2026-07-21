@@ -1,4 +1,5 @@
 from rest_framework import serializers
+from apps.common.media import build_media_url
 from .models import (
     Employee, EmployeeSkill, EmployeeTag, EmployeeWallet,
     EmployeeContract, EmployeeStatus, EmployeeSkillRelation, SkillLevel
@@ -99,18 +100,7 @@ class EmployeeSerializer(serializers.ModelSerializer):
         }
 
     def get_avatar_url(self, obj):
-        import os
-        if not obj.avatar:
-            return ''
-        avatar_str = str(obj.avatar)
-        if avatar_str.startswith('http'):
-            return avatar_str
-        # 补全 COS 域名
-        cos_bucket = os.environ.get('COS_BUCKET', '')
-        cos_region = os.environ.get('COS_REGION', 'ap-guangzhou')
-        if cos_bucket:
-            return f'https://{cos_bucket}.cos.{cos_region}.myqcloud.com/{avatar_str}'
-        return avatar_str
+        return build_media_url(obj.avatar, self.context.get('request'))
 
     def get_tag_names(self, obj):
         return list(obj.tags.filter(status=True).values_list('name', flat=True))
@@ -171,7 +161,12 @@ class EmployeeSerializer(serializers.ModelSerializer):
 
 
 class EmployeeSimpleSerializer(serializers.ModelSerializer):
+    avatar_url = serializers.SerializerMethodField()
+
     class Meta:
         model = Employee
-        fields = ['id', 'nickname', 'avatar', 'level', 'status', 'rating']
+        fields = ['id', 'nickname', 'avatar', 'avatar_url', 'level', 'status', 'rating']
         read_only_fields = fields
+
+    def get_avatar_url(self, obj):
+        return build_media_url(obj.avatar, self.context.get('request'))

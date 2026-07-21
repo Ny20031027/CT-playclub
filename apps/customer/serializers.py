@@ -1,4 +1,5 @@
 from rest_framework import serializers
+from apps.common.media import build_media_url
 from .models import (
     Customer, CustomerLevel, CustomerTag, Blacklist, CustomerConsumeRecord
 )
@@ -24,10 +25,11 @@ class CustomerSerializer(serializers.ModelSerializer):
     level_color = serializers.CharField(source='level.color', read_only=True)
     tag_names = serializers.SerializerMethodField()
     is_blacklisted = serializers.SerializerMethodField()
+    avatar_url = serializers.SerializerMethodField()
 
     class Meta:
         model = Customer
-        fields = ['id', 'user', 'nickname', 'avatar', 'phone', 'email', 'gender',
+        fields = ['id', 'user', 'nickname', 'avatar', 'avatar_url', 'phone', 'email', 'gender',
                   'age', 'wechat', 'qq', 'level', 'level_name', 'level_color',
                   'tags', 'tag_names', 'total_amount', 'total_orders', 'balance',
                   'status', 'source', 'first_order_date', 'last_order_date',
@@ -40,6 +42,9 @@ class CustomerSerializer(serializers.ModelSerializer):
 
     def get_is_blacklisted(self, obj):
         return obj.blacklist_records.filter(status=True, is_deleted=False).exists()
+
+    def get_avatar_url(self, obj):
+        return build_media_url(obj.avatar, self.context.get('request'))
 
     def create(self, validated_data):
         tags = validated_data.pop('tags', [])
@@ -60,11 +65,15 @@ class CustomerSerializer(serializers.ModelSerializer):
 
 class CustomerSimpleSerializer(serializers.ModelSerializer):
     level_name = serializers.CharField(source='level.name', read_only=True)
+    avatar_url = serializers.SerializerMethodField()
 
     class Meta:
         model = Customer
-        fields = ['id', 'nickname', 'avatar', 'level', 'level_name', 'phone']
+        fields = ['id', 'nickname', 'avatar', 'avatar_url', 'level', 'level_name', 'phone']
         read_only_fields = fields
+
+    def get_avatar_url(self, obj):
+        return build_media_url(obj.avatar, self.context.get('request'))
 
 
 class BlacklistSerializer(serializers.ModelSerializer):

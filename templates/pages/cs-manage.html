@@ -128,7 +128,7 @@
                 tbody.innerHTML = list.map(cs => `
                     <tr>
                         <td>${cs.id}</td>
-                        <td>${cs.avatar ? `<img src="${cs.avatar}" style="width:40px;height:40px;border-radius:50%;object-fit:cover;">` : '<i class="fa-solid fa-user-circle" style="font-size:40px;color:#ccc;"></i>'}</td>
+                        <td>${avatarHtml(cs, 40)}</td>
                         <td>${cs.nickname || '-'}</td>
                         <td>${cs.phone || '-'}</td>
                         <td><span class="badge ${cs.status === 'online' ? 'badge-success' : 'badge-secondary'}">${cs.status === 'online' ? '在线' : '离线'}</span></td>
@@ -190,7 +190,7 @@
         list.innerHTML = customers.map(c => `
             <div class="customer-select-item ${selectedCSCustomerId === c.id ? 'selected' : ''}" 
                  onclick="selectCSCustomer(${c.id}, '${(c.nickname || '').replace(/'/g, "\\'")}')">
-                ${c.avatar ? `<img src="${c.avatar}">` : '<i class="fa-solid fa-user" style="font-size:32px;color:#ccc;"></i>'}
+                ${avatarHtml(c, 32)}
                 <div>
                     <div><strong>${c.nickname || '未设置昵称'}</strong></div>
                     <div style="font-size:12px;color:#999;">${c.phone || '未绑定手机'} | ID: ${c.id}</div>

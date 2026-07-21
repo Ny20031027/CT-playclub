@@ -224,7 +224,7 @@
                 tbody.innerHTML = employees.map(emp => {
                     const status = statusMap[emp.status] || { text: emp.status, class: 'badge-info' };
                     const levelText = emp.level_num || 0;
-                    const avatar = emp.avatar ? `<img src="${emp.avatar}" style="width: 48px; height: 48px; border-radius: 50%; object-fit: cover;">` : '<i class="fa-solid fa-user-circle" style="font-size: 48px; color: #ccc;"></i>';
+                    const avatar = avatarHtml(emp, 48);
                     return `
                     <tr>
                         <td>${emp.id}</td>
@@ -295,8 +295,8 @@
         }
         list.innerHTML = customers.map(c => `
             <div class="customer-select-item ${selectedCustomerId === c.id ? 'selected' : ''}" 
-                 onclick="selectCustomer(${c.id}, '${(c.nickname || '').replace(/'/g, "\\'")}', '${(c.avatar || '').replace(/'/g, "\\'")}')">
-                ${c.avatar ? `<img src="${c.avatar}">` : '<i class="fa-solid fa-user" style="font-size:32px;color:#ccc;"></i>'}
+                 onclick="selectCustomer(${c.id}, '${(c.nickname || '').replace(/'/g, "\\'")}', '${getAvatarUrl(c).replace(/'/g, "\\'")}')">
+                ${avatarHtml(c, 32)}
                 <div>
                     <div><strong>${c.nickname || '未设置昵称'}</strong></div>
                     <div style="font-size:12px;color:#999;">${c.phone || '未绑定手机'} | ID: ${c.id}</div>
