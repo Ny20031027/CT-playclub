@@ -869,6 +869,7 @@ def create_order(request):
         server=server,
         remark=remark,
         platform='mini_program',
+        assigned_employee_id=employee_id if employee_id else None,
     )
 
     return success_response({
@@ -941,6 +942,14 @@ def dispatch_hall(request):
     game_name = request.GET.get('game_name', '')
     keyword = request.GET.get('keyword', '')
 
+    # 获取当前打手
+    current_employee = None
+    if request.user.is_authenticated:
+        try:
+            current_employee = request.user.employee
+        except Exception:
+            pass
+
     queryset = Order.objects.filter(
         status='published',
         is_deleted=False
@@ -956,7 +965,7 @@ def dispatch_hall(request):
 
     total = queryset.count()
     start = (page - 1) * page_size
-    orders = queryset.select_related('customer')[start:start + page_size]
+    orders = queryset.select_related('customer', 'assigned_employee')[start:start + page_size]
 
     order_list = []
     for o in orders:
@@ -967,6 +976,10 @@ def dispatch_hall(request):
         remaining_slots = get_remaining_slots(o)
         # 只显示还有剩余席位的订单
         if remaining_slots > 0:
+            # 如果是预约订单，只显示给被预约的打手
+            if o.assigned_employee_id and current_employee and o.assigned_employee_id != current_employee.id:
+                continue
+
             # 检查当前打手是否已预订该订单
             my_claimed = False
             my_claimed_slots = 0
@@ -981,6 +994,10 @@ def dispatch_hall(request):
                         my_claimed_slots = parse_member_slots(member)
                 except Exception:
                     pass
+
+            # 判断是否为预约订单（只能被预约的打手接取）
+            is_reserved = bool(o.assigned_employee_id)
+            can_claim = not is_reserved or (current_employee and o.assigned_employee_id == current_employee.id)
 
             order_list.append({
                 'id': o.id,
@@ -1001,6 +1018,9 @@ def dispatch_hall(request):
                 'my_claimed_slots': my_claimed_slots,
                 'transfer_reason': o.transfer_reason or '',
                 'is_transfer': bool(o.transfer_reason),
+                'is_reserved': is_reserved,
+                'can_claim': can_claim,
+                'assigned_employee_name': o.assigned_employee.nickname if o.assigned_employee else '',
             })
 
     return success_response({
@@ -1359,6 +1379,10 @@ def claim_order(request, order_id):
     # 检查订单状态是否可接取
     if order.status != 'published':
         return error_response(msg='订单当前状态不可接取')
+
+    # 如果是预约订单，只有被预约的打手可以接取
+    if order.assigned_employee_id and order.assigned_employee_id != employee.id:
+        return error_response(msg='该订单为预约订单，仅被预约的打手可以接取')
 
     # 计算剩余可接取的席位（未被锁定的）
     remaining_slots = get_remaining_slots(order)

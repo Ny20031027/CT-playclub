@@ -35,6 +35,8 @@ class Order(BaseModel):
     locked_slots = models.IntegerField(default=0, verbose_name='已锁定席位')
     leader = models.ForeignKey('employee.Employee', on_delete=models.SET_NULL, null=True, blank=True,
                                related_name='led_orders', verbose_name='队长')
+    assigned_employee = models.ForeignKey('employee.Employee', on_delete=models.SET_NULL, null=True, blank=True,
+                                          related_name='assigned_orders', verbose_name='预约打手')
     duration = models.IntegerField(default=0, verbose_name='时长(分钟)')
     unit_price = models.DecimalField(max_digits=10, decimal_places=2, default=0,
                                      verbose_name='单价')
