@@ -3039,6 +3039,7 @@ def cs_ticket_list(request):
             'id': t.id,
             'ticket_no': t.ticket_no,
             'order_no': t.order.order_no,
+            'customer_id': t.customer.user_id if t.customer else None,
             'customer_name': t.customer.nickname if t.customer else '',
             'employee_name': t.employee.nickname if t.employee else '',
             'title': t.title,
