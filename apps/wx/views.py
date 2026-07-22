@@ -3004,3 +3004,78 @@ def my_tickets(request):
         'page_size': page_size,
         'list': data,
     })
+
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def cs_ticket_list(request):
+    """客服查看所有工单列表"""
+    status = request.GET.get('status', '')
+    keyword = request.GET.get('keyword', '')
+
+    tickets = SupportTicket.objects.filter(is_deleted=False).select_related(
+        'order', 'customer', 'employee', 'handler'
+    )
+
+    if status:
+        tickets = tickets.filter(status=status)
+    if keyword:
+        from django.db.models import Q
+        tickets = tickets.filter(
+            Q(ticket_no__icontains=keyword) |
+            Q(order__order_no__icontains=keyword) |
+            Q(customer__nickname__icontains=keyword)
+        )
+
+    tickets = tickets.order_by('-created_at')
+    page = int(request.GET.get('page', 1))
+    page_size = int(request.GET.get('page_size', 20))
+    total = tickets.count()
+    start = (page - 1) * page_size
+
+    data = []
+    for t in tickets[start:start + page_size]:
+        data.append({
+            'id': t.id,
+            'ticket_no': t.ticket_no,
+            'order_no': t.order.order_no,
+            'customer_name': t.customer.nickname if t.customer else '',
+            'employee_name': t.employee.nickname if t.employee else '',
+            'title': t.title,
+            'description': t.description,
+            'status': t.status,
+            'status_display': t.get_status_display(),
+            'handler_name': t.handler.username if t.handler else '',
+            'handle_remark': t.handle_remark,
+            'order_snapshot': t.order_snapshot,
+            'closed_at': t.closed_at.strftime('%Y-%m-%d %H:%M') if t.closed_at else None,
+            'created_at': t.created_at.strftime('%Y-%m-%d %H:%M'),
+        })
+
+    return success_response({
+        'total': total,
+        'page': page,
+        'page_size': page_size,
+        'list': data,
+    })
+
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def cs_close_ticket(request, ticket_id):
+    """客服关闭工单"""
+    try:
+        ticket = SupportTicket.objects.get(id=ticket_id, is_deleted=False)
+    except SupportTicket.DoesNotExist:
+        return error_response(msg='工单不存在')
+
+    if ticket.status == SupportTicket.TicketStatus.CLOSED:
+        return error_response(msg='工单已关闭')
+
+    ticket.status = SupportTicket.TicketStatus.CLOSED
+    ticket.handler = request.user
+    ticket.handle_remark = request.data.get('remark', '')
+    ticket.closed_at = timezone.now()
+    ticket.save()
+
+    return success_response(msg='工单已关闭')
