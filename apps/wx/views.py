@@ -4,6 +4,7 @@ import requests
 from django.utils import timezone
 from django.conf import settings
 from django.db import transaction
+from django.db.models import Q
 from rest_framework import viewsets, status
 from rest_framework.decorators import api_view, permission_classes, action
 from rest_framework.permissions import AllowAny, IsAuthenticated
@@ -13,6 +14,7 @@ from apps.common.viewsets import BaseModelViewSet
 from apps.account.models import User
 from apps.employee.models import Employee, EmployeeSkill, EmployeeSkillRelation, EmployeeTag, SkillLevel
 from apps.order.models import Order, OrderMember, OrderComment, OrderPrice, OrderStatus
+from apps.order.comment_utils import create_order_comment_with_retry
 from apps.notice.models import Notice, UserNotice
 from .models import WxUser, Banner, Announcement, GameCategory, Gift
 from .serializers import (
@@ -1999,9 +2001,17 @@ def comment_order(request, order_id):
         employee = member.employee if member else None
 
     # 检查是否已经评价过该打手
-    existing = OrderComment.objects.filter(
-        order=order, employee=employee, is_deleted=False
-    ).first()
+    if not employee:
+        return error_response(msg='评价的打手不存在')
+
+    existing_qs = OrderComment.objects.filter(order=order, is_deleted=False)
+    if member:
+        existing_qs = existing_qs.filter(
+            Q(member=member) | Q(member__isnull=True, employee=employee)
+        )
+    else:
+        existing_qs = existing_qs.filter(employee=employee)
+    existing = existing_qs.first()
 
     if existing:
         # 更新已有评价
@@ -2012,7 +2022,7 @@ def comment_order(request, order_id):
         existing.save()
         comment = existing
     else:
-        comment = OrderComment.objects.create(
+        comment = create_order_comment_with_retry(
             order=order,
             member=member,
             customer=customer,
@@ -2024,7 +2034,9 @@ def comment_order(request, order_id):
         )
 
     # 检查是否所有打手都已评价
-    total_members = order.order_members.filter(is_deleted=False).count()
+    total_members = order.order_members.filter(
+        is_deleted=False, employee__isnull=False
+    ).values('employee').distinct().count()
     reviewed_count = OrderComment.objects.filter(
         order=order, is_deleted=False
     ).values('employee').distinct().count()

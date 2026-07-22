@@ -1,8 +1,10 @@
 from rest_framework import viewsets, status
 from rest_framework.decorators import action
 from django.utils import timezone
+from django.db.models import Q
 from apps.common.response import success_response, error_response
 from apps.common.viewsets import BaseModelViewSet
+from .comment_utils import create_order_comment_with_retry
 from .models import (
     Order, OrderMember, OrderPrice, OrderComment, OrderRefund, OrderStatus
 )
@@ -129,30 +131,55 @@ class OrderViewSet(BaseModelViewSet):
         rating = request.data.get('rating', 5)
         content = request.data.get('content', '')
         tags = request.data.get('tags', '')
-        member = order.order_members.first()
+        member_id = request.data.get('member_id')
+        if member_id:
+            member = order.order_members.filter(id=member_id, is_deleted=False).first()
+            if not member:
+                return error_response(msg='订单成员不存在')
+        else:
+            member = order.order_members.filter(is_deleted=False).first()
         employee = member.employee if member else None
-        comment, created = OrderComment.objects.get_or_create(
-            order=order,
-            defaults={
-                'customer': order.customer,
-                'employee': employee,
-                'rating': rating,
-                'content': content,
-                'tags': tags,
-            }
-        )
-        if not created:
+        if not employee:
+            return error_response(msg='评价的打手不存在')
+
+        existing_qs = OrderComment.objects.filter(order=order, is_deleted=False)
+        if member:
+            existing_qs = existing_qs.filter(
+                Q(member=member) | Q(member__isnull=True, employee=employee)
+            )
+        else:
+            existing_qs = existing_qs.filter(employee=employee)
+        comment = existing_qs.first()
+        if comment:
             comment.rating = rating
             comment.content = content
             comment.tags = tags
-            comment.save()
-        order.status = OrderStatus.REVIEWED
-        order.save()
+            comment.save(update_fields=['rating', 'content', 'tags', 'updated_at'])
+        else:
+            comment = create_order_comment_with_retry(
+                order=order,
+                member=member,
+                customer=order.customer,
+                employee=employee,
+                rating=rating,
+                content=content,
+                tags=tags,
+            )
+
+        total_members = order.order_members.filter(
+            is_deleted=False, employee__isnull=False
+        ).values('employee').distinct().count()
+        reviewed_count = OrderComment.objects.filter(
+            order=order, is_deleted=False
+        ).values('employee').distinct().count()
+        if reviewed_count >= total_members:
+            order.status = OrderStatus.REVIEWED
+            order.save(update_fields=['status', 'updated_at'])
         if employee:
-            total_comments = employee.comments.count()
+            total_comments = employee.comments.filter(is_deleted=False).count()
             if total_comments > 0:
                 from django.db.models import Avg
-                avg_rating = employee.comments.aggregate(avg=Avg('rating'))['avg'] or 5.0
+                avg_rating = employee.comments.filter(is_deleted=False).aggregate(avg=Avg('rating'))['avg'] or 5.0
                 employee.rating = round(avg_rating, 2)
                 employee.save(update_fields=['rating'])
         return success_response(OrderCommentSerializer(comment).data, msg='评价成功')

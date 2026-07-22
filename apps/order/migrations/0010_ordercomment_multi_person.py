@@ -5,7 +5,7 @@ import django.db.models.deletion
 
 class Migration(migrations.Migration):
     dependencies = [
-        ('order', '0001_initial'),
+        ('order', '0006_order_leader'),
     ]
 
     operations = [
