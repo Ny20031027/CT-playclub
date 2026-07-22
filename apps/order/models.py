@@ -163,8 +163,10 @@ class OrderPrice(BaseModel):
 
 
 class OrderComment(BaseModel):
-    order = models.OneToOneField(Order, on_delete=models.CASCADE,
-                                 related_name='comment', verbose_name='订单')
+    order = models.ForeignKey(Order, on_delete=models.CASCADE,
+                              related_name='comments', verbose_name='订单')
+    member = models.ForeignKey('OrderMember', on_delete=models.SET_NULL, null=True, blank=True,
+                               related_name='comments', verbose_name='订单成员')
     customer = models.ForeignKey(Customer, on_delete=models.PROTECT,
                                  related_name='comments', verbose_name='客户')
     employee = models.ForeignKey(Employee, on_delete=models.SET_NULL, null=True, blank=True,

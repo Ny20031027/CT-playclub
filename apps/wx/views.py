@@ -1221,6 +1221,10 @@ def order_detail(request, order_id):
     members = []
     for m in order.order_members.filter(is_deleted=False):
         slots = parse_member_slots(m)
+        # 获取该成员的评价
+        member_comment = OrderComment.objects.filter(
+            order=order, employee=m.employee, is_deleted=False
+        ).first()
         members.append({
             'id': m.id,
             'employee_id': m.employee.id,
@@ -1234,6 +1238,9 @@ def order_detail(request, order_id):
             'status': m.status,
             'status_display': m.get_status_display(),
             'is_leader': m.employee.id == order.leader_id if order.leader else False,
+            'has_comment': bool(member_comment),
+            'comment_rating': member_comment.rating if member_comment else 0,
+            'comment_content': member_comment.content if member_comment else '',
         })
 
     comment = None
@@ -1956,7 +1963,7 @@ def end_order(request, order_id):
 @api_view(['POST'])
 @permission_classes([IsAuthenticated])
 def comment_order(request, order_id):
-    """评价订单"""
+    """评价订单（支持多人订单逐个评价）"""
     user = request.user
     try:
         customer = user.customer
@@ -1968,42 +1975,67 @@ def comment_order(request, order_id):
     except Order.DoesNotExist:
         return error_response(msg='订单不存在')
 
-    if order.status != OrderStatus.COMPLETED:
+    if order.status not in [OrderStatus.COMPLETED, OrderStatus.REVIEWED]:
         return error_response(msg='订单未完成，无法评价')
 
     rating = request.data.get('rating', 5)
     content = request.data.get('content', '')
     tags = request.data.get('tags', '')
     is_anonymous = request.data.get('is_anonymous', False)
+    member_id = request.data.get('member_id')
 
-    member = order.order_members.first()
-    employee = member.employee if member else None
+    # 多人订单：需要指定评价哪个打手
+    if order.quantity > 1:
+        if not member_id:
+            return error_response(msg='多人订单需要指定评价的打手')
+        try:
+            member = OrderMember.objects.get(id=member_id, order=order, is_deleted=False)
+        except OrderMember.DoesNotExist:
+            return error_response(msg='订单成员不存在')
+        employee = member.employee
+    else:
+        member = order.order_members.first()
+        employee = member.employee if member else None
 
-    comment, created = OrderComment.objects.get_or_create(
-        order=order,
-        defaults={
-            'customer': customer,
-            'employee': employee,
-            'rating': rating,
-            'content': content,
-            'tags': tags,
-            'is_anonymous': is_anonymous,
-        }
-    )
-    if not created:
-        comment.rating = rating
-        comment.content = content
-        comment.tags = tags
-        comment.is_anonymous = is_anonymous
-        comment.save()
+    # 检查是否已经评价过该打手
+    existing = OrderComment.objects.filter(
+        order=order, employee=employee, is_deleted=False
+    ).first()
 
-    order.status = OrderStatus.REVIEWED
-    order.save(update_fields=['status', 'updated_at'])
+    if existing:
+        # 更新已有评价
+        existing.rating = rating
+        existing.content = content
+        existing.tags = tags
+        existing.is_anonymous = is_anonymous
+        existing.save()
+        comment = existing
+    else:
+        comment = OrderComment.objects.create(
+            order=order,
+            member=member,
+            customer=customer,
+            employee=employee,
+            rating=rating,
+            content=content,
+            tags=tags,
+            is_anonymous=is_anonymous,
+        )
+
+    # 检查是否所有打手都已评价
+    total_members = order.order_members.filter(is_deleted=False).count()
+    reviewed_count = OrderComment.objects.filter(
+        order=order, is_deleted=False
+    ).values('employee').distinct().count()
+
+    if reviewed_count >= total_members:
+        order.status = OrderStatus.REVIEWED
+        order.save(update_fields=['status', 'updated_at'])
 
     # 更新陪玩师评分
     if employee:
         from django.db.models import Avg
-        avg = OrderComment.objects.filter(employee=employee).aggregate(avg=Avg('rating'))['avg']
+        avg = OrderComment.objects.filter(employee=employee, is_deleted=False).aggregate(avg=Avg('rating'))['avg']
         if avg:
             employee.rating = round(avg, 2)
             employee.save(update_fields=['rating'])
