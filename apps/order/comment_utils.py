@@ -27,8 +27,20 @@ def drop_legacy_order_comment_order_unique():
         )
         index_names = [row[0] for row in cursor.fetchall()]
         for index_name in index_names:
-            cursor.execute(f"ALTER TABLE ord_order_comment DROP INDEX `{index_name}`")
-            logger.warning("Dropped legacy unique index %s on ord_order_comment.order_id", index_name)
+            try:
+                # MySQL InnoDB requires an index on FK columns.
+                # Add a non-unique index first to satisfy the FK constraint,
+                # then safely drop the unique one.
+                cursor.execute(
+                    "ALTER TABLE ord_order_comment ADD INDEX `idx_order_id_nu` (`order_id`)"
+                )
+            except Exception:
+                pass  # index may already exist
+            try:
+                cursor.execute(f"ALTER TABLE ord_order_comment DROP INDEX `{index_name}`")
+                logger.warning("Dropped legacy unique index %s on ord_order_comment.order_id", index_name)
+            except Exception as e:
+                logger.warning("Failed to drop legacy unique index %s: %s", index_name, e)
 
 
 def create_order_comment_with_retry(**kwargs):
@@ -37,5 +49,8 @@ def create_order_comment_with_retry(**kwargs):
     except IntegrityError as exc:
         if 'order_id' not in str(exc):
             raise
-        drop_legacy_order_comment_order_unique()
+        try:
+            drop_legacy_order_comment_order_unique()
+        except Exception:
+            pass
         return OrderComment.objects.create(**kwargs)
