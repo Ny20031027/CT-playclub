@@ -125,6 +125,16 @@ class CommonConfig(AppConfig):
                 )
                 logger.info('Created ord_support_ticket table')
 
+            # 添加 cs_message.ticket_id 列
+            cursor.execute("""
+                SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
+                WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'cs_message' AND COLUMN_NAME = 'ticket_id'
+            """)
+            if cursor.fetchone()[0] == 0:
+                cursor.execute("ALTER TABLE cs_message ADD COLUMN ticket_id bigint NULL")
+                cursor.execute("ALTER TABLE cs_message ADD FOREIGN KEY (ticket_id) REFERENCES ord_support_ticket(id) ON DELETE SET NULL")
+                logger.info('Added cs_message.ticket_id column')
+
         except Exception as e:
             logger.error(f'Failed to update columns via SQL: {e}')
 
