@@ -1293,7 +1293,7 @@ def order_detail(request, order_id):
         'game_name': order.game_name,
         'server': order.server,
         'remark': order.remark,
-        'transfer_reason': order.transfer_reason or '',
+        'transfer_reason': (order.transfer_reason or '') if is_dasher else '',
         'is_transfer': bool(order.transfer_reason),
         'members': members,
         'comment': comment,
