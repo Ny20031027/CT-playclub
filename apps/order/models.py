@@ -189,6 +189,43 @@ class OrderComment(BaseModel):
         return f"{self.order.order_no} - 评价"
 
 
+class SupportTicket(BaseModel):
+    """售后工单"""
+    class TicketStatus(models.TextChoices):
+        OPEN = 'open', '待处理'
+        IN_PROGRESS = 'in_progress', '处理中'
+        CLOSED = 'closed', '已关闭'
+
+    ticket_no = models.CharField(max_length=50, unique=True, verbose_name='工单号')
+    order = models.ForeignKey(Order, on_delete=models.CASCADE,
+                              related_name='tickets', verbose_name='订单')
+    customer = models.ForeignKey(Customer, on_delete=models.PROTECT,
+                                 related_name='support_tickets', verbose_name='客户')
+    employee = models.ForeignKey(Employee, on_delete=models.SET_NULL, null=True, blank=True,
+                                 related_name='support_tickets', verbose_name='打手')
+    title = models.CharField(max_length=200, verbose_name='工单标题')
+    description = models.TextField(blank=True, verbose_name='工单描述')
+    status = models.CharField(max_length=20, choices=TicketStatus.choices,
+                              default=TicketStatus.OPEN, verbose_name='工单状态')
+
+    # 快照：下单时抓取的订单信息，防止后续修改导致工单信息失真
+    order_snapshot = models.JSONField(default=dict, verbose_name='订单快照')
+
+    handler = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, blank=True,
+                                related_name='handled_tickets', verbose_name='处理人')
+    handle_remark = models.TextField(blank=True, verbose_name='处理备注')
+    closed_at = models.DateTimeField(null=True, blank=True, verbose_name='关闭时间')
+
+    class Meta:
+        db_table = 'ord_support_ticket'
+        verbose_name = '售后工单'
+        verbose_name_plural = verbose_name
+        ordering = ['-created_at']
+
+    def __str__(self):
+        return f"{self.ticket_no} - {self.title}"
+
+
 class OrderRefund(BaseModel):
     order = models.ForeignKey(Order, on_delete=models.CASCADE,
                               related_name='refunds', verbose_name='订单')

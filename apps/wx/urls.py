@@ -39,6 +39,8 @@ urlpatterns = [
     path('orders/<int:order_id>/transfer/', views.transfer_order, name='wx-transfer-order'),
     path('orders/<int:order_id>/discount/', views.discount_order, name='wx-discount-order'),
     path('orders/<int:order_id>/kick/', views.kick_member, name='wx-kick-member'),
+    path('orders/<int:order_id>/ticket/', views.create_support_ticket, name='wx-create-ticket'),
+    path('tickets/', views.my_tickets, name='wx-my-tickets'),
 
     # 消息
     path('notices/', views.my_notices, name='wx-my-notices'),

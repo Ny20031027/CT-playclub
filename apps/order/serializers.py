@@ -1,7 +1,8 @@
 from rest_framework import serializers
 from apps.common.media import build_media_url
 from .models import (
-    Order, OrderMember, OrderPrice, OrderComment, OrderRefund, OrderStatus
+    Order, OrderMember, OrderPrice, OrderComment, OrderRefund, OrderStatus,
+    SupportTicket
 )
 
 
@@ -129,4 +130,27 @@ class OrderRefundSerializer(serializers.ModelSerializer):
         import datetime
         import uuid
         validated_data['refund_no'] = f"REF{datetime.datetime.now().strftime('%Y%m%d%H%M%S')}{uuid.uuid4().hex[:6].upper()}"
+        return super().create(validated_data)
+
+
+class SupportTicketSerializer(serializers.ModelSerializer):
+    order_no = serializers.CharField(source='order.order_no', read_only=True)
+    customer_name = serializers.CharField(source='customer.nickname', read_only=True)
+    employee_name = serializers.CharField(source='employee.nickname', read_only=True)
+    handler_name = serializers.CharField(source='handler.username', read_only=True)
+    status_text = serializers.CharField(source='get_status_display', read_only=True)
+
+    class Meta:
+        model = SupportTicket
+        fields = ['id', 'ticket_no', 'order', 'order_no', 'customer', 'customer_name',
+                  'employee', 'employee_name', 'title', 'description', 'status',
+                  'status_text', 'order_snapshot', 'handler', 'handler_name',
+                  'handle_remark', 'closed_at', 'created_at', 'updated_at']
+        read_only_fields = ['id', 'ticket_no', 'order_snapshot', 'closed_at',
+                            'created_at', 'updated_at']
+
+    def create(self, validated_data):
+        import datetime
+        import uuid
+        validated_data['ticket_no'] = f"TK{datetime.datetime.now().strftime('%Y%m%d%H%M%S')}{uuid.uuid4().hex[:6].upper()}"
         return super().create(validated_data)

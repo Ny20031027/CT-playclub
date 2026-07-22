@@ -39,6 +39,12 @@ const routes = [
         meta: { title: '订单管理', icon: 'el-icon-s-order' }
       },
       {
+        path: 'tickets',
+        name: 'Tickets',
+        component: () => import('@/views/ticket/index.vue'),
+        meta: { title: '售后工单', icon: 'el-icon-ticket' }
+      },
+      {
         path: 'finance',
         name: 'Finance',
         component: () => import('@/views/finance/index.vue'),

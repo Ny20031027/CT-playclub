@@ -13,7 +13,7 @@ from apps.common.response import success_response, error_response
 from apps.common.viewsets import BaseModelViewSet
 from apps.account.models import User
 from apps.employee.models import Employee, EmployeeSkill, EmployeeSkillRelation, EmployeeTag, SkillLevel
-from apps.order.models import Order, OrderMember, OrderComment, OrderPrice, OrderStatus
+from apps.order.models import Order, OrderMember, OrderComment, OrderPrice, OrderStatus, SupportTicket
 from apps.order.comment_utils import create_order_comment_with_retry
 from apps.notice.models import Notice, UserNotice
 from .models import WxUser, Banner, Announcement, GameCategory, Gift
@@ -2858,3 +2858,118 @@ def leave_team(request):
         return success_response(msg='已退出队伍')
     else:
         return error_response(msg='您不在任何队伍中')
+
+
+# ============ 售后工单 ============
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def create_support_ticket(request, order_id):
+    """客户联系售后 - 创建工单"""
+    user = request.user
+    try:
+        customer = user.customer
+    except Exception:
+        return error_response(msg='用户不存在')
+
+    try:
+        order = Order.objects.get(id=order_id, customer=customer, is_deleted=False)
+    except Order.DoesNotExist:
+        return error_response(msg='订单不存在')
+
+    # 检查是否已有该订单的未关闭工单
+    existing = SupportTicket.objects.filter(
+        order=order, status__in=['open', 'in_progress'], is_deleted=False
+    ).exists()
+    if existing:
+        return error_response(msg='该订单已有未完成的售后工单')
+
+    # 抓取订单快照
+    members_data = []
+    for m in order.order_members.filter(is_deleted=False):
+        members_data.append({
+            'employee_name': m.employee.nickname if m.employee else '',
+            'skill_name': m.skill.name if m.skill else '',
+            'unit_price': float(m.unit_price),
+            'duration': m.duration,
+            'amount': float(m.amount),
+            'status': m.status,
+        })
+
+    order_snapshot = {
+        'order_no': order.order_no,
+        'status': order.status,
+        'status_display': order.get_status_display(),
+        'order_type': order.order_type,
+        'game_name': order.game_name,
+        'server': order.server,
+        'duration': order.duration,
+        'quantity': order.quantity,
+        'unit_price': float(order.unit_price),
+        'total_amount': float(order.total_amount),
+        'pay_amount': float(order.pay_amount),
+        'pay_method': order.pay_method,
+        'customer_name': customer.nickname,
+        'members': members_data,
+        'created_at': order.created_at.strftime('%Y-%m-%d %H:%M:%S'),
+        'transfer_reason': order.transfer_reason or '',
+    }
+
+    title = request.data.get('title', f'订单{order.order_no}售后')
+    description = request.data.get('description', '')
+
+    ticket = SupportTicket.objects.create(
+        order=order,
+        customer=customer,
+        employee=order.assigned_employee,
+        title=title,
+        description=description,
+        order_snapshot=order_snapshot,
+    )
+
+    return success_response({
+        'ticket_no': ticket.ticket_no,
+        'msg': '售后工单已提交，客服将尽快处理',
+    })
+
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def my_tickets(request):
+    """客户查看自己的工单列表"""
+    user = request.user
+    try:
+        customer = user.customer
+    except Exception:
+        return error_response(msg='用户不存在')
+
+    tickets = SupportTicket.objects.filter(
+        customer=customer, is_deleted=False
+    ).select_related('order', 'handler').order_by('-created_at')
+
+    page = int(request.GET.get('page', 1))
+    page_size = int(request.GET.get('page_size', 10))
+    total = tickets.count()
+    start = (page - 1) * page_size
+
+    data = []
+    for t in tickets[start:start + page_size]:
+        data.append({
+            'id': t.id,
+            'ticket_no': t.ticket_no,
+            'order_no': t.order.order_no,
+            'title': t.title,
+            'status': t.status,
+            'status_display': t.get_status_display(),
+            'handler_name': t.handler.username if t.handler else '',
+            'handle_remark': t.handle_remark,
+            'closed_at': t.closed_at.strftime('%Y-%m-%d %H:%M') if t.closed_at else None,
+            'created_at': t.created_at.strftime('%Y-%m-%d %H:%M'),
+        })
+
+    return success_response({
+        'total': total,
+        'page': page,
+        'page_size': page_size,
+        'list': data,
+    })

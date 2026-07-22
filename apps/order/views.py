@@ -6,11 +6,13 @@ from apps.common.response import success_response, error_response
 from apps.common.viewsets import BaseModelViewSet
 from .comment_utils import create_order_comment_with_retry
 from .models import (
-    Order, OrderMember, OrderPrice, OrderComment, OrderRefund, OrderStatus
+    Order, OrderMember, OrderPrice, OrderComment, OrderRefund, OrderStatus,
+    SupportTicket
 )
 from .serializers import (
     OrderSerializer, OrderCreateSerializer, OrderMemberSerializer,
-    OrderPriceSerializer, OrderCommentSerializer, OrderRefundSerializer
+    OrderPriceSerializer, OrderCommentSerializer, OrderRefundSerializer,
+    SupportTicketSerializer
 )
 
 
@@ -325,3 +327,25 @@ class OrderRefundViewSet(BaseModelViewSet):
         refund.complete_time = timezone.now()
         refund.save()
         return success_response(msg='退款完成')
+
+
+class SupportTicketViewSet(BaseModelViewSet):
+    """售后工单管理"""
+    queryset = SupportTicket.objects.all()
+    serializer_class = SupportTicketSerializer
+    filterset_fields = ['status', 'customer', 'employee', 'handler']
+    search_fields = ['ticket_no', 'title', 'order__order_no', 'customer__nickname']
+    ordering_fields = ['created_at', 'updated_at']
+
+    @action(detail=True, methods=['post'], url_path='close')
+    def close_ticket(self, request, pk=None):
+        """客服完成工单"""
+        ticket = self.get_object()
+        if ticket.status == SupportTicket.TicketStatus.CLOSED:
+            return error_response(msg='工单已关闭')
+        ticket.status = SupportTicket.TicketStatus.CLOSED
+        ticket.handler = request.user
+        ticket.handle_remark = request.data.get('remark', '')
+        ticket.closed_at = timezone.now()
+        ticket.save()
+        return success_response(msg='工单已关闭')
