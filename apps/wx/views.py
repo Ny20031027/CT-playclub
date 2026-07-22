@@ -1199,7 +1199,7 @@ def order_detail(request, order_id):
                 is_deleted=False
             ).distinct()
             order = order_qs.select_related('skill', 'customer').prefetch_related(
-                'order_members__employee', 'comment'
+                'order_members__employee', 'comments'
             ).first()
         else:
             # 客户只能查看自己的订单
@@ -1207,7 +1207,7 @@ def order_detail(request, order_id):
             order = Order.objects.filter(
                 id=order_id, customer=customer, is_deleted=False
             ).select_related('skill', 'customer').prefetch_related(
-                'order_members__employee', 'comment'
+                'order_members__employee', 'comments'
             ).first()
     except Order.DoesNotExist:
         return error_response(msg='订单不存在')
@@ -1244,8 +1244,9 @@ def order_detail(request, order_id):
         })
 
     comment = None
-    if hasattr(order, 'comment') and order.comment:
-        c = order.comment
+    comments_qs = order.comments.filter(is_deleted=False)
+    if comments_qs.exists():
+        c = comments_qs.first()
         # 将逗号分隔的标签字符串转换为数组
         tags_list = [t.strip() for t in c.tags.split(',') if t.strip()] if c.tags else []
         comment = {
