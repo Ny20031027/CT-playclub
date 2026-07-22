@@ -85,11 +85,16 @@ const iconMap = {
 }
 
 const menuList = computed(() => {
-  return flattenMenuTree(userStore.menus).map((item) => ({
+  const base = flattenMenuTree(userStore.menus).map((item) => ({
     path: normalizeMenuPath(item.path),
     title: item.name || item.title || item.remark || item.path,
     icon: item.icon || 'el-icon-data-board'
   }))
+  // 确保售后工单菜单项存在
+  if (!base.find(m => m.path === '/tickets')) {
+    base.splice(4, 0, { path: '/tickets', title: '售后工单', icon: 'el-icon-s-order' })
+  }
+  return base
 })
 
 const activeMenu = computed(() => route.path)
