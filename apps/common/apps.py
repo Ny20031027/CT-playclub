@@ -40,6 +40,7 @@ class CommonConfig(AppConfig):
         try:
             cursor = connections['default'].cursor()
 
+            # 添加 assigned_employee_id 列
             cursor.execute("""
                 SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
                 WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'ord_order' AND COLUMN_NAME = 'assigned_employee_id'
@@ -48,16 +49,35 @@ class CommonConfig(AppConfig):
                 cursor.execute("ALTER TABLE ord_order ADD COLUMN assigned_employee_id int NULL")
                 logger.info('Added ord_order.assigned_employee_id column')
 
-            fk_tables = [
-                'ord_ordermember', 'ord_ordercomment', 'fin_transaction',
-                'fin_settlement_detail', 'fin_salary', 'fin_withdraw',
-            ]
+            # 添加 ordercomment.member_id 列
+            cursor.execute("""
+                SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
+                WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'ord_order_comment' AND COLUMN_NAME = 'member_id'
+            """)
+            if cursor.fetchone()[0] == 0:
+                cursor.execute("ALTER TABLE ord_order_comment ADD COLUMN member_id int NULL")
+                logger.info('Added ord_order_comment.member_id column')
+
+            # 确保 order 表的 assigned_employee_id 允许 NULL
+            cursor.execute("SELECT IS_NULLABLE FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'ord_order' AND COLUMN_NAME = 'assigned_employee_id'")
+            result = cursor.fetchone()
+            if result and result[0] == 'NO':
+                cursor.execute("ALTER TABLE ord_order MODIFY COLUMN assigned_employee_id int NULL")
+                logger.info('ord_order.assigned_employee_id set to NULL')
+
+            # 确保 ordercomment 表的 employee_id 和 member_id 允许 NULL
+            for col in ['employee_id', 'member_id']:
+                cursor.execute(f"SELECT IS_NULLABLE FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'ord_order_comment' AND COLUMN_NAME = '{col}'")
+                result = cursor.fetchone()
+                if result and result[0] == 'NO':
+                    cursor.execute(f"ALTER TABLE ord_order_comment MODIFY COLUMN {col} int NULL")
+                    logger.info(f'ord_order_comment.{col} set to NULL')
+
+            # 确保所有 employee_id 列允许 NULL
+            fk_tables = ['ord_ordermember', 'fin_transaction', 'fin_settlement_detail', 'fin_salary', 'fin_withdraw']
             for table in fk_tables:
                 try:
-                    cursor.execute(f"""
-                        SELECT IS_NULLABLE FROM INFORMATION_SCHEMA.COLUMNS
-                        WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = '{table}' AND COLUMN_NAME = 'employee_id'
-                    """)
+                    cursor.execute(f"SELECT IS_NULLABLE FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = '{table}' AND COLUMN_NAME = 'employee_id'")
                     result = cursor.fetchone()
                     if result and result[0] == 'NO':
                         cursor.execute(f"ALTER TABLE {table} DROP FOREIGN KEY IF EXISTS {table}_employee_id_fk")
