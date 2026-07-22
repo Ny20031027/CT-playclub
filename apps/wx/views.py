@@ -2866,6 +2866,41 @@ def leave_team(request):
 @permission_classes([IsAuthenticated])
 def create_support_ticket(request, order_id):
     """客户联系售后 - 创建工单"""
+    # 确保表存在
+    from django.db import connection
+    try:
+        with connection.cursor() as cursor:
+            cursor.execute("""
+                SELECT COUNT(*) FROM INFORMATION_SCHEMA.TABLES
+                WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'ord_support_ticket'
+            """)
+            if cursor.fetchone()[0] == 0:
+                cursor.execute("""
+                    CREATE TABLE ord_support_ticket (
+                        id bigint AUTO_INCREMENT PRIMARY KEY,
+                        created_at datetime(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6),
+                        updated_at datetime(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6) ON UPDATE CURRENT_TIMESTAMP(6),
+                        is_deleted tinyint(1) NOT NULL DEFAULT 0,
+                        ticket_no varchar(50) NOT NULL UNIQUE,
+                        title varchar(200) NOT NULL,
+                        description longtext NOT NULL DEFAULT '',
+                        status varchar(20) NOT NULL DEFAULT 'open',
+                        order_snapshot longtext NULL,
+                        handle_remark longtext NOT NULL DEFAULT '',
+                        closed_at datetime(6) NULL,
+                        order_id bigint NOT NULL,
+                        customer_id bigint NOT NULL,
+                        employee_id bigint NULL,
+                        handler_id bigint NULL,
+                        FOREIGN KEY (order_id) REFERENCES ord_order(id) ON DELETE CASCADE,
+                        FOREIGN KEY (customer_id) REFERENCES cus_customer(id),
+                        FOREIGN KEY (employee_id) REFERENCES emp_employee(id) ON DELETE SET NULL,
+                        FOREIGN KEY (handler_id) REFERENCES acc_user(id) ON DELETE SET NULL
+                    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+                """)
+    except Exception:
+        pass
+
     user = request.user
     try:
         customer = user.customer
