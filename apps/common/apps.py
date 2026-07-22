@@ -59,15 +59,15 @@ class CommonConfig(AppConfig):
                 logger.info('Added ord_order_comment.member_id column')
 
             # 移除 ordercomment.order_id 的唯一约束（OneToOne 改 ForeignKey）
-            cursor.execute("""
-                SELECT CONSTRAINT_NAME FROM INFORMATION_SCHEMA.STATISTICS
-                WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'ord_order_comment'
-                AND COLUMN_NAME = 'order_id' AND NON_UNIQUE = 0 AND INDEX_NAME != 'PRIMARY'
-            """)
-            idx = cursor.fetchone()
-            if idx:
-                cursor.execute(f"ALTER TABLE ord_order_comment DROP INDEX {idx[0]}")
-                logger.info('Removed unique index on ord_order_comment.order_id')
+            try:
+                cursor.execute("SHOW INDEX FROM ord_order_comment WHERE Column_name = 'order_id' AND Non_unique = 0 AND Key_name != 'PRIMARY'")
+                indexes = cursor.fetchall()
+                for idx in indexes:
+                    idx_name = idx[2]  # Key_name is at index 2
+                    cursor.execute(f"ALTER TABLE ord_order_comment DROP INDEX `{idx_name}`")
+                    logger.info(f'Dropped index {idx_name} on ord_order_comment.order_id')
+            except Exception as e:
+                logger.warning(f'Failed to drop unique index: {e}')
 
             # 确保 order 表的 assigned_employee_id 允许 NULL
             cursor.execute("SELECT IS_NULLABLE FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'ord_order' AND COLUMN_NAME = 'assigned_employee_id'")
