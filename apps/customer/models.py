@@ -152,6 +152,8 @@ class CSMessage(BaseModel):
                                  related_name='cs_messages', verbose_name='客户')
     cs_user = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, blank=True,
                                 related_name='cs_received_messages', verbose_name='客服')
+    ticket = models.ForeignKey('order.SupportTicket', on_delete=models.SET_NULL, null=True, blank=True,
+                               related_name='cs_messages', verbose_name='关联工单')
     content = models.TextField(verbose_name='消息内容')
     msg_type = models.CharField(max_length=20, default='text', choices=[
         ('text', '文本'),

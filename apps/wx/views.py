@@ -2206,17 +2206,25 @@ def send_cs_message(request):
 
     content = request.data.get('content', '')
     msg_type = request.data.get('msg_type', 'text')
+    ticket_id = request.data.get('ticket_id')
 
     if not content:
         return error_response(msg='消息内容不能为空')
 
-    # 获取在线客服
-    from apps.customer.models import CustomerService
-    cs_user = CustomerService.objects.filter(status='online').select_related('customer__user').first()
+    # 获取关联工单
+    ticket = None
+    if ticket_id:
+        from apps.order.models import SupportTicket
+        try:
+            ticket = SupportTicket.objects.get(id=ticket_id, customer=customer)
+        except SupportTicket.DoesNotExist:
+            pass
 
+    # 客户发送消息时不绑定客服，等客服回复时再绑定
     message = CSMessage.objects.create(
         customer=customer,
-        cs_user=cs_user.customer.user if cs_user else None,
+        cs_user=None,
+        ticket=ticket,
         content=content,
         msg_type=msg_type,
         sender_type='customer',
@@ -2237,15 +2245,31 @@ def get_cs_messages(request):
     except Exception:
         return error_response(msg='用户不存在')
 
-    messages = CSMessage.objects.filter(customer=customer).order_by('created_at')
+    ticket_id = request.GET.get('ticket_id')
+    queryset = CSMessage.objects.filter(customer=customer)
+
+    # 按工单过滤
+    if ticket_id:
+        queryset = queryset.filter(ticket_id=ticket_id)
+    else:
+        # 默认只显示未关联工单的消息（普通客服聊天）
+        queryset = queryset.filter(ticket__isnull=True)
+
+    messages = queryset.select_related('cs_user').order_by('created_at')
     data = []
     for msg in messages:
+        cs_name = ''
+        if msg.cs_user:
+            cs_profile = getattr(msg.cs_user, 'cs_profile', None)
+            if cs_profile:
+                cs_name = cs_profile.customer.nickname
         data.append({
             'id': msg.id,
             'content': msg.content,
             'msg_type': msg.msg_type,
             'sender_type': msg.sender_type,
             'is_read': msg.is_read,
+            'cs_name': cs_name,
             'created_at': msg.created_at.strftime('%Y-%m-%d %H:%M'),
         })
 
@@ -2325,6 +2349,8 @@ def get_cs_chat_messages(request):
     from apps.customer.models import CSMessage, Customer
 
     customer_id = request.GET.get('customer_id')
+    ticket_id = request.GET.get('ticket_id')
+
     if not customer_id:
         return error_response(msg='缺少客户ID')
 
@@ -2333,7 +2359,16 @@ def get_cs_chat_messages(request):
     except Customer.DoesNotExist:
         return error_response(msg='客户不存在')
 
-    messages = CSMessage.objects.filter(customer=customer).order_by('created_at')
+    queryset = CSMessage.objects.filter(customer=customer)
+
+    # 按工单过滤
+    if ticket_id:
+        queryset = queryset.filter(ticket_id=ticket_id)
+    else:
+        # 默认只显示未关联工单的消息（普通客服聊天）
+        queryset = queryset.filter(ticket__isnull=True)
+
+    messages = queryset.order_by('created_at')
     data = []
     for msg in messages:
         data.append({
@@ -2369,12 +2404,12 @@ def send_cs_reply(request):
     """客服回复消息"""
     import logging
     logger = logging.getLogger(__name__)
-    
+
     from apps.customer.models import CSMessage, Customer, CustomerService
 
     user = request.user
     logger.info(f'客服回复消息: user_id={user.id}')
-    
+
     try:
         cs = CustomerService.objects.get(customer__user=user)
         logger.info(f'找到客服记录: cs_id={cs.id}')
@@ -2384,7 +2419,8 @@ def send_cs_reply(request):
 
     customer_id = request.data.get('customer_id')
     content = request.data.get('content', '')
-    logger.info(f'收到消息: customer_id={customer_id}, content={content}')
+    ticket_id = request.data.get('ticket_id')
+    logger.info(f'收到消息: customer_id={customer_id}, content={content}, ticket_id={ticket_id}')
 
     if not customer_id:
         return error_response(msg='缺少客户ID')
@@ -2398,14 +2434,31 @@ def send_cs_reply(request):
         logger.error(f'客户{customer_id}不存在')
         return error_response(msg='客户不存在')
 
+    # 获取关联工单
+    ticket = None
+    if ticket_id:
+        from apps.order.models import SupportTicket
+        try:
+            ticket = SupportTicket.objects.get(id=ticket_id)
+        except SupportTicket.DoesNotExist:
+            pass
+
     message = CSMessage.objects.create(
         customer=customer,
         cs_user=user,
+        ticket=ticket,
         content=content,
         msg_type='text',
         sender_type='cs',
     )
     logger.info(f'消息已保存: message_id={message.id}')
+
+    # 将该客户的消息绑定到当前客服（确保会话一致）
+    update_kwargs = {'cs_user': user}
+    filter_kwargs = {'customer': customer, 'sender_type': 'customer'}
+    if ticket_id:
+        filter_kwargs['ticket_id'] = ticket_id
+    CSMessage.objects.filter(**filter_kwargs).update(**update_kwargs)
 
     return success_response(msg='发送成功', data={'message_id': message.id})
 
