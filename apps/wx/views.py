@@ -2342,7 +2342,9 @@ def get_cs_chat_list(request):
     chat_list = []
     for customer in customers:
         # 获取最后一条消息
-        last_msg = CSMessage.objects.filter(customer=customer).order_by('-created_at').first()
+        last_msg = CSMessage.objects.filter(customer=customer).only(
+            'id', 'customer', 'content', 'created_at', 'sender_type', 'is_read'
+        ).order_by('-created_at').first()
         # 获取未读消息数
         unread_count = CSMessage.objects.filter(customer=customer, sender_type='customer', is_read=False).count()
 
