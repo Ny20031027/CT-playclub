@@ -80,7 +80,27 @@ class CommonConfig(AppConfig):
                 cursor.execute(f"SELECT IS_NULLABLE FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'ord_order_comment' AND COLUMN_NAME = '{col}'")
                 result = cursor.fetchone()
                 if result and result[0] == 'NO':
+                    fk_name = None
+                    if col == 'employee_id':
+                        cursor.execute("""
+                            SELECT CONSTRAINT_NAME
+                            FROM INFORMATION_SCHEMA.KEY_COLUMN_USAGE
+                            WHERE TABLE_SCHEMA = DATABASE()
+                              AND TABLE_NAME = 'ord_order_comment'
+                              AND COLUMN_NAME = 'employee_id'
+                              AND REFERENCED_TABLE_NAME IS NOT NULL
+                            LIMIT 1
+                        """)
+                        fk_row = cursor.fetchone()
+                        fk_name = fk_row[0] if fk_row else None
+                        if fk_name:
+                            cursor.execute(f"ALTER TABLE ord_order_comment DROP FOREIGN KEY `{fk_name}`")
                     cursor.execute(f"ALTER TABLE ord_order_comment MODIFY COLUMN {col} int NULL")
+                    if col == 'employee_id':
+                        cursor.execute(
+                            "ALTER TABLE ord_order_comment ADD CONSTRAINT `ord_order_comment_employee_id_5737587d_fk_emp_employee_id` "
+                            "FOREIGN KEY (`employee_id`) REFERENCES `emp_employee` (`id`) ON DELETE SET NULL"
+                        )
                     logger.info(f'ord_order_comment.{col} set to NULL')
 
             # 确保所有 employee_id 列允许 NULL
@@ -129,10 +149,21 @@ class CommonConfig(AppConfig):
                 SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
                 WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'cs_message' AND COLUMN_NAME = 'ticket_id'
             """)
-            if cursor.fetchone()[0] == 0:
+            ticket_column_missing = cursor.fetchone()[0] == 0
+            if ticket_column_missing:
                 cursor.execute("ALTER TABLE cs_message ADD COLUMN ticket_id bigint NULL")
-                cursor.execute("ALTER TABLE cs_message ADD FOREIGN KEY (ticket_id) REFERENCES ord_support_ticket(id) ON DELETE SET NULL")
                 logger.info('Added cs_message.ticket_id column')
+            cursor.execute("""
+                SELECT COUNT(*)
+                FROM INFORMATION_SCHEMA.KEY_COLUMN_USAGE
+                WHERE TABLE_SCHEMA = DATABASE()
+                  AND TABLE_NAME = 'cs_message'
+                  AND COLUMN_NAME = 'ticket_id'
+                  AND REFERENCED_TABLE_NAME IS NOT NULL
+            """)
+            if cursor.fetchone()[0] == 0:
+                cursor.execute("ALTER TABLE cs_message ADD FOREIGN KEY (ticket_id) REFERENCES ord_support_ticket(id) ON DELETE SET NULL")
+                logger.info('Added cs_message.ticket_id foreign key')
 
         except Exception as e:
             logger.error(f'Failed to update columns via SQL: {e}')

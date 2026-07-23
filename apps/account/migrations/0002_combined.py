@@ -3,6 +3,61 @@
 from django.db import migrations, models
 
 
+def ensure_user_wechat_columns(apps, schema_editor):
+    with schema_editor.connection.cursor() as cursor:
+        cursor.execute("""
+            SELECT COUNT(*)
+            FROM INFORMATION_SCHEMA.COLUMNS
+            WHERE TABLE_SCHEMA = DATABASE()
+              AND TABLE_NAME = 'sys_user'
+              AND COLUMN_NAME = 'wx_openid'
+        """)
+        has_wx_openid = cursor.fetchone()[0] > 0
+        if not has_wx_openid:
+            cursor.execute(
+                "ALTER TABLE sys_user ADD COLUMN wx_openid varchar(100) NULL"
+            )
+
+        cursor.execute("""
+            SELECT COUNT(*)
+            FROM INFORMATION_SCHEMA.STATISTICS
+            WHERE TABLE_SCHEMA = DATABASE()
+              AND TABLE_NAME = 'sys_user'
+              AND COLUMN_NAME = 'wx_openid'
+              AND NON_UNIQUE = 0
+        """)
+        has_wx_openid_unique = cursor.fetchone()[0] > 0
+        if not has_wx_openid_unique:
+            cursor.execute(
+                "ALTER TABLE sys_user ADD UNIQUE KEY sys_user_wx_openid_uniq (wx_openid)"
+            )
+
+        cursor.execute("""
+            SELECT COUNT(*)
+            FROM INFORMATION_SCHEMA.COLUMNS
+            WHERE TABLE_SCHEMA = DATABASE()
+              AND TABLE_NAME = 'sys_user'
+              AND COLUMN_NAME = 'wx_unionid'
+        """)
+        if cursor.fetchone()[0] == 0:
+            cursor.execute(
+                "ALTER TABLE sys_user ADD COLUMN wx_unionid varchar(100) NULL"
+            )
+
+        cursor.execute("""
+            SELECT DATA_TYPE, CHARACTER_MAXIMUM_LENGTH, IS_NULLABLE
+            FROM INFORMATION_SCHEMA.COLUMNS
+            WHERE TABLE_SCHEMA = DATABASE()
+              AND TABLE_NAME = 'sys_user'
+              AND COLUMN_NAME = 'avatar'
+        """)
+        row = cursor.fetchone()
+        if row and (row[0] != 'varchar' or int(row[1] or 0) != 500):
+            cursor.execute(
+                "ALTER TABLE sys_user MODIFY COLUMN avatar varchar(500) NOT NULL"
+            )
+
+
 class Migration(migrations.Migration):
 
     dependencies = [
@@ -10,19 +65,29 @@ class Migration(migrations.Migration):
     ]
 
     operations = [
-        migrations.AddField(
-            model_name='user',
-            name='wx_openid',
-            field=models.CharField(blank=True, max_length=100, null=True, unique=True, verbose_name='微信openid'),
-        ),
-        migrations.AddField(
-            model_name='user',
-            name='wx_unionid',
-            field=models.CharField(blank=True, max_length=100, null=True, verbose_name='微信unionid'),
-        ),
-        migrations.AlterField(
-            model_name='user',
-            name='avatar',
-            field=models.CharField(blank=True, max_length=500, verbose_name='头像'),
+        migrations.SeparateDatabaseAndState(
+            database_operations=[
+                migrations.RunPython(
+                    ensure_user_wechat_columns,
+                    reverse_code=migrations.RunPython.noop,
+                ),
+            ],
+            state_operations=[
+                migrations.AddField(
+                    model_name='user',
+                    name='wx_openid',
+                    field=models.CharField(blank=True, max_length=100, null=True, unique=True, verbose_name='寰俊openid'),
+                ),
+                migrations.AddField(
+                    model_name='user',
+                    name='wx_unionid',
+                    field=models.CharField(blank=True, max_length=100, null=True, verbose_name='寰俊unionid'),
+                ),
+                migrations.AlterField(
+                    model_name='user',
+                    name='avatar',
+                    field=models.CharField(blank=True, max_length=500, verbose_name='澶村儚'),
+                ),
+            ],
         ),
     ]

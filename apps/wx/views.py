@@ -2338,15 +2338,44 @@ def get_cs_chat_list(request):
     # 获取所有有消息的客户
     customer_ids = CSMessage.objects.values_list('customer_id', flat=True).distinct()
     customers = Customer.objects.filter(id__in=customer_ids)
+    has_ticket_column = _cs_message_has_ticket_column()
 
     chat_list = []
     for customer in customers:
-        # 获取最后一条消息
-        last_msg = CSMessage.objects.filter(customer=customer).only(
+        ticket_id = None
+        ticket_no = ''
+        if has_ticket_column:
+            latest_ticket_msg = CSMessage.objects.filter(
+                customer=customer,
+                ticket__isnull=False,
+            ).only('id', 'customer', 'content', 'created_at', 'sender_type', 'is_read', 'ticket_id').order_by('-created_at').first()
+            if latest_ticket_msg and latest_ticket_msg.ticket_id:
+                ticket_id = latest_ticket_msg.ticket_id
+                ticket = SupportTicket.objects.filter(id=ticket_id).only('id', 'ticket_no').first()
+                ticket_no = ticket.ticket_no if ticket else ''
+
+        if not ticket_id:
+            latest_ticket = SupportTicket.objects.filter(
+                customer=customer,
+                is_deleted=False,
+            ).exclude(
+                status=SupportTicket.TicketStatus.CLOSED
+            ).only('id', 'ticket_no').order_by('-created_at').first()
+            if latest_ticket:
+                ticket_id = latest_ticket.id
+                ticket_no = latest_ticket.ticket_no
+
+        if ticket_id and has_ticket_column:
+            thread_messages = CSMessage.objects.filter(customer=customer, ticket_id=ticket_id)
+        elif has_ticket_column:
+            thread_messages = CSMessage.objects.filter(customer=customer, ticket__isnull=True)
+        else:
+            thread_messages = CSMessage.objects.filter(customer=customer)
+
+        last_msg = thread_messages.only(
             'id', 'customer', 'content', 'created_at', 'sender_type', 'is_read'
         ).order_by('-created_at').first()
-        # 获取未读消息数
-        unread_count = CSMessage.objects.filter(customer=customer, sender_type='customer', is_read=False).count()
+        unread_count = thread_messages.filter(sender_type='customer', is_read=False).count()
 
         # 处理客户头像
         customer_avatar = ''
@@ -2361,6 +2390,8 @@ def get_cs_chat_list(request):
             'customer_id': customer.id,
             'customer_name': customer.nickname,
             'customer_avatar': customer_avatar,
+            'ticket_id': ticket_id,
+            'ticket_no': ticket_no,
             'last_message': last_msg.content if last_msg else '',
             'last_message_time': last_msg.created_at.strftime('%H:%M') if last_msg else '',
             'unread_count': unread_count,
