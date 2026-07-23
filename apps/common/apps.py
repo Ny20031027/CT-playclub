@@ -25,11 +25,24 @@ class CommonConfig(AppConfig):
             except Exception:
                 time.sleep(2)
 
-        self._fix_columns(logger, connections)
-
         try:
-            call_command('migrate', verbosity=1)
-            logger.info('Auto migrate completed')
+            with connections['default'].cursor() as cursor:
+                cursor.execute("SELECT GET_LOCK('playclub_auto_migrate', 0)")
+                locked = cursor.fetchone()[0] == 1
+            if not locked:
+                logger.info('Auto migrate skipped: another worker is running it')
+                return
+
+            try:
+                self._fix_columns(logger, connections)
+                call_command('migrate', verbosity=1, interactive=False)
+                logger.info('Auto migrate completed')
+            finally:
+                try:
+                    with connections['default'].cursor() as cursor:
+                        cursor.execute("SELECT RELEASE_LOCK('playclub_auto_migrate')")
+                except Exception:
+                    pass
         except Exception as e:
             logger.error(f'Auto migrate failed: {e}')
 

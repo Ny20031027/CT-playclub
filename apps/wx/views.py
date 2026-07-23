@@ -2326,8 +2326,8 @@ def get_cs_unread_count(request):
 @api_view(['GET'])
 @permission_classes([IsAuthenticated])
 def get_cs_chat_list(request):
-    """获取客服聊天列表（按客户分组）"""
-    from apps.customer.models import CSMessage, Customer, CustomerService
+    """获取客服工单聊天列表"""
+    from apps.customer.models import CSMessage, CustomerService
 
     user = request.user
     try:
@@ -2335,70 +2335,54 @@ def get_cs_chat_list(request):
     except CustomerService.DoesNotExist:
         return error_response(msg='您不是客服')
 
-    # 获取所有有消息的客户
-    customer_ids = CSMessage.objects.values_list('customer_id', flat=True).distinct()
-    customers = Customer.objects.filter(id__in=customer_ids)
     has_ticket_column = _cs_message_has_ticket_column()
 
     chat_list = []
-    for customer in customers:
-        ticket_id = None
-        ticket_no = ''
+    tickets = SupportTicket.objects.filter(
+        is_deleted=False,
+        status__in=[SupportTicket.TicketStatus.OPEN, SupportTicket.TicketStatus.IN_PROGRESS],
+    ).select_related(
+        'customer', 'order', 'handler'
+    ).order_by('-created_at')
+
+    for ticket in tickets:
         if has_ticket_column:
-            latest_ticket_msg = CSMessage.objects.filter(
-                customer=customer,
-                ticket__isnull=False,
-            ).only('id', 'customer', 'content', 'created_at', 'sender_type', 'is_read', 'ticket_id').order_by('-created_at').first()
-            if latest_ticket_msg and latest_ticket_msg.ticket_id:
-                ticket_id = latest_ticket_msg.ticket_id
-                ticket = SupportTicket.objects.filter(id=ticket_id).only('id', 'ticket_no').first()
-                ticket_no = ticket.ticket_no if ticket else ''
-
-        if not ticket_id:
-            latest_ticket = SupportTicket.objects.filter(
-                customer=customer,
-                is_deleted=False,
-            ).exclude(
-                status=SupportTicket.TicketStatus.CLOSED
-            ).only('id', 'ticket_no').order_by('-created_at').first()
-            if latest_ticket:
-                ticket_id = latest_ticket.id
-                ticket_no = latest_ticket.ticket_no
-
-        if ticket_id and has_ticket_column:
-            thread_messages = CSMessage.objects.filter(customer=customer, ticket_id=ticket_id)
-        elif has_ticket_column:
-            thread_messages = CSMessage.objects.filter(customer=customer, ticket__isnull=True)
+            thread_messages = CSMessage.objects.filter(customer=ticket.customer, ticket_id=ticket.id)
         else:
-            thread_messages = CSMessage.objects.filter(customer=customer)
+            thread_messages = CSMessage.objects.none()
 
         last_msg = thread_messages.only(
             'id', 'customer', 'content', 'created_at', 'sender_type', 'is_read'
         ).order_by('-created_at').first()
         unread_count = thread_messages.filter(sender_type='customer', is_read=False).count()
+        sort_dt = last_msg.created_at if last_msg else ticket.created_at
 
-        # 处理客户头像
         customer_avatar = ''
-        if customer.avatar:
-            avatar_str = str(customer.avatar)
+        if ticket.customer and ticket.customer.avatar:
+            avatar_str = str(ticket.customer.avatar)
             if avatar_str.startswith('http'):
                 customer_avatar = avatar_str
             else:
-                customer_avatar = str(customer.avatar) if customer.avatar else ''
+                customer_avatar = str(ticket.customer.avatar) if ticket.customer.avatar else ''
 
         chat_list.append({
-            'customer_id': customer.id,
-            'customer_name': customer.nickname,
+            'customer_id': ticket.customer.id if ticket.customer else None,
+            'customer_name': ticket.customer.nickname if ticket.customer else '',
             'customer_avatar': customer_avatar,
-            'ticket_id': ticket_id,
-            'ticket_no': ticket_no,
-            'last_message': last_msg.content if last_msg else '',
-            'last_message_time': last_msg.created_at.strftime('%H:%M') if last_msg else '',
+            'ticket_id': ticket.id,
+            'ticket_no': ticket.ticket_no,
+            'ticket_title': ticket.title,
+            'last_message': last_msg.content if last_msg else ticket.description,
+            'last_message_time': last_msg.created_at.strftime('%H:%M') if last_msg else ticket.created_at.strftime('%H:%M'),
+            'sort_time': sort_dt,
             'unread_count': unread_count,
         })
 
     # 按最后消息时间排序
-    chat_list.sort(key=lambda x: x['last_message_time'], reverse=True)
+    chat_list.sort(key=lambda x: x['sort_time'], reverse=True)
+
+    for item in chat_list:
+        item.pop('sort_time', None)
 
     return success_response(chat_list)
 
