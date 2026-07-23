@@ -1,8 +1,10 @@
 import json
 import re
+from functools import lru_cache
 import requests
 from django.utils import timezone
 from django.conf import settings
+from django.db import connection
 from django.db import transaction
 from django.db.models import Q
 from rest_framework import viewsets, status
@@ -38,6 +40,22 @@ WX_SECRET = getattr(settings, 'WX_SECRET', '')
 
 ACTIVE_ORDER_MEMBER_STATUSES = ['accepted', 'in_progress']
 FORMAL_ORDER_STATUSES = ['confirming', 'claimed', 'in_progress', 'completed', 'reviewed']
+
+
+@lru_cache(maxsize=1)
+def _cs_message_has_ticket_column():
+    try:
+        with connection.cursor() as cursor:
+            cursor.execute("""
+                SELECT COUNT(*)
+                FROM INFORMATION_SCHEMA.COLUMNS
+                WHERE TABLE_SCHEMA = DATABASE()
+                  AND TABLE_NAME = 'cs_message'
+                  AND COLUMN_NAME = 'ticket_id'
+            """)
+            return cursor.fetchone()[0] > 0
+    except Exception:
+        return False
 
 
 def is_default_nickname(nickname):
@@ -2255,17 +2273,15 @@ def get_cs_messages(request):
         return error_response(msg='用户不存在')
 
     ticket_id = request.GET.get('ticket_id')
-    queryset = CSMessage.objects.filter(customer=customer)
+    queryset = CSMessage.objects.filter(customer=customer).only(
+        'id', 'customer', 'cs_user', 'content', 'msg_type', 'is_read', 'sender_type', 'created_at'
+    )
 
-    # 按工单过滤（兼容ticket_id列尚未创建的情况）
-    try:
+    if _cs_message_has_ticket_column():
         if ticket_id:
             queryset = queryset.filter(ticket_id=ticket_id)
         else:
-            # 默认只显示未关联工单的消息（普通客服聊天）
             queryset = queryset.filter(ticket__isnull=True)
-    except Exception:
-        pass
 
     messages = queryset.select_related('cs_user').order_by('created_at')
     data = []
@@ -2371,18 +2387,15 @@ def get_cs_chat_messages(request):
     except Customer.DoesNotExist:
         return error_response(msg='客户不存在')
 
-    queryset = CSMessage.objects.filter(customer=customer)
+    queryset = CSMessage.objects.filter(customer=customer).only(
+        'id', 'customer', 'cs_user', 'content', 'msg_type', 'is_read', 'sender_type', 'created_at'
+    )
 
-    # 按工单过滤（兼容ticket_id列尚未创建的情况）
-    try:
+    if _cs_message_has_ticket_column():
         if ticket_id:
             queryset = queryset.filter(ticket_id=ticket_id)
         else:
-            # 默认只显示未关联工单的消息（普通客服聊天）
             queryset = queryset.filter(ticket__isnull=True)
-    except Exception:
-        # ticket_id列不存在时，退化为查询全部消息
-        pass
 
     messages = queryset.order_by('created_at')
     data = []
