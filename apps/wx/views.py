@@ -2221,14 +2221,23 @@ def send_cs_message(request):
             pass
 
     # 客户发送消息时不绑定客服，等客服回复时再绑定
-    message = CSMessage.objects.create(
-        customer=customer,
-        cs_user=None,
-        ticket=ticket,
-        content=content,
-        msg_type=msg_type,
-        sender_type='customer',
-    )
+    try:
+        message = CSMessage.objects.create(
+            customer=customer,
+            cs_user=None,
+            ticket=ticket,
+            content=content,
+            msg_type=msg_type,
+            sender_type='customer',
+        )
+    except Exception:
+        message = CSMessage.objects.create(
+            customer=customer,
+            cs_user=None,
+            content=content,
+            msg_type=msg_type,
+            sender_type='customer',
+        )
 
     return success_response(msg='发送成功', data={'message_id': message.id})
 
@@ -2248,12 +2257,15 @@ def get_cs_messages(request):
     ticket_id = request.GET.get('ticket_id')
     queryset = CSMessage.objects.filter(customer=customer)
 
-    # 按工单过滤
-    if ticket_id:
-        queryset = queryset.filter(ticket_id=ticket_id)
-    else:
-        # 默认只显示未关联工单的消息（普通客服聊天）
-        queryset = queryset.filter(ticket__isnull=True)
+    # 按工单过滤（兼容ticket_id列尚未创建的情况）
+    try:
+        if ticket_id:
+            queryset = queryset.filter(ticket_id=ticket_id)
+        else:
+            # 默认只显示未关联工单的消息（普通客服聊天）
+            queryset = queryset.filter(ticket__isnull=True)
+    except Exception:
+        pass
 
     messages = queryset.select_related('cs_user').order_by('created_at')
     data = []
@@ -2361,12 +2373,16 @@ def get_cs_chat_messages(request):
 
     queryset = CSMessage.objects.filter(customer=customer)
 
-    # 按工单过滤
-    if ticket_id:
-        queryset = queryset.filter(ticket_id=ticket_id)
-    else:
-        # 默认只显示未关联工单的消息（普通客服聊天）
-        queryset = queryset.filter(ticket__isnull=True)
+    # 按工单过滤（兼容ticket_id列尚未创建的情况）
+    try:
+        if ticket_id:
+            queryset = queryset.filter(ticket_id=ticket_id)
+        else:
+            # 默认只显示未关联工单的消息（普通客服聊天）
+            queryset = queryset.filter(ticket__isnull=True)
+    except Exception:
+        # ticket_id列不存在时，退化为查询全部消息
+        pass
 
     messages = queryset.order_by('created_at')
     data = []
@@ -2443,22 +2459,35 @@ def send_cs_reply(request):
         except SupportTicket.DoesNotExist:
             pass
 
-    message = CSMessage.objects.create(
-        customer=customer,
-        cs_user=user,
-        ticket=ticket,
-        content=content,
-        msg_type='text',
-        sender_type='cs',
-    )
+    try:
+        message = CSMessage.objects.create(
+            customer=customer,
+            cs_user=user,
+            ticket=ticket,
+            content=content,
+            msg_type='text',
+            sender_type='cs',
+        )
+    except Exception:
+        # ticket_id列不存在时，退化为不带ticket的创建
+        message = CSMessage.objects.create(
+            customer=customer,
+            cs_user=user,
+            content=content,
+            msg_type='text',
+            sender_type='cs',
+        )
     logger.info(f'消息已保存: message_id={message.id}')
 
     # 将该客户的消息绑定到当前客服（确保会话一致）
     update_kwargs = {'cs_user': user}
     filter_kwargs = {'customer': customer, 'sender_type': 'customer'}
-    if ticket_id:
-        filter_kwargs['ticket_id'] = ticket_id
-    CSMessage.objects.filter(**filter_kwargs).update(**update_kwargs)
+    try:
+        if ticket_id:
+            filter_kwargs['ticket_id'] = ticket_id
+        CSMessage.objects.filter(**filter_kwargs).update(**update_kwargs)
+    except Exception:
+        CSMessage.objects.filter(customer=customer, sender_type='customer').update(**update_kwargs)
 
     return success_response(msg='发送成功', data={'message_id': message.id})
 
