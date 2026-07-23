@@ -1,6 +1,5 @@
 import json
 import re
-from functools import lru_cache
 import requests
 from django.utils import timezone
 from django.conf import settings
@@ -42,7 +41,6 @@ ACTIVE_ORDER_MEMBER_STATUSES = ['accepted', 'in_progress']
 FORMAL_ORDER_STATUSES = ['confirming', 'claimed', 'in_progress', 'completed', 'reviewed']
 
 
-@lru_cache(maxsize=1)
 def _cs_message_has_ticket_column():
     try:
         with connection.cursor() as cursor:
@@ -56,6 +54,134 @@ def _cs_message_has_ticket_column():
             return cursor.fetchone()[0] > 0
     except Exception:
         return False
+    try:
+        with connection.cursor() as cursor:
+            cursor.execute("""
+                SELECT COUNT(*)
+                FROM INFORMATION_SCHEMA.COLUMNS
+                WHERE TABLE_SCHEMA = DATABASE()
+                  AND TABLE_NAME = 'cs_message'
+                  AND COLUMN_NAME = 'ticket_id'
+            """)
+            return cursor.fetchone()[0] > 0
+    except Exception:
+        return False
+
+
+def _build_support_ticket_order_snapshot(order, customer=None):
+    members_data = []
+    for m in order.order_members.filter(is_deleted=False).select_related('employee', 'skill'):
+        members_data.append({
+            'employee_name': m.employee.nickname if m.employee else '',
+            'skill_name': m.skill.name if m.skill else '',
+            'unit_price': float(m.unit_price),
+            'duration': m.duration,
+            'amount': float(m.amount),
+            'status': m.status,
+        })
+
+    return {
+        'order_id': order.id,
+        'order_no': order.order_no,
+        'status': order.status,
+        'status_display': order.get_status_display(),
+        'order_type': order.order_type,
+        'game_name': order.game_name,
+        'server': order.server,
+        'duration': order.duration,
+        'quantity': order.quantity,
+        'unit_price': float(order.unit_price),
+        'total_amount': float(order.total_amount),
+        'pay_amount': float(order.pay_amount),
+        'pay_method': order.pay_method,
+        'customer_name': customer.nickname if customer else (order.customer.nickname if order.customer else ''),
+        'members': members_data,
+        'created_at': order.created_at.strftime('%Y-%m-%d %H:%M:%S'),
+        'transfer_reason': order.transfer_reason or '',
+    }
+
+
+def _build_support_ticket_order_card(ticket):
+    if not ticket:
+        return None
+
+    order = ticket.order
+    snapshot = ticket.order_snapshot or {}
+    order_id = order.id if order else snapshot.get('order_id')
+    order_no = order.order_no if order else snapshot.get('order_no', '')
+    status_display = order.get_status_display() if order else snapshot.get('status_display', '')
+    game_name = order.game_name if order else snapshot.get('game_name', '')
+    server = order.server if order else snapshot.get('server', '')
+    pay_amount = float(order.pay_amount) if order else float(snapshot.get('pay_amount') or 0)
+    total_amount = float(order.total_amount) if order else float(snapshot.get('total_amount') or 0)
+    created_at = order.created_at.strftime('%Y-%m-%d %H:%M') if order else snapshot.get('created_at', '')
+
+    return {
+        'ticket_id': ticket.id,
+        'ticket_no': ticket.ticket_no,
+        'order_id': order_id,
+        'order_no': order_no,
+        'title': ticket.title,
+        'status': order.status if order else snapshot.get('status', ''),
+        'status_display': status_display,
+        'game_name': game_name,
+        'server': server,
+        'pay_amount': pay_amount,
+        'total_amount': total_amount,
+        'created_at': created_at,
+        'jump_url': f'/pages/order-detail/order-detail?id={order_id}' if order_id else '',
+        'summary': f'{order_no} · {status_display}' if order_no else status_display,
+    }
+
+
+def _ensure_ticket_order_card_message(customer, ticket):
+    if not customer or not ticket or not _cs_message_has_ticket_column():
+        return None
+
+    from apps.customer.models import CSMessage
+
+    existing = CSMessage.objects.filter(
+        customer=customer,
+        ticket=ticket,
+        msg_type='order_card',
+        is_deleted=False,
+    ).first()
+    if existing:
+        return existing
+
+    return CSMessage.objects.create(
+        customer=customer,
+        cs_user=None,
+        ticket=ticket,
+        content='订单详情卡片',
+        msg_type='order_card',
+        sender_type='customer',
+    )
+
+
+def _serialize_cs_message(msg):
+    cs_name = ''
+    if msg.cs_user:
+        cs_profile = getattr(msg.cs_user, 'cs_profile', None)
+        if cs_profile:
+            cs_name = cs_profile.customer.nickname
+
+    order_card = None
+    ticket = getattr(msg, 'ticket', None)
+    if ticket:
+        order_card = _build_support_ticket_order_card(ticket)
+
+    return {
+        'id': msg.id,
+        'content': msg.content,
+        'msg_type': msg.msg_type,
+        'sender_type': msg.sender_type,
+        'is_read': msg.is_read,
+        'cs_name': cs_name,
+        'ticket_id': ticket.id if ticket else None,
+        'order_card': order_card,
+        'created_at': msg.created_at.strftime('%Y-%m-%d %H:%M'),
+    }
 
 
 def is_default_nickname(nickname):
@@ -618,6 +744,7 @@ def wx_bind_phone(request):
 
 
 # ============ 首页数据 ============
+
 
 @api_view(['GET'])
 @permission_classes([AllowAny])
@@ -2257,20 +2384,23 @@ def send_cs_message(request):
             sender_type='customer',
         )
 
+    if ticket and msg_type == 'text':
+        _ensure_ticket_order_card_message(customer, ticket)
+
     return success_response(msg='发送成功', data={'message_id': message.id})
 
 
 @api_view(['GET'])
 @permission_classes([IsAuthenticated])
 def get_cs_messages(request):
-    """获取客服消息列表"""
+    """????????"""
     from apps.customer.models import CSMessage
 
     user = request.user
     try:
         customer = user.customer
     except Exception:
-        return error_response(msg='用户不存在')
+        return error_response(msg='?????')
 
     ticket_id = request.GET.get('ticket_id')
     queryset = CSMessage.objects.filter(customer=customer).only(
@@ -2282,26 +2412,12 @@ def get_cs_messages(request):
             queryset = queryset.filter(ticket_id=ticket_id)
         else:
             queryset = queryset.filter(ticket__isnull=True)
+        messages = queryset.select_related('cs_user', 'ticket__order').order_by('created_at')
+    else:
+        messages = queryset.select_related('cs_user').order_by('created_at')
 
-    messages = queryset.select_related('cs_user').order_by('created_at')
-    data = []
-    for msg in messages:
-        cs_name = ''
-        if msg.cs_user:
-            cs_profile = getattr(msg.cs_user, 'cs_profile', None)
-            if cs_profile:
-                cs_name = cs_profile.customer.nickname
-        data.append({
-            'id': msg.id,
-            'content': msg.content,
-            'msg_type': msg.msg_type,
-            'sender_type': msg.sender_type,
-            'is_read': msg.is_read,
-            'cs_name': cs_name,
-            'created_at': msg.created_at.strftime('%Y-%m-%d %H:%M'),
-        })
+    data = [_serialize_cs_message(msg) for msg in messages]
 
-    # 标记为已读
     messages.filter(sender_type='cs', is_read=False).update(is_read=True)
 
     return success_response(data)
@@ -2310,7 +2426,7 @@ def get_cs_messages(request):
 @api_view(['GET'])
 @permission_classes([IsAuthenticated])
 def get_cs_unread_count(request):
-    """获取未读客服消息数"""
+    """获取客服未读消息数"""
     from apps.customer.models import CSMessage
 
     user = request.user
@@ -2390,7 +2506,7 @@ def get_cs_chat_list(request):
 @api_view(['GET'])
 @permission_classes([IsAuthenticated])
 def get_cs_chat_messages(request):
-    """获取客服与某个客户的聊天记录"""
+    """获取客服聊天消息"""
     from apps.customer.models import CSMessage, Customer
 
     customer_id = request.GET.get('customer_id')
@@ -2413,23 +2529,14 @@ def get_cs_chat_messages(request):
             queryset = queryset.filter(ticket_id=ticket_id)
         else:
             queryset = queryset.filter(ticket__isnull=True)
+        messages = queryset.select_related('cs_user', 'ticket__order').order_by('created_at')
+    else:
+        messages = queryset.select_related('cs_user').order_by('created_at')
 
-    messages = queryset.order_by('created_at')
-    data = []
-    for msg in messages:
-        data.append({
-            'id': msg.id,
-            'content': msg.content,
-            'msg_type': msg.msg_type,
-            'sender_type': msg.sender_type,
-            'is_read': msg.is_read,
-            'created_at': msg.created_at.strftime('%H:%M'),
-        })
+    data = [_serialize_cs_message(msg) for msg in messages]
 
-    # 标记消息为已读
     messages.filter(sender_type='customer', is_read=False).update(is_read=True)
 
-    # 返回客户头像
     customer_avatar = ''
     if customer.avatar:
         avatar_str = str(customer.avatar)
@@ -2448,9 +2555,6 @@ def get_cs_chat_messages(request):
 @permission_classes([IsAuthenticated])
 def send_cs_reply(request):
     """客服回复消息"""
-    import logging
-    logger = logging.getLogger(__name__)
-
     from apps.customer.models import CSMessage, Customer, CustomerService
 
     user = request.user
@@ -2975,10 +3079,11 @@ def leave_team(request):
 # ============ 售后工单 ============
 
 @api_view(['POST'])
+@api_view(['POST'])
 @permission_classes([IsAuthenticated])
 def create_support_ticket(request, order_id):
-    """客户联系售后 - 创建工单"""
-    # 确保表存在
+    """?????? - ????"""
+    """?????? - ????"""
     from django.db import connection
     try:
         with connection.cursor() as cursor:
@@ -3013,21 +3118,13 @@ def create_support_ticket(request, order_id):
     try:
         customer = user.customer
     except Exception:
-        return error_response(msg='用户不存在')
+        return error_response(msg='?????')
 
     try:
         order = Order.objects.get(id=order_id, customer=customer, is_deleted=False)
     except Order.DoesNotExist:
-        return error_response(msg='订单不存在')
+        return error_response(msg='?????')
 
-    # 检查是否已有该订单的未关闭工单
-    existing = SupportTicket.objects.filter(
-        order=order, status__in=['open', 'in_progress'], is_deleted=False
-    ).exists()
-    if existing:
-        return error_response(msg='该订单已有未完成的售后工单')
-
-    # 抓取订单快照
     members_data = []
     for m in order.order_members.filter(is_deleted=False):
         members_data.append({
@@ -3040,6 +3137,7 @@ def create_support_ticket(request, order_id):
         })
 
     order_snapshot = {
+        'order_id': order.id,
         'order_no': order.order_no,
         'status': order.status,
         'status_display': order.get_status_display(),
@@ -3058,21 +3156,38 @@ def create_support_ticket(request, order_id):
         'transfer_reason': order.transfer_reason or '',
     }
 
-    title = request.data.get('title', f'订单{order.order_no}售后')
+    title = request.data.get('title', f'??{order.order_no}??')
     description = request.data.get('description', '')
 
-    ticket = SupportTicket.objects.create(
-        order=order,
-        customer=customer,
-        employee=order.assigned_employee,
-        title=title,
-        description=description,
-        order_snapshot=order_snapshot,
-    )
+    ticket = SupportTicket.objects.filter(
+        order=order, status__in=['open', 'in_progress'], is_deleted=False
+    ).order_by('-created_at').first()
+
+    created = False
+    if ticket is None:
+        import uuid
+        ticket = SupportTicket.objects.create(
+            ticket_no=f"TK{timezone.now().strftime('%Y%m%d%H%M%S')}{uuid.uuid4().hex[:6].upper()}",
+            order=order,
+            customer=customer,
+            employee=order.assigned_employee,
+            title=title,
+            description=description,
+            order_snapshot=order_snapshot,
+        )
+        created = True
+
+    order_card = None
+    if _cs_message_has_ticket_column():
+        _ensure_ticket_order_card_message(customer, ticket)
+        order_card = _build_support_ticket_order_card(ticket)
 
     return success_response({
+        'ticket_id': ticket.id,
         'ticket_no': ticket.ticket_no,
-        'msg': '售后工单已提交，客服将尽快处理',
+        'created': created,
+        'order_card': order_card,
+        'msg': '工单创建成功',
     })
 
 
@@ -3080,6 +3195,8 @@ def create_support_ticket(request, order_id):
 @permission_classes([IsAuthenticated])
 def my_tickets(request):
     """客户查看自己的工单列表"""
+    from apps.order.models import SupportTicket
+
     user = request.user
     try:
         customer = user.customer
@@ -3090,38 +3207,29 @@ def my_tickets(request):
         customer=customer, is_deleted=False
     ).select_related('order', 'handler').order_by('-created_at')
 
-    page = int(request.GET.get('page', 1))
-    page_size = int(request.GET.get('page_size', 10))
-    total = tickets.count()
-    start = (page - 1) * page_size
-
     data = []
-    for t in tickets[start:start + page_size]:
+    for ticket in tickets:
+        order = ticket.order
         data.append({
-            'id': t.id,
-            'ticket_no': t.ticket_no,
-            'order_no': t.order.order_no,
-            'title': t.title,
-            'status': t.status,
-            'status_display': t.get_status_display(),
-            'handler_name': t.handler.username if t.handler else '',
-            'handle_remark': t.handle_remark,
-            'closed_at': t.closed_at.strftime('%Y-%m-%d %H:%M') if t.closed_at else None,
-            'created_at': t.created_at.strftime('%Y-%m-%d %H:%M'),
+            'id': ticket.id,
+            'ticket_no': ticket.ticket_no,
+            'title': ticket.title,
+            'status': ticket.status,
+            'status_display': ticket.get_status_display(),
+            'order_id': order.id if order else None,
+            'order_no': order.order_no if order else '',
+            'order_status': order.status if order else '',
+            'order_status_display': order.get_status_display() if order else '',
+            'created_at': ticket.created_at.strftime('%Y-%m-%d %H:%M'),
         })
 
-    return success_response({
-        'total': total,
-        'page': page,
-        'page_size': page_size,
-        'list': data,
-    })
+    return success_response(data)
 
 
 @api_view(['GET'])
 @permission_classes([IsAuthenticated])
 def cs_ticket_list(request):
-    """客服查看所有工单列表"""
+    """??????????"""
     status = request.GET.get('status', '')
     keyword = request.GET.get('keyword', '')
 
@@ -3171,6 +3279,7 @@ def cs_ticket_list(request):
         'page_size': page_size,
         'list': data,
     })
+
 
 
 @api_view(['POST'])

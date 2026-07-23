@@ -158,6 +158,7 @@ class CSMessage(BaseModel):
     msg_type = models.CharField(max_length=20, default='text', choices=[
         ('text', '文本'),
         ('image', '图片'),
+        ('order_card', '订单卡片'),
     ], verbose_name='消息类型')
     is_read = models.BooleanField(default=False, verbose_name='是否已读')
     sender_type = models.CharField(max_length=20, default='customer', choices=[
