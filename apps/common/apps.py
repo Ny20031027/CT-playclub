@@ -110,10 +110,20 @@ class CommonConfig(AppConfig):
                             cursor.execute(f"ALTER TABLE ord_order_comment DROP FOREIGN KEY `{fk_name}`")
                     cursor.execute(f"ALTER TABLE ord_order_comment MODIFY COLUMN {col} int NULL")
                     if col == 'employee_id':
-                        cursor.execute(
-                            "ALTER TABLE ord_order_comment ADD CONSTRAINT `ord_order_comment_employee_id_5737587d_fk_emp_employee_id` "
-                            "FOREIGN KEY (`employee_id`) REFERENCES `emp_employee` (`id`) ON DELETE SET NULL"
-                        )
+                        # 检查 FK 是否已存在再添加
+                        cursor.execute("""
+                            SELECT COUNT(*)
+                            FROM INFORMATION_SCHEMA.KEY_COLUMN_USAGE
+                            WHERE TABLE_SCHEMA = DATABASE()
+                              AND TABLE_NAME = 'ord_order_comment'
+                              AND COLUMN_NAME = 'employee_id'
+                              AND REFERENCED_TABLE_NAME = 'emp_employee'
+                        """)
+                        if cursor.fetchone()[0] == 0:
+                            cursor.execute(
+                                "ALTER TABLE ord_order_comment ADD CONSTRAINT `ord_order_comment_employee_id_5737587d_fk_emp_employee_id` "
+                                "FOREIGN KEY (`employee_id`) REFERENCES `emp_employee` (`id`) ON DELETE SET NULL"
+                            )
                     logger.info(f'ord_order_comment.{col} set to NULL')
 
             # 确保所有 employee_id 列允许 NULL
@@ -123,9 +133,31 @@ class CommonConfig(AppConfig):
                     cursor.execute(f"SELECT IS_NULLABLE FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = '{table}' AND COLUMN_NAME = 'employee_id'")
                     result = cursor.fetchone()
                     if result and result[0] == 'NO':
-                        cursor.execute(f"ALTER TABLE {table} DROP FOREIGN KEY IF EXISTS {table}_employee_id_fk")
+                        # 查询现有的 FK 约束名（MySQL 5.x 不支持 DROP FOREIGN KEY IF EXISTS）
+                        cursor.execute(f"""
+                            SELECT CONSTRAINT_NAME
+                            FROM INFORMATION_SCHEMA.KEY_COLUMN_USAGE
+                            WHERE TABLE_SCHEMA = DATABASE()
+                              AND TABLE_NAME = '{table}'
+                              AND COLUMN_NAME = 'employee_id'
+                              AND REFERENCED_TABLE_NAME IS NOT NULL
+                            LIMIT 1
+                        """)
+                        fk_row = cursor.fetchone()
+                        if fk_row:
+                            cursor.execute(f"ALTER TABLE {table} DROP FOREIGN KEY `{fk_row[0]}`")
                         cursor.execute(f"ALTER TABLE {table} MODIFY COLUMN employee_id int NULL")
-                        cursor.execute(f"ALTER TABLE {table} ADD FOREIGN KEY (employee_id) REFERENCES emp_employee(id) ON DELETE SET NULL")
+                        # 检查 FK 是否已存在再添加
+                        cursor.execute(f"""
+                            SELECT COUNT(*)
+                            FROM INFORMATION_SCHEMA.KEY_COLUMN_USAGE
+                            WHERE TABLE_SCHEMA = DATABASE()
+                              AND TABLE_NAME = '{table}'
+                              AND COLUMN_NAME = 'employee_id'
+                              AND REFERENCED_TABLE_NAME = 'emp_employee'
+                        """)
+                        if cursor.fetchone()[0] == 0:
+                            cursor.execute(f"ALTER TABLE {table} ADD FOREIGN KEY (employee_id) REFERENCES emp_employee(id) ON DELETE SET NULL")
                         logger.info(f'{table}.employee_id set to NULL')
                 except Exception as e:
                     logger.warning(f'Failed to fix {table}: {e}')
