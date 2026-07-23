@@ -9,8 +9,7 @@ class CommonConfig(AppConfig):
     verbose_name = '公共模块'
 
     def ready(self):
-        if os.environ.get('DB_HOST') and os.environ.get('DB_HOST') != '127.0.0.1':
-            threading.Thread(target=self._auto_migrate, daemon=True).start()
+        threading.Thread(target=self._auto_migrate, daemon=True).start()
 
     def _auto_migrate(self):
         import time
