@@ -135,7 +135,10 @@ class CSWelcomeConfig(BaseModel):
     def save(self, *args, **kwargs):
         # 只允许存在一条记录
         if not self.pk:
-            CSWelcomeConfig.objects.all().delete()
+            try:
+                CSWelcomeConfig.objects.all().delete()
+            except Exception:
+                pass
         super().save(*args, **kwargs)
 
 
