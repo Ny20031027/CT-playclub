@@ -119,13 +119,21 @@ class ErrorLog(BaseModel):
         return self.type
 
 
-def _auto_create_table(sql):
+import logging
+_logger = logging.getLogger('system')
+
+
+def _auto_create_table(table_name, sql):
     from django.db import connection
     try:
         with connection.cursor() as cursor:
+            cursor.execute("SHOW TABLES LIKE %s", [table_name])
+            if cursor.fetchone():
+                return
             cursor.execute(sql)
-    except Exception:
-        pass
+            _logger.info(f'自动建表成功: {table_name}')
+    except Exception as e:
+        _logger.error(f'自动建表失败 {table_name}: {e}')
 
 
 _WELCOME_TABLE_SQL = """CREATE TABLE IF NOT EXISTS `sys_cs_welcome_config` (
@@ -167,7 +175,7 @@ class CSWelcomeConfig(BaseModel):
         return f"欢迎语 - {self.welcome_text[:30]}"
 
     def save(self, *args, **kwargs):
-        _auto_create_table(_WELCOME_TABLE_SQL)
+        _auto_create_table('sys_cs_welcome_config', _WELCOME_TABLE_SQL)
         if not self.pk:
             try:
                 CSWelcomeConfig.objects.all().delete()
@@ -198,5 +206,5 @@ class CSKeywordRule(BaseModel):
         return f"{self.keyword} → {self.reply_text[:20]}"
 
     def save(self, *args, **kwargs):
-        _auto_create_table(_KEYWORD_TABLE_SQL)
+        _auto_create_table('sys_cs_keyword_rule', _KEYWORD_TABLE_SQL)
         super().save(*args, **kwargs)
