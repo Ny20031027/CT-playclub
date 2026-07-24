@@ -117,3 +117,45 @@ class ErrorLog(BaseModel):
 
     def __str__(self):
         return self.type
+
+
+class CSWelcomeConfig(BaseModel):
+    """客服欢迎语配置"""
+    welcome_text = models.TextField(verbose_name='欢迎语内容', help_text='客户进入客服聊天时自动发送的欢迎语')
+    is_enabled = models.BooleanField(default=True, verbose_name='是否启用')
+
+    class Meta:
+        db_table = 'sys_cs_welcome_config'
+        verbose_name = '客服欢迎语配置'
+        verbose_name_plural = verbose_name
+
+    def __str__(self):
+        return f"欢迎语 - {self.welcome_text[:30]}"
+
+    def save(self, *args, **kwargs):
+        # 只允许存在一条记录
+        if not self.pk:
+            CSWelcomeConfig.objects.all().delete()
+        super().save(*args, **kwargs)
+
+
+class CSKeywordRule(BaseModel):
+    """客服关键词自动回复规则"""
+    keyword = models.CharField(max_length=200, verbose_name='关键词', help_text='触发自动回复的关键词')
+    reply_text = models.TextField(verbose_name='回复内容', help_text='匹配关键词后自动回复的内容')
+    match_type = models.CharField(max_length=20, default='contains', choices=[
+        ('contains', '包含'),
+        ('exact', '完全匹配'),
+        ('startswith', '开头匹配'),
+    ], verbose_name='匹配方式')
+    sort = models.IntegerField(default=0, verbose_name='排序')
+    is_enabled = models.BooleanField(default=True, verbose_name='是否启用')
+
+    class Meta:
+        db_table = 'sys_cs_keyword_rule'
+        verbose_name = '客服关键词规则'
+        verbose_name_plural = verbose_name
+        ordering = ['sort', 'id']
+
+    def __str__(self):
+        return f"{self.keyword} → {self.reply_text[:20]}"

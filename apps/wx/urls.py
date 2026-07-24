@@ -55,6 +55,7 @@ urlpatterns = [
 
     # 客服配置
     path('customer-service/', views.customer_service, name='wx-customer-service'),
+    path('cs/welcome/', views.cs_welcome_message, name='wx-cs-welcome'),
     path('cs/send/', views.send_cs_message, name='wx-cs-send'),
     path('cs/messages/', views.get_cs_messages, name='wx-cs-messages'),
     path('cs/unread/', views.get_cs_unread_count, name='wx-cs-unread'),

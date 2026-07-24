@@ -2335,6 +2335,39 @@ def customer_service(request):
     })
 
 
+@api_view(['GET'])
+@permission_classes([AllowAny])
+def cs_welcome_message(request):
+    """获取客服欢迎语"""
+    from apps.system.models import CSWelcomeConfig
+    config = CSWelcomeConfig.objects.filter(is_deleted=False, is_enabled=True).first()
+    if config:
+        return success_response({'welcome_text': config.welcome_text})
+    return success_response({'welcome_text': ''})
+
+
+def _check_keyword_auto_reply(content):
+    """检查客户消息是否匹配关键词，返回自动回复内容"""
+    from apps.system.models import CSKeywordRule
+    if not content:
+        return None
+    rules = CSKeywordRule.objects.filter(is_deleted=False, is_enabled=True).order_by('sort', 'id')
+    for rule in rules:
+        keyword = rule.keyword.strip()
+        if not keyword:
+            continue
+        matched = False
+        if rule.match_type == 'exact':
+            matched = content.strip() == keyword
+        elif rule.match_type == 'startswith':
+            matched = content.strip().startswith(keyword)
+        else:  # contains
+            matched = keyword in content
+        if matched:
+            return rule.reply_text
+    return None
+
+
 # ============ 客服对话 ============
 
 @api_view(['POST'])
@@ -2386,6 +2419,29 @@ def send_cs_message(request):
 
     if ticket and msg_type == 'text':
         _ensure_ticket_order_card_message(customer, ticket)
+
+    # 关键词自动回复
+    auto_reply_content = None
+    if msg_type == 'text':
+        auto_reply_content = _check_keyword_auto_reply(content)
+    if auto_reply_content:
+        try:
+            CSMessage.objects.create(
+                customer=customer,
+                cs_user=None,
+                ticket=ticket,
+                content=auto_reply_content,
+                msg_type='text',
+                sender_type='cs',
+            )
+        except Exception:
+            CSMessage.objects.create(
+                customer=customer,
+                cs_user=None,
+                content=auto_reply_content,
+                msg_type='text',
+                sender_type='cs',
+            )
 
     return success_response(msg='发送成功', data={'message_id': message.id})
 

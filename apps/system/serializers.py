@@ -1,6 +1,7 @@
 from rest_framework import serializers
 from .models import (
-    Config, Dictionary, DictionaryItem, OperationLog, ErrorLog
+    Config, Dictionary, DictionaryItem, OperationLog, ErrorLog,
+    CSWelcomeConfig, CSKeywordRule
 )
 from apps.wx.models import Banner, Announcement
 
@@ -86,4 +87,21 @@ class AnnouncementManageSerializer(serializers.ModelSerializer):
         model = Announcement
         fields = ['id', 'title', 'content', 'type', 'type_text', 'sort',
                   'status', 'created_at', 'updated_at']
+        read_only_fields = ['id', 'created_at', 'updated_at']
+
+
+class CSWelcomeConfigSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = CSWelcomeConfig
+        fields = ['id', 'welcome_text', 'is_enabled', 'created_at', 'updated_at']
+        read_only_fields = ['id', 'created_at', 'updated_at']
+
+
+class CSKeywordRuleSerializer(serializers.ModelSerializer):
+    match_type_display = serializers.CharField(source='get_match_type_display', read_only=True)
+
+    class Meta:
+        model = CSKeywordRule
+        fields = ['id', 'keyword', 'reply_text', 'match_type', 'match_type_display',
+                  'sort', 'is_enabled', 'created_at', 'updated_at']
         read_only_fields = ['id', 'created_at', 'updated_at']

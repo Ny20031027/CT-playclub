@@ -4,12 +4,14 @@ from rest_framework.permissions import IsAuthenticated
 from apps.common.response import success_response
 from apps.common.viewsets import BaseModelViewSet
 from .models import (
-    Config, Dictionary, DictionaryItem, OperationLog, ErrorLog
+    Config, Dictionary, DictionaryItem, OperationLog, ErrorLog,
+    CSWelcomeConfig, CSKeywordRule
 )
 from .serializers import (
     ConfigSerializer, DictionarySerializer, DictionaryItemSerializer,
     OperationLogSerializer, ErrorLogSerializer, DictionarySimpleSerializer,
-    BannerManageSerializer, AnnouncementManageSerializer
+    BannerManageSerializer, AnnouncementManageSerializer,
+    CSWelcomeConfigSerializer, CSKeywordRuleSerializer
 )
 from apps.wx.models import Banner, Announcement
 
@@ -102,4 +104,30 @@ class AnnouncementManageViewSet(BaseModelViewSet):
     serializer_class = AnnouncementManageSerializer
     filterset_fields = ['type', 'status']
     search_fields = ['title', 'content']
+    ordering_fields = ['sort', 'created_at']
+
+
+class CSWelcomeConfigViewSet(BaseModelViewSet):
+    queryset = CSWelcomeConfig.objects.all()
+    serializer_class = CSWelcomeConfigSerializer
+    http_method_names = ['get', 'post', 'put', 'patch']
+
+    @action(detail=False, methods=['get'], url_path='current')
+    def current(self, request):
+        """获取当前启用的欢迎语"""
+        config = CSWelcomeConfig.objects.filter(is_deleted=False, is_enabled=True).first()
+        if config:
+            return success_response({
+                'id': config.id,
+                'welcome_text': config.welcome_text,
+                'is_enabled': config.is_enabled,
+            })
+        return success_response({'welcome_text': '', 'is_enabled': False})
+
+
+class CSKeywordRuleViewSet(BaseModelViewSet):
+    queryset = CSKeywordRule.objects.all()
+    serializer_class = CSKeywordRuleSerializer
+    filterset_fields = ['is_enabled', 'match_type']
+    search_fields = ['keyword', 'reply_text']
     ordering_fields = ['sort', 'created_at']
