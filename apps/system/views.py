@@ -1,7 +1,8 @@
 from rest_framework import viewsets
 from rest_framework.decorators import action
 from rest_framework.permissions import IsAuthenticated
-from apps.common.response import success_response
+from django.db import connection, DatabaseError
+from apps.common.response import success_response, error_response
 from apps.common.viewsets import BaseModelViewSet
 from .models import (
     Config, Dictionary, DictionaryItem, OperationLog, ErrorLog,
@@ -108,9 +109,9 @@ class AnnouncementManageViewSet(BaseModelViewSet):
 
 
 def _table_exists(model):
+    table_name = model._meta.db_table
     try:
-        model.objects.exists()
-        return True
+        return table_name in connection.introspection.table_names()
     except Exception:
         return False
 
@@ -147,23 +148,48 @@ _CS_CREATE_SQLS = [
 
 
 def _ensure_cs_tables():
-    """确保客服相关表存在，不存在则自动创建"""
+    """Ensure customer-service config tables exist before request handlers write to them."""
     global _CS_TABLES_CREATED
-    if _CS_TABLES_CREATED:
-        return
-    from django.db import connection
+    models = (CSWelcomeConfig, CSKeywordRule)
+    if _CS_TABLES_CREATED and all(_table_exists(model) for model in models):
+        return True
+
     try:
-        cursor = connection.cursor()
-        for sql in _CS_CREATE_SQLS:
-            try:
-                cursor.execute(sql)
-            except Exception as e:
-                _cs_logger.warning(f'建表SQL执行异常(可忽略): {e}')
-        cursor.close()
-        _CS_TABLES_CREATED = True
-        _cs_logger.info('客服表自动创建完成')
+        existing_tables = set(connection.introspection.table_names())
+        with connection.schema_editor() as schema_editor:
+            for model in models:
+                if model._meta.db_table not in existing_tables:
+                    schema_editor.create_model(model)
+                    existing_tables.add(model._meta.db_table)
+        _CS_TABLES_CREATED = all(_table_exists(model) for model in models)
+        if _CS_TABLES_CREATED:
+            _cs_logger.info('Customer-service config tables are ready')
+            return True
+        _cs_logger.error('Customer-service config tables are still missing after auto create')
     except Exception as e:
-        _cs_logger.error(f'客服表自动创建失败: {e}', exc_info=True)
+        _cs_logger.warning(f'Customer-service schema editor create failed: {e}', exc_info=True)
+
+    try:
+        with connection.cursor() as cursor:
+            for sql in _CS_CREATE_SQLS:
+                cursor.execute(sql)
+        _CS_TABLES_CREATED = all(_table_exists(model) for model in models)
+        if _CS_TABLES_CREATED:
+            _cs_logger.info('Customer-service config tables were created with fallback SQL')
+            return True
+        _cs_logger.error('Customer-service config tables are still missing after fallback SQL')
+    except Exception as e:
+        _cs_logger.error(f'Customer-service config table auto-create failed: {e}', exc_info=True)
+
+    _CS_TABLES_CREATED = False
+    return False
+
+
+def _cs_tables_unavailable_response():
+    return error_response(
+        msg='客服配置表未初始化，自动创建失败；请先执行 python manage.py migrate，或导入 scripts/create_cs_tables.sql',
+        code=500,
+    )
 
 
 class CSWelcomeConfigViewSet(BaseModelViewSet):
@@ -180,19 +206,23 @@ class CSWelcomeConfigViewSet(BaseModelViewSet):
         return CSWelcomeConfig.objects.none()
 
     def create(self, request, *args, **kwargs):
-        _ensure_cs_tables()
+        if not _ensure_cs_tables():
+            return _cs_tables_unavailable_response()
         try:
             return super().create(request, *args, **kwargs)
-        except Exception:
-            _ensure_cs_tables()
+        except DatabaseError:
+            if not _ensure_cs_tables():
+                return _cs_tables_unavailable_response()
             return super().create(request, *args, **kwargs)
 
     def update(self, request, *args, **kwargs):
-        _ensure_cs_tables()
+        if not _ensure_cs_tables():
+            return _cs_tables_unavailable_response()
         try:
             return super().update(request, *args, **kwargs)
-        except Exception:
-            _ensure_cs_tables()
+        except DatabaseError:
+            if not _ensure_cs_tables():
+                return _cs_tables_unavailable_response()
             return super().update(request, *args, **kwargs)
 
     @action(detail=False, methods=['get'], url_path='current')
@@ -228,17 +258,21 @@ class CSKeywordRuleViewSet(BaseModelViewSet):
         return CSKeywordRule.objects.none()
 
     def create(self, request, *args, **kwargs):
-        _ensure_cs_tables()
+        if not _ensure_cs_tables():
+            return _cs_tables_unavailable_response()
         try:
             return super().create(request, *args, **kwargs)
-        except Exception:
-            _ensure_cs_tables()
+        except DatabaseError:
+            if not _ensure_cs_tables():
+                return _cs_tables_unavailable_response()
             return super().create(request, *args, **kwargs)
 
     def update(self, request, *args, **kwargs):
-        _ensure_cs_tables()
+        if not _ensure_cs_tables():
+            return _cs_tables_unavailable_response()
         try:
             return super().update(request, *args, **kwargs)
-        except Exception:
-            _ensure_cs_tables()
+        except DatabaseError:
+            if not _ensure_cs_tables():
+                return _cs_tables_unavailable_response()
             return super().update(request, *args, **kwargs)

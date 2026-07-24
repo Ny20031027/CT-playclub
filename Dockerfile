@@ -5,27 +5,23 @@ ENV PYTHONUNBUFFERED=1
 
 WORKDIR /app
 
-# 安装 CA 证书（解决 SSL 验证问题）
+# Install CA certificates for outbound HTTPS calls.
 RUN apt-get update && apt-get install -y --no-install-recommends \
     ca-certificates \
     && rm -rf /var/lib/apt/lists/*
 
-# 更新 CA 证书
 RUN update-ca-certificates
 
-# 创建日志和媒体目录
+# Create runtime directories.
 RUN mkdir -p /app/logs /app/media /app/static
 
-# 安装 Python 依赖
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
-# 复制项目代码
 COPY . .
 
-# 收集静态文件
 RUN python manage.py collectstatic --noinput --settings=config.settings.prod || true
 
 EXPOSE 8000
 
-CMD ["gunicorn", "config.wsgi:application", "--bind", "0.0.0.0:8000", "--workers", "3", "--timeout", "120"]
+CMD ["sh", "-c", "python manage.py migrate --noinput --settings=config.settings.prod && gunicorn config.wsgi:application --bind 0.0.0.0:8000 --workers 3 --timeout 120"]
