@@ -119,55 +119,6 @@ class ErrorLog(BaseModel):
         return self.type
 
 
-import logging
-_logger = logging.getLogger('system')
-
-_cs_tables_checked = set()
-
-
-def _auto_create_table(table_name, sql):
-    if table_name in _cs_tables_checked:
-        return
-    from django.db import connection
-    try:
-        conn = connection.get_connection()
-        cursor = conn.cursor()
-        try:
-            cursor.execute(sql)
-            conn.commit()
-            _cs_tables_checked.add(table_name)
-            _logger.info(f'自动建表成功: {table_name}')
-        finally:
-            cursor.close()
-    except Exception as e:
-        _logger.error(f'自动建表失败 {table_name}: {e}', exc_info=True)
-
-
-_WELCOME_TABLE_SQL = """CREATE TABLE IF NOT EXISTS `sys_cs_welcome_config` (
-    `id` bigint NOT NULL AUTO_INCREMENT,
-    `created_at` datetime(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6),
-    `updated_at` datetime(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6) ON UPDATE CURRENT_TIMESTAMP(6),
-    `is_deleted` tinyint(1) NOT NULL DEFAULT 0,
-    `welcome_text` longtext NOT NULL DEFAULT '',
-    `is_enabled` tinyint(1) NOT NULL DEFAULT 1,
-    PRIMARY KEY (`id`)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci"""
-
-_KEYWORD_TABLE_SQL = """CREATE TABLE IF NOT EXISTS `sys_cs_keyword_rule` (
-    `id` bigint NOT NULL AUTO_INCREMENT,
-    `created_at` datetime(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6),
-    `updated_at` datetime(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6) ON UPDATE CURRENT_TIMESTAMP(6),
-    `is_deleted` tinyint(1) NOT NULL DEFAULT 0,
-    `keyword` varchar(200) NOT NULL,
-    `reply_text` longtext NOT NULL,
-    `match_type` varchar(20) NOT NULL DEFAULT 'contains',
-    `sort` int NOT NULL DEFAULT 0,
-    `is_enabled` tinyint(1) NOT NULL DEFAULT 1,
-    PRIMARY KEY (`id`),
-    KEY `idx_keyword` (`keyword`)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci"""
-
-
 class CSWelcomeConfig(BaseModel):
     """客服欢迎语配置"""
     welcome_text = models.TextField(blank=True, default='', verbose_name='欢迎语内容', help_text='客户进入客服聊天时自动发送的欢迎语')
@@ -182,7 +133,6 @@ class CSWelcomeConfig(BaseModel):
         return f"欢迎语 - {self.welcome_text[:30]}"
 
     def save(self, *args, **kwargs):
-        _auto_create_table('sys_cs_welcome_config', _WELCOME_TABLE_SQL)
         if not self.pk:
             try:
                 CSWelcomeConfig.objects.all().delete()
@@ -211,7 +161,3 @@ class CSKeywordRule(BaseModel):
 
     def __str__(self):
         return f"{self.keyword} → {self.reply_text[:20]}"
-
-    def save(self, *args, **kwargs):
-        _auto_create_table('sys_cs_keyword_rule', _KEYWORD_TABLE_SQL)
-        super().save(*args, **kwargs)

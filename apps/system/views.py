@@ -115,42 +115,55 @@ def _table_exists(model):
         return False
 
 
+import logging as _logging
+_cs_logger = _logging.getLogger('system')
+
+_CS_TABLES_CREATED = False
+
+_CS_CREATE_SQLS = [
+    """CREATE TABLE IF NOT EXISTS `sys_cs_welcome_config` (
+        `id` bigint NOT NULL AUTO_INCREMENT,
+        `created_at` datetime(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6),
+        `updated_at` datetime(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6) ON UPDATE CURRENT_TIMESTAMP(6),
+        `is_deleted` tinyint(1) NOT NULL DEFAULT 0,
+        `welcome_text` longtext NOT NULL DEFAULT '',
+        `is_enabled` tinyint(1) NOT NULL DEFAULT 1,
+        PRIMARY KEY (`id`)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci""",
+    """CREATE TABLE IF NOT EXISTS `sys_cs_keyword_rule` (
+        `id` bigint NOT NULL AUTO_INCREMENT,
+        `created_at` datetime(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6),
+        `updated_at` datetime(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6) ON UPDATE CURRENT_TIMESTAMP(6),
+        `is_deleted` tinyint(1) NOT NULL DEFAULT 0,
+        `keyword` varchar(200) NOT NULL,
+        `reply_text` longtext NOT NULL,
+        `match_type` varchar(20) NOT NULL DEFAULT 'contains',
+        `sort` int NOT NULL DEFAULT 0,
+        `is_enabled` tinyint(1) NOT NULL DEFAULT 1,
+        PRIMARY KEY (`id`),
+        KEY `idx_keyword` (`keyword`)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci""",
+]
+
+
 def _ensure_cs_tables():
     """确保客服相关表存在，不存在则自动创建"""
+    global _CS_TABLES_CREATED
+    if _CS_TABLES_CREATED:
+        return
     from django.db import connection
-    stmts = [
-        """CREATE TABLE IF NOT EXISTS `sys_cs_welcome_config` (
-            `id` bigint NOT NULL AUTO_INCREMENT,
-            `created_at` datetime(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6),
-            `updated_at` datetime(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6) ON UPDATE CURRENT_TIMESTAMP(6),
-            `is_deleted` tinyint(1) NOT NULL DEFAULT 0,
-            `welcome_text` longtext NOT NULL DEFAULT '',
-            `is_enabled` tinyint(1) NOT NULL DEFAULT 1,
-            PRIMARY KEY (`id`)
-        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci""",
-        """CREATE TABLE IF NOT EXISTS `sys_cs_keyword_rule` (
-            `id` bigint NOT NULL AUTO_INCREMENT,
-            `created_at` datetime(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6),
-            `updated_at` datetime(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6) ON UPDATE CURRENT_TIMESTAMP(6),
-            `is_deleted` tinyint(1) NOT NULL DEFAULT 0,
-            `keyword` varchar(200) NOT NULL,
-            `reply_text` longtext NOT NULL,
-            `match_type` varchar(20) NOT NULL DEFAULT 'contains',
-            `sort` int NOT NULL DEFAULT 0,
-            `is_enabled` tinyint(1) NOT NULL DEFAULT 1,
-            PRIMARY KEY (`id`),
-            KEY `idx_keyword` (`keyword`)
-        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci""",
-    ]
     try:
-        with connection.cursor() as cursor:
-            for stmt in stmts:
-                try:
-                    cursor.execute(stmt)
-                except Exception:
-                    pass
-    except Exception:
-        pass
+        cursor = connection.cursor()
+        for sql in _CS_CREATE_SQLS:
+            try:
+                cursor.execute(sql)
+            except Exception as e:
+                _cs_logger.warning(f'建表SQL执行异常(可忽略): {e}')
+        cursor.close()
+        _CS_TABLES_CREATED = True
+        _cs_logger.info('客服表自动创建完成')
+    except Exception as e:
+        _cs_logger.error(f'客服表自动创建失败: {e}', exc_info=True)
 
 
 class CSWelcomeConfigViewSet(BaseModelViewSet):
@@ -168,15 +181,25 @@ class CSWelcomeConfigViewSet(BaseModelViewSet):
 
     def create(self, request, *args, **kwargs):
         _ensure_cs_tables()
-        return super().create(request, *args, **kwargs)
+        try:
+            return super().create(request, *args, **kwargs)
+        except Exception:
+            _ensure_cs_tables()
+            return super().create(request, *args, **kwargs)
 
     def update(self, request, *args, **kwargs):
         _ensure_cs_tables()
-        return super().update(request, *args, **kwargs)
+        try:
+            return super().update(request, *args, **kwargs)
+        except Exception:
+            _ensure_cs_tables()
+            return super().update(request, *args, **kwargs)
 
     @action(detail=False, methods=['get'], url_path='current')
     def current(self, request):
         """获取当前启用的欢迎语"""
+        if not _table_exists(CSWelcomeConfig):
+            _ensure_cs_tables()
         if not _table_exists(CSWelcomeConfig):
             return success_response({'welcome_text': '', 'is_enabled': False})
         config = CSWelcomeConfig.objects.filter(is_deleted=False, is_enabled=True).first()
@@ -206,8 +229,16 @@ class CSKeywordRuleViewSet(BaseModelViewSet):
 
     def create(self, request, *args, **kwargs):
         _ensure_cs_tables()
-        return super().create(request, *args, **kwargs)
+        try:
+            return super().create(request, *args, **kwargs)
+        except Exception:
+            _ensure_cs_tables()
+            return super().create(request, *args, **kwargs)
 
     def update(self, request, *args, **kwargs):
         _ensure_cs_tables()
-        return super().update(request, *args, **kwargs)
+        try:
+            return super().update(request, *args, **kwargs)
+        except Exception:
+            _ensure_cs_tables()
+            return super().update(request, *args, **kwargs)
