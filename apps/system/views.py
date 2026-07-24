@@ -115,6 +115,44 @@ def _table_exists(model):
         return False
 
 
+def _ensure_cs_tables():
+    """确保客服相关表存在，不存在则自动创建"""
+    from django.db import connection
+    stmts = [
+        """CREATE TABLE IF NOT EXISTS `sys_cs_welcome_config` (
+            `id` bigint NOT NULL AUTO_INCREMENT,
+            `created_at` datetime(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6),
+            `updated_at` datetime(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6) ON UPDATE CURRENT_TIMESTAMP(6),
+            `is_deleted` tinyint(1) NOT NULL DEFAULT 0,
+            `welcome_text` longtext NOT NULL DEFAULT '',
+            `is_enabled` tinyint(1) NOT NULL DEFAULT 1,
+            PRIMARY KEY (`id`)
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci""",
+        """CREATE TABLE IF NOT EXISTS `sys_cs_keyword_rule` (
+            `id` bigint NOT NULL AUTO_INCREMENT,
+            `created_at` datetime(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6),
+            `updated_at` datetime(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6) ON UPDATE CURRENT_TIMESTAMP(6),
+            `is_deleted` tinyint(1) NOT NULL DEFAULT 0,
+            `keyword` varchar(200) NOT NULL,
+            `reply_text` longtext NOT NULL,
+            `match_type` varchar(20) NOT NULL DEFAULT 'contains',
+            `sort` int NOT NULL DEFAULT 0,
+            `is_enabled` tinyint(1) NOT NULL DEFAULT 1,
+            PRIMARY KEY (`id`),
+            KEY `idx_keyword` (`keyword`)
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci""",
+    ]
+    try:
+        with connection.cursor() as cursor:
+            for stmt in stmts:
+                try:
+                    cursor.execute(stmt)
+                except Exception:
+                    pass
+    except Exception:
+        pass
+
+
 class CSWelcomeConfigViewSet(BaseModelViewSet):
     queryset = CSWelcomeConfig.objects.none()
     serializer_class = CSWelcomeConfigSerializer
@@ -123,7 +161,18 @@ class CSWelcomeConfigViewSet(BaseModelViewSet):
     def get_queryset(self):
         if _table_exists(CSWelcomeConfig):
             return CSWelcomeConfig.objects.all()
+        _ensure_cs_tables()
+        if _table_exists(CSWelcomeConfig):
+            return CSWelcomeConfig.objects.all()
         return CSWelcomeConfig.objects.none()
+
+    def create(self, request, *args, **kwargs):
+        _ensure_cs_tables()
+        return super().create(request, *args, **kwargs)
+
+    def update(self, request, *args, **kwargs):
+        _ensure_cs_tables()
+        return super().update(request, *args, **kwargs)
 
     @action(detail=False, methods=['get'], url_path='current')
     def current(self, request):
@@ -150,4 +199,15 @@ class CSKeywordRuleViewSet(BaseModelViewSet):
     def get_queryset(self):
         if _table_exists(CSKeywordRule):
             return CSKeywordRule.objects.all()
+        _ensure_cs_tables()
+        if _table_exists(CSKeywordRule):
+            return CSKeywordRule.objects.all()
         return CSKeywordRule.objects.none()
+
+    def create(self, request, *args, **kwargs):
+        _ensure_cs_tables()
+        return super().create(request, *args, **kwargs)
+
+    def update(self, request, *args, **kwargs):
+        _ensure_cs_tables()
+        return super().update(request, *args, **kwargs)
