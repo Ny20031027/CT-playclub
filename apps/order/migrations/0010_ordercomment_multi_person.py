@@ -9,10 +9,15 @@ class Migration(migrations.Migration):
     ]
 
     operations = [
-        migrations.AlterField(
-            model_name='ordercomment',
-            name='order',
-            field=models.ForeignKey(on_delete=django.db.models.deletion.CASCADE, related_name='comments', to='order.order', verbose_name='订单'),
+        migrations.SeparateDatabaseAndState(
+            state_operations=[
+                migrations.AlterField(
+                    model_name='ordercomment',
+                    name='order',
+                    field=models.ForeignKey(on_delete=django.db.models.deletion.CASCADE, related_name='comments', to='order.order', verbose_name='订单'),
+                ),
+            ],
+            database_operations=[],
         ),
         migrations.AddField(
             model_name='ordercomment',
