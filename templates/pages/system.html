@@ -14,6 +14,7 @@
     <div class="tab-item" onclick="switchTab('skill')">技能设置</div>
     <div class="tab-item" onclick="switchTab('tag')">标签设置</div>
     <div class="tab-item" onclick="switchTab('cs')">客服设置</div>
+    <div class="tab-item" onclick="switchTab('welcomeKeyword')">欢迎/关键词</div>
     <div class="tab-item" onclick="switchTab('logs')">操作日志</div>
 </div>
 
@@ -211,6 +212,56 @@
                 <input type="text" id="csWorkTime" placeholder="如：9:00-22:00" value="9:00-22:00" style="width: 100%; padding: 10px; border: 1px solid #ddd; border-radius: 4px;">
             </div>
             <button class="btn btn-primary" onclick="saveCSConfig()" style="margin-top: 20px;">保存设置</button>
+        </div>
+    </div>
+</div>
+
+<div id="welcomeKeywordTab" style="display: none;">
+    <div class="card">
+        <div class="card-header">
+            <div class="card-title">客服欢迎语</div>
+        </div>
+        <div class="card-body" style="padding: 20px;">
+            <p style="color: #666; margin-bottom: 15px; font-size: 13px;">客户进入客服聊天时自动发送的欢迎消息</p>
+            <div class="form-group">
+                <label>欢迎语内容</label>
+                <textarea id="welcomeText" rows="3" placeholder="请输入欢迎语内容" style="width: 100%; padding: 10px; border: 1px solid #ddd; border-radius: 4px; resize: vertical;"></textarea>
+            </div>
+            <div class="form-group">
+                <label>
+                    <input type="checkbox" id="welcomeEnabled" checked> 启用欢迎语
+                </label>
+            </div>
+            <button class="btn btn-primary" onclick="saveWelcomeConfig()">保存欢迎语</button>
+        </div>
+    </div>
+
+    <div class="card" style="margin-top: 20px;">
+        <div class="card-header">
+            <div class="card-title">关键词自动回复</div>
+            <div class="card-actions">
+                <button class="btn btn-primary" onclick="showAddKeywordModal()">
+                    <i class="fa-solid fa-plus"></i> 添加规则
+                </button>
+            </div>
+        </div>
+        <p style="color: #666; padding: 0 20px; font-size: 13px;">当客户消息包含指定关键词时，系统自动回复预设内容</p>
+        <div class="table-container">
+            <table>
+                <thead>
+                    <tr>
+                        <th>关键词</th>
+                        <th>回复内容</th>
+                        <th>匹配方式</th>
+                        <th>排序</th>
+                        <th>状态</th>
+                        <th>操作</th>
+                    </tr>
+                </thead>
+                <tbody id="keywordList">
+                    <tr><td colspan="6" class="empty-state"><i class="fa-solid fa-spinner fa-spin"></i><br>加载中...</td></tr>
+                </tbody>
+            </table>
         </div>
     </div>
 </div>
@@ -553,6 +604,49 @@
     </div>
 </div>
 
+<div class="modal-overlay" id="keywordModal">
+    <div class="modal">
+        <div class="modal-header">
+            <div class="modal-title" id="keywordModalTitle">添加关键词规则</div>
+            <div class="modal-close" onclick="hideModal('keywordModal')">&times;</div>
+        </div>
+        <div class="modal-body">
+            <form id="keywordForm">
+                <input type="hidden" id="keywordId">
+                <div class="form-group">
+                    <label>关键词 *</label>
+                    <input type="text" id="keywordName" required placeholder="如：退款、价格、怎么玩">
+                </div>
+                <div class="form-group">
+                    <label>回复内容 *</label>
+                    <textarea id="keywordReply" rows="3" required placeholder="请输入自动回复内容"></textarea>
+                </div>
+                <div class="form-group">
+                    <label>匹配方式</label>
+                    <select id="keywordMatchType">
+                        <option value="contains">包含</option>
+                        <option value="exact">完全匹配</option>
+                        <option value="startswith">开头匹配</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label>排序</label>
+                    <input type="number" id="keywordSort" value="0" min="0">
+                </div>
+                <div class="form-group">
+                    <label>
+                        <input type="checkbox" id="keywordEnabled" checked> 启用
+                    </label>
+                </div>
+            </form>
+        </div>
+        <div class="modal-footer">
+            <button class="btn btn-default" onclick="hideModal('keywordModal')">取消</button>
+            <button class="btn btn-primary" onclick="saveKeywordRule()">确定</button>
+        </div>
+    </div>
+</div>
+
 <script>
     document.addEventListener('DOMContentLoaded', async function() {
         await loadConfigs();
@@ -577,9 +671,11 @@
         document.getElementById('skillTab').style.display = tab === 'skill' ? 'block' : 'none';
         document.getElementById('tagTab').style.display = tab === 'tag' ? 'block' : 'none';
         document.getElementById('csTab').style.display = tab === 'cs' ? 'block' : 'none';
+        document.getElementById('welcomeKeywordTab').style.display = tab === 'welcomeKeyword' ? 'block' : 'none';
         document.getElementById('logsTab').style.display = tab === 'logs' ? 'block' : 'none';
 
         if (tab === 'cs') loadCSConfig();
+        if (tab === 'welcomeKeyword') { loadWelcomeConfig(); loadKeywordRules(); }
     }
 
     let editingConfigId = null;
@@ -1587,6 +1683,177 @@
             showToast('保存成功', 'success');
         } catch (error) {
             showToast('保存失败: ' + error.message, 'error');
+        }
+    }
+
+    // ============ 欢迎语管理 ============
+    let currentWelcomeId = null;
+
+    async function loadWelcomeConfig() {
+        try {
+            const result = await get('/system/cs-welcome/current/');
+            if (result.code === 200 && result.data) {
+                currentWelcomeId = result.data.id || null;
+                document.getElementById('welcomeText').value = result.data.welcome_text || '';
+                document.getElementById('welcomeEnabled').checked = result.data.is_enabled !== false;
+            }
+        } catch (error) {
+            console.error('加载欢迎语配置失败:', error);
+        }
+    }
+
+    async function saveWelcomeConfig() {
+        const welcomeText = document.getElementById('welcomeText').value;
+        const isEnabled = document.getElementById('welcomeEnabled').checked;
+
+        try {
+            let result;
+            if (currentWelcomeId) {
+                result = await put(`/system/cs-welcome/${currentWelcomeId}/`, {
+                    welcome_text: welcomeText,
+                    is_enabled: isEnabled
+                });
+            } else {
+                result = await post('/system/cs-welcome/', {
+                    welcome_text: welcomeText,
+                    is_enabled: isEnabled
+                });
+                if (result.code === 200 && result.data && result.data.id) {
+                    currentWelcomeId = result.data.id;
+                }
+            }
+            if (result.code === 200) {
+                showToast('保存成功', 'success');
+            } else {
+                showToast(result.msg || '保存失败', 'error');
+            }
+        } catch (error) {
+            showToast('保存失败: ' + error.message, 'error');
+        }
+    }
+
+    // ============ 关键词规则管理 ============
+    async function loadKeywordRules() {
+        try {
+            const result = await get('/system/cs-keywords/');
+            if (result.code === 200) {
+                const rules = result.data.results || [];
+                const tbody = document.getElementById('keywordList');
+
+                if (rules.length === 0) {
+                    tbody.innerHTML = '<tr><td colspan="6" class="empty-state"><i class="fa-solid fa-inbox"></i><br>暂无关键词规则</td></tr>';
+                    return;
+                }
+
+                const matchTypeMap = { contains: '包含', exact: '完全匹配', startswith: '开头匹配' };
+                tbody.innerHTML = rules.map(r => `
+                    <tr>
+                        <td>${r.keyword}</td>
+                        <td style="max-width: 300px;">${r.reply_text.substring(0, 50)}${r.reply_text.length > 50 ? '...' : ''}</td>
+                        <td>${matchTypeMap[r.match_type] || r.match_type}</td>
+                        <td>${r.sort || 0}</td>
+                        <td>
+                            <span class="badge ${r.is_enabled ? 'badge-success' : 'badge-danger'}">${r.is_enabled ? '启用' : '禁用'}</span>
+                        </td>
+                        <td>
+                            <button class="btn btn-default" onclick="editKeywordRule(${r.id})">编辑</button>
+                            <button class="btn btn-danger" onclick="deleteKeywordRule(${r.id})">删除</button>
+                        </td>
+                    </tr>
+                `).join('');
+            }
+        } catch (error) {
+            console.error('加载关键词规则失败:', error);
+        }
+    }
+
+    let editingKeywordId = null;
+
+    function showAddKeywordModal() {
+        editingKeywordId = null;
+        document.getElementById('keywordModalTitle').textContent = '添加关键词规则';
+        document.getElementById('keywordForm').reset();
+        document.getElementById('keywordId').value = '';
+        document.getElementById('keywordMatchType').value = 'contains';
+        document.getElementById('keywordSort').value = '0';
+        document.getElementById('keywordEnabled').checked = true;
+        showModal('keywordModal');
+    }
+
+    async function editKeywordRule(id) {
+        try {
+            const result = await get(`/system/cs-keywords/${id}/`);
+            if (result.code === 200) {
+                const rule = result.data;
+                editingKeywordId = id;
+                document.getElementById('keywordModalTitle').textContent = '编辑关键词规则';
+                document.getElementById('keywordId').value = rule.id;
+                document.getElementById('keywordName').value = rule.keyword;
+                document.getElementById('keywordReply').value = rule.reply_text;
+                document.getElementById('keywordMatchType').value = rule.match_type;
+                document.getElementById('keywordSort').value = rule.sort || 0;
+                document.getElementById('keywordEnabled').checked = rule.is_enabled;
+                showModal('keywordModal');
+            }
+        } catch (error) {
+            showToast('加载规则失败', 'error');
+        }
+    }
+
+    async function saveKeywordRule() {
+        const keyword = document.getElementById('keywordName').value;
+        const replyText = document.getElementById('keywordReply').value;
+        const matchType = document.getElementById('keywordMatchType').value;
+        const sort = document.getElementById('keywordSort').value;
+        const isEnabled = document.getElementById('keywordEnabled').checked;
+
+        if (!keyword || !replyText) {
+            showToast('请填写关键词和回复内容', 'error');
+            return;
+        }
+
+        const data = {
+            keyword: keyword,
+            reply_text: replyText,
+            match_type: matchType,
+            sort: parseInt(sort) || 0,
+            is_enabled: isEnabled
+        };
+
+        try {
+            let result;
+            if (editingKeywordId) {
+                result = await put(`/system/cs-keywords/${editingKeywordId}/`, data);
+            } else {
+                result = await post('/system/cs-keywords/', data);
+            }
+
+            if (result.code === 200) {
+                showToast(editingKeywordId ? '更新成功' : '添加成功', 'success');
+                hideModal('keywordModal');
+                editingKeywordId = null;
+                await loadKeywordRules();
+            } else {
+                showToast(result.msg || '操作失败', 'error');
+            }
+        } catch (error) {
+            showToast('操作失败: ' + error.message, 'error');
+        }
+    }
+
+    async function deleteKeywordRule(id) {
+        if (!confirm('确定要删除该关键词规则吗？')) return;
+
+        try {
+            const result = await del(`/system/cs-keywords/${id}/`);
+            if (result.code === 200) {
+                showToast('删除成功', 'success');
+                await loadKeywordRules();
+            } else {
+                showToast(result.msg || '删除失败', 'error');
+            }
+        } catch (error) {
+            showToast('删除失败: ' + error.message, 'error');
         }
     }
 </script>
