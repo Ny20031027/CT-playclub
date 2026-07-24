@@ -122,18 +122,25 @@ class ErrorLog(BaseModel):
 import logging
 _logger = logging.getLogger('system')
 
+_cs_tables_checked = set()
+
 
 def _auto_create_table(table_name, sql):
+    if table_name in _cs_tables_checked:
+        return
     from django.db import connection
     try:
-        with connection.cursor() as cursor:
-            cursor.execute("SHOW TABLES LIKE %s", [table_name])
-            if cursor.fetchone():
-                return
+        conn = connection.get_connection()
+        cursor = conn.cursor()
+        try:
             cursor.execute(sql)
+            conn.commit()
+            _cs_tables_checked.add(table_name)
             _logger.info(f'自动建表成功: {table_name}')
+        finally:
+            cursor.close()
     except Exception as e:
-        _logger.error(f'自动建表失败 {table_name}: {e}')
+        _logger.error(f'自动建表失败 {table_name}: {e}', exc_info=True)
 
 
 _WELCOME_TABLE_SQL = """CREATE TABLE IF NOT EXISTS `sys_cs_welcome_config` (
