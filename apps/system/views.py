@@ -107,14 +107,29 @@ class AnnouncementManageViewSet(BaseModelViewSet):
     ordering_fields = ['sort', 'created_at']
 
 
+def _table_exists(model):
+    try:
+        model.objects.exists()
+        return True
+    except Exception:
+        return False
+
+
 class CSWelcomeConfigViewSet(BaseModelViewSet):
-    queryset = CSWelcomeConfig.objects.all()
+    queryset = CSWelcomeConfig.objects.none()
     serializer_class = CSWelcomeConfigSerializer
     http_method_names = ['get', 'post', 'put', 'patch']
+
+    def get_queryset(self):
+        if _table_exists(CSWelcomeConfig):
+            return CSWelcomeConfig.objects.all()
+        return CSWelcomeConfig.objects.none()
 
     @action(detail=False, methods=['get'], url_path='current')
     def current(self, request):
         """获取当前启用的欢迎语"""
+        if not _table_exists(CSWelcomeConfig):
+            return success_response({'welcome_text': '', 'is_enabled': False})
         config = CSWelcomeConfig.objects.filter(is_deleted=False, is_enabled=True).first()
         if config:
             return success_response({
@@ -126,8 +141,13 @@ class CSWelcomeConfigViewSet(BaseModelViewSet):
 
 
 class CSKeywordRuleViewSet(BaseModelViewSet):
-    queryset = CSKeywordRule.objects.all()
+    queryset = CSKeywordRule.objects.none()
     serializer_class = CSKeywordRuleSerializer
     filterset_fields = ['is_enabled', 'match_type']
     search_fields = ['keyword', 'reply_text']
     ordering_fields = ['sort', 'created_at']
+
+    def get_queryset(self):
+        if _table_exists(CSKeywordRule):
+            return CSKeywordRule.objects.all()
+        return CSKeywordRule.objects.none()

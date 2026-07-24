@@ -2340,9 +2340,12 @@ def customer_service(request):
 def cs_welcome_message(request):
     """获取客服欢迎语"""
     from apps.system.models import CSWelcomeConfig
-    config = CSWelcomeConfig.objects.filter(is_deleted=False, is_enabled=True).first()
-    if config:
-        return success_response({'welcome_text': config.welcome_text})
+    try:
+        config = CSWelcomeConfig.objects.filter(is_deleted=False, is_enabled=True).first()
+        if config:
+            return success_response({'welcome_text': config.welcome_text})
+    except Exception:
+        pass
     return success_response({'welcome_text': ''})
 
 
@@ -2351,20 +2354,23 @@ def _check_keyword_auto_reply(content):
     from apps.system.models import CSKeywordRule
     if not content:
         return None
-    rules = CSKeywordRule.objects.filter(is_deleted=False, is_enabled=True).order_by('sort', 'id')
-    for rule in rules:
-        keyword = rule.keyword.strip()
-        if not keyword:
-            continue
-        matched = False
-        if rule.match_type == 'exact':
-            matched = content.strip() == keyword
-        elif rule.match_type == 'startswith':
-            matched = content.strip().startswith(keyword)
-        else:  # contains
-            matched = keyword in content
-        if matched:
-            return rule.reply_text
+    try:
+        rules = CSKeywordRule.objects.filter(is_deleted=False, is_enabled=True).order_by('sort', 'id')
+        for rule in rules:
+            keyword = rule.keyword.strip()
+            if not keyword:
+                continue
+            matched = False
+            if rule.match_type == 'exact':
+                matched = content.strip() == keyword
+            elif rule.match_type == 'startswith':
+                matched = content.strip().startswith(keyword)
+            else:  # contains
+                matched = keyword in content
+            if matched:
+                return rule.reply_text
+    except Exception:
+        pass
     return None
 
 
