@@ -95,6 +95,9 @@ class CSWelcomeConfigSerializer(serializers.ModelSerializer):
         model = CSWelcomeConfig
         fields = ['id', 'welcome_text', 'is_enabled', 'created_at', 'updated_at']
         read_only_fields = ['id', 'created_at', 'updated_at']
+        extra_kwargs = {
+            'welcome_text': {'required': False, 'allow_blank': True},
+        }
 
 
 class CSKeywordRuleSerializer(serializers.ModelSerializer):

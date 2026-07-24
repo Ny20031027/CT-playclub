@@ -4,7 +4,7 @@ CREATE TABLE IF NOT EXISTS `sys_cs_welcome_config` (
     `created_at` datetime(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6),
     `updated_at` datetime(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6) ON UPDATE CURRENT_TIMESTAMP(6),
     `is_deleted` tinyint(1) NOT NULL DEFAULT 0,
-    `welcome_text` longtext NOT NULL,
+    `welcome_text` longtext NOT NULL DEFAULT '',
     `is_enabled` tinyint(1) NOT NULL DEFAULT 1,
     PRIMARY KEY (`id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci COMMENT='客服欢迎语配置';

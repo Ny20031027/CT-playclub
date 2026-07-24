@@ -121,7 +121,7 @@ class ErrorLog(BaseModel):
 
 class CSWelcomeConfig(BaseModel):
     """客服欢迎语配置"""
-    welcome_text = models.TextField(verbose_name='欢迎语内容', help_text='客户进入客服聊天时自动发送的欢迎语')
+    welcome_text = models.TextField(blank=True, default='', verbose_name='欢迎语内容', help_text='客户进入客服聊天时自动发送的欢迎语')
     is_enabled = models.BooleanField(default=True, verbose_name='是否启用')
 
     class Meta:
