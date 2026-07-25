@@ -234,8 +234,7 @@ class EmployeeSkillViewSet(BaseModelViewSet):
             SkillLevel.objects.create(
                 skill=skill,
                 name=lv.get('name', ''),
-                price_min=lv.get('price_min', 0),
-                price_max=lv.get('price_max', 0),
+                unit_price=lv.get('unit_price', 0),
                 sort=lv.get('sort', i),
             )
 
@@ -255,8 +254,7 @@ class EmployeeSkillViewSet(BaseModelViewSet):
                 SkillLevel.objects.create(
                     skill=skill,
                     name=lv.get('name', ''),
-                    price_min=lv.get('price_min', 0),
-                    price_max=lv.get('price_max', 0),
+                    unit_price=lv.get('unit_price', 0),
                     sort=lv.get('sort', i),
                 )
 
