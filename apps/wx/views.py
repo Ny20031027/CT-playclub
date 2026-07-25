@@ -457,9 +457,9 @@ def build_dasher_order_flags(order, employee):
             order.status == 'published' or (order.status in ['confirming', 'claimed'] and is_leader)
         ),
         'can_start': order.status == 'claimed' and is_leader,
-        'can_transfer': order.status in ['claimed', 'in_progress'] and is_leader,
-        'can_discount': order.status in ['claimed', 'in_progress'] and is_leader,
-        'can_manage_order': is_leader,
+        'can_transfer': order.status in ['claimed', 'in_progress'] and is_member,
+        'can_discount': order.status in ['claimed', 'in_progress'] and is_member,
+        'can_manage_order': is_leader or is_member,
         'is_formally_claimed': is_formally_claimed,
     }
 
@@ -1934,10 +1934,6 @@ def transfer_order(request, order_id):
     except Order.DoesNotExist:
         return error_response(msg='订单不存在')
 
-    # 检查是否是队长
-    if order.leader_id != employee.id:
-        return error_response(msg='只有队长可以转单')
-
     # 检查订单状态是否可转单
     if order.status not in ['in_progress', 'claimed']:
         return error_response(msg='当前订单状态不可转单')
@@ -2079,10 +2075,6 @@ def discount_order(request, order_id):
         order = Order.objects.get(id=order_id, is_deleted=False)
     except Order.DoesNotExist:
         return error_response(msg='订单不存在')
-
-    # 检查是否是队长
-    if order.leader_id != employee.id:
-        return error_response(msg='只有队长可以免单')
 
     # 检查订单状态
     if order.status not in ['in_progress', 'claimed']:
