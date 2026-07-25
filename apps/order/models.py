@@ -135,6 +135,24 @@ class OrderMember(BaseModel):
         return f"{self.order.order_no} - {self.employee.nickname}"
 
 
+class OrderCandidate(BaseModel):
+    """选秀队列 - 打手申请接取但尚未被客户选中"""
+    order = models.ForeignKey(Order, on_delete=models.CASCADE,
+                              related_name='candidates', verbose_name='订单')
+    employee = models.ForeignKey(Employee, on_delete=models.SET_NULL, null=True, blank=True,
+                                 related_name='order_candidates', verbose_name='陪玩师')
+
+    class Meta:
+        db_table = 'ord_order_candidate'
+        verbose_name = '选秀候选人'
+        verbose_name_plural = verbose_name
+        ordering = ['created_at']
+        unique_together = ['order', 'employee']
+
+    def __str__(self):
+        return f"{self.order.order_no} - {self.employee}"
+
+
 class OrderPrice(BaseModel):
     skill = models.ForeignKey(EmployeeSkill, on_delete=models.CASCADE,
                               related_name='prices', verbose_name='技能')

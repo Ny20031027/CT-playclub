@@ -14,7 +14,7 @@ from apps.common.response import success_response, error_response
 from apps.common.viewsets import BaseModelViewSet
 from apps.account.models import User
 from apps.employee.models import Employee, EmployeeSkill, EmployeeSkillRelation, EmployeeTag, SkillLevel
-from apps.order.models import Order, OrderMember, OrderComment, OrderPrice, OrderStatus, SupportTicket
+from apps.order.models import Order, OrderMember, OrderComment, OrderPrice, OrderStatus, SupportTicket, OrderCandidate
 from apps.order.comment_utils import create_order_comment_with_retry
 from apps.notice.models import Notice, UserNotice
 from .models import WxUser, Banner, Announcement, GameCategory, Gift
@@ -422,10 +422,6 @@ def sync_order_seat_state(order):
     elif order.leader_id is not None and order.status in ['published', 'confirming']:
         order.leader = None
         updated_fields.append('leader')
-
-    if order.status == 'published' and effective_locked_slots >= int(order.quantity or 0) and effective_locked_slots > 0:
-        order.status = 'confirming'
-        updated_fields.append('status')
 
     if updated_fields:
         updated_fields.append('updated_at')
@@ -1196,16 +1192,13 @@ def dispatch_hall(request):
         if o.assigned_employee_id and current_employee and o.assigned_employee_id != current_employee.id:
             continue
 
-        # 检查当前打手是否已预订该订单
+        # 检查当前打手是否已申请该订单（选秀队列）
         my_claimed = False
-        my_claimed_slots = 0
         if current_employee:
-            member = OrderMember.objects.filter(
-                order=o, employee=current_employee, is_deleted=False, status__in=['accepted', 'in_progress']
+            candidate = OrderCandidate.objects.filter(
+                order=o, employee=current_employee, is_deleted=False
             ).first()
-            if member:
-                my_claimed = True
-                my_claimed_slots = parse_member_slots(member)
+            my_claimed = bool(candidate)
 
         # 判断是否为预约订单（只能被预约的打手接取）
         is_reserved = bool(o.assigned_employee_id)
@@ -1237,7 +1230,6 @@ def dispatch_hall(request):
             'customer_name': o.customer.nickname if o.customer else '',
             'created_at': o.created_at.strftime('%Y-%m-%d %H:%M'),
             'my_claimed': my_claimed,
-            'my_claimed_slots': my_claimed_slots,
             'transfer_reason': o.transfer_reason or '',
             'is_transfer': bool(o.transfer_reason),
             'is_reserved': is_reserved,
@@ -1480,6 +1472,26 @@ def order_detail(request, order_id):
             order=order, employee=employee, is_deleted=False, status__in=['accepted', 'in_progress']
         ).first()
 
+    # 打手端：是否已在选秀队列
+    is_candidate = False
+    if is_dasher and order.status == 'published':
+        is_candidate = OrderCandidate.objects.filter(
+            order=order, employee=employee, is_deleted=False
+        ).exists()
+
+    # 构建选秀队列列表（仅客户视角、published 状态）
+    candidates = []
+    if order.status == 'published':
+        for c in order.candidates.filter(is_deleted=False).select_related('employee'):
+            if c.employee:
+                candidates.append({
+                    'id': c.id,
+                    'employee_id': c.employee.id,
+                    'employee_name': c.employee.nickname or c.employee.real_name,
+                    'employee_avatar': employee_avatar_url(c.employee),
+                    'applied_at': c.created_at.strftime('%Y-%m-%d %H:%M'),
+                })
+
     # 获取队长信息
     leader_id = order.leader_id if order.leader else None
     action_flags = build_dasher_order_flags(order, employee if is_dasher else None)
@@ -1510,6 +1522,8 @@ def order_detail(request, order_id):
         'transfer_reason': (order.transfer_reason or '') if is_dasher else '',
         'is_transfer': bool(order.transfer_reason),
         'members': members,
+        'candidates': candidates,
+        'is_candidate': is_candidate,
         'comment': comment,
         'user_type': 'dasher' if is_dasher else 'customer',
         **action_flags,
@@ -1591,12 +1605,11 @@ def cancel_order(request, order_id):
 @permission_classes([IsAuthenticated])
 @transaction.atomic
 def claim_order(request, order_id):
-    """打手领取订单
+    """打手申请接取订单（加入选秀队列）
     规则：
-    - 第一个接取的人自动成为队长
-    - 队长可以锁定多个席位，但只占1个席位
-    - 锁定的席位其他打手无法接取，只能由队长邀请填满
-    - 只有所有席位都被实际接取后，订单才进入确认状态
+    - 打手点击接取后加入选秀队列，不占席位
+    - 客户在订单详情页查看选秀队列并挑选打手
+    - 被选中的打手成为正式 OrderMember
     """
     user = request.user
     try:
@@ -1619,89 +1632,125 @@ def claim_order(request, order_id):
     if order.assigned_employee_id and order.assigned_employee_id != employee.id:
         return error_response(msg='该订单为预约订单，仅被预约的打手可以接取')
 
-    # 计算剩余可接取的席位（未被锁定的）
-    remaining_slots = get_remaining_slots(order)
-    if remaining_slots <= 0:
-        return error_response(msg='该订单席位已满')
+    # 检查是否已在选秀队列中
+    existing_candidate = OrderCandidate.objects.filter(
+        order=order, employee=employee, is_deleted=False
+    ).first()
+    if existing_candidate:
+        return error_response(msg='您已在该订单的选秀队列中')
 
-    # 检查该打手是否已经接取过此订单
+    # 检查是否已是正式成员
     existing_member = OrderMember.objects.filter(
         order=order, employee=employee, is_deleted=False, status__in=['accepted', 'in_progress']
     ).first()
     if existing_member:
-        return error_response(msg='您已经接取过该订单')
+        return error_response(msg='您已经是该订单的打手')
 
-    # 判断是否为第一个接取者（将成为队长）
-    is_first_claimer = not order.leader
+    # 创建选秀候选人记录
+    candidate = OrderCandidate.objects.create(order=order, employee=employee)
 
-    # 获取打手要锁定的席位数
-    slots = request.data.get('slots', 1)
-    slots = int(slots) if slots else 1
+    return success_response(
+        msg='已加入选秀队列，等待客户挑选',
+        data={'candidate_id': candidate.id}
+    )
 
-    # 验证席位数
-    if slots <= 0:
-        return error_response(msg='锁定席位数必须大于0')
-    
-    if is_first_claimer:
-        # 队长可以锁定席位（包括自己的），但最多不能超过总需求
-        if slots > order.quantity:
-            return error_response(msg=f'最多可锁定{order.quantity}个席位')
-    else:
-        # 非队长只能接取1个席位
-        if slots > 1:
-            return error_response(msg='非队长只能接取1个席位，剩余席位需由队长邀请分配')
-        if slots > remaining_slots:
-            return error_response(msg=f'剩余席位不足，当前剩余{remaining_slots}个席位')
 
-    # 计算金额（按席位比例）
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+@transaction.atomic
+def select_candidate(request, order_id):
+    """客户从选秀队列中选择打手成为正式成员"""
+    user = request.user
+    candidate_id = request.data.get('candidate_id')
+
+    try:
+        customer = user.customer
+    except Exception:
+        return error_response(msg='用户不存在')
+
+    try:
+        order = Order.objects.select_for_update().get(
+            id=order_id, customer=customer, is_deleted=False
+        )
+    except Order.DoesNotExist:
+        return error_response(msg='订单不存在')
+
+    if order.status != 'published':
+        return error_response(msg='订单当前状态不可选人')
+
+    remaining = get_remaining_slots(order)
+    if remaining <= 0:
+        return error_response(msg='订单席位已满')
+
+    try:
+        candidate = OrderCandidate.objects.get(
+            id=candidate_id, order=order, is_deleted=False
+        )
+    except OrderCandidate.DoesNotExist:
+        return error_response(msg='候选人不存在')
+
+    # 检查是否已是正式成员
+    existing = OrderMember.objects.filter(
+        order=order, employee=candidate.employee, is_deleted=False,
+        status__in=['accepted', 'in_progress']
+    ).first()
+    if existing:
+        return error_response(msg='该打手已是订单成员')
+
+    # 计算金额
     amount_per_slot = order.pay_amount / order.quantity if order.quantity > 0 else 0
 
-    # 创建订单成员记录（队长只占1个席位）
+    # 创建正式成员
     member = OrderMember.objects.create(
         order=order,
-        employee=employee,
+        employee=candidate.employee,
         skill=order.skill,
         unit_price=order.unit_price,
         duration=order.duration,
         amount=round(amount_per_slot, 2),
         status='accepted',
-        remark=f'slots:{slots}',
     )
 
-    # 更新已锁定席位数（队长锁定的总数）
-    order.locked_slots = slots
+    # 删除候选人记录
+    candidate.delete()
 
-    # 如果是第一个接取的人，设为队长
-    if not order.leader:
-        order.leader = employee
+    # 同步席位状态
+    sync_order_seat_state(order)
 
-    order.save(update_fields=['locked_slots', 'leader', 'updated_at'])
-
-    # 计算实际接取的人数（不包括锁定的）
+    # 选满所有席位后，自动进入确认状态
     actual_members = OrderMember.objects.filter(
         order=order, is_deleted=False, status__in=['accepted', 'in_progress']
     ).count()
-    
-    # 剩余需要邀请的人数
-    remaining_to_invite = order.quantity - actual_members
-
-    if remaining_to_invite <= 0:
-        # 所有席位都被实际接取，订单进入确认状态
+    if actual_members >= order.quantity:
         order.status = 'confirming'
         order.save(update_fields=['status', 'updated_at'])
-        return success_response(
-            msg='所有打手已就位，订单正式接取',
-            data={'locked_slots': order.locked_slots, 'status': 'confirming', 'member_id': member.id}
-        )
-    else:
-        if is_first_claimer:
-            msg = f'已锁定{slots}个席位，还需邀请{remaining_to_invite}名打手'
-        else:
-            msg = f'已接取1个席位，还需{remaining_to_invite}名打手就位'
-        return success_response(
-            msg=msg,
-            data={'locked_slots': order.locked_slots, 'remaining_slots': remaining_to_invite, 'member_id': member.id}
-        )
+
+    return success_response(msg='已选中该打手')
+
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def withdraw_application(request, order_id):
+    """打手从选秀队列撤回申请"""
+    user = request.user
+    try:
+        employee = user.get_active_employee()
+    except Exception:
+        return error_response(msg='您不是打手')
+
+    try:
+        order = Order.objects.get(id=order_id, is_deleted=False)
+    except Order.DoesNotExist:
+        return error_response(msg='订单不存在')
+
+    candidate = OrderCandidate.objects.filter(
+        order=order, employee=employee, is_deleted=False
+    ).first()
+    if not candidate:
+        return error_response(msg='您不在该订单的选秀队列中')
+
+    candidate.delete()
+    return success_response(msg='已撤回申请')
 
 
 @api_view(['POST'])
