@@ -1347,7 +1347,7 @@
                 }
 
                 tbody.innerHTML = skills.map(s => {
-                    const levels = (s.levels || []).map(l => l.name + '(¥' + l.price_min + '~' + l.price_max + ')').join('、');
+                    const levels = (s.levels || []).map(l => l.name + '(¥' + l.unit_price + ')').join('、');
                     return `
                     <tr>
                         <td>${s.name}</td>
