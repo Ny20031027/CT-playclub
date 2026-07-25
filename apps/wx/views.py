@@ -2914,7 +2914,7 @@ def get_my_skills(request):
 
 
 @api_view(['GET'])
-@permission_classes([IsAuthenticated])
+@permission_classes([AllowAny])
 def get_all_skills(request):
     """获取所有可用技能列表（含段位）"""
     skills = EmployeeSkill.objects.filter(status=True).select_related('game_category').prefetch_related('levels')
@@ -2925,14 +2925,14 @@ def get_all_skills(request):
             levels.append({
                 'id': lv.id,
                 'name': lv.name,
-                'price_min': float(lv.price_min),
-                'price_max': float(lv.price_max),
+                'unit_price': float(lv.unit_price),
                 'sort': lv.sort,
             })
         data.append({
             'id': s.id,
             'name': s.name,
             'category': s.category,
+            'unit_price': float(s.unit_price),
             'game_name': s.game_category.name if s.game_category else '',
             'game_id': s.game_category.id if s.game_category else 0,
             'levels': levels,
