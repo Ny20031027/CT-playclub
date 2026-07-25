@@ -2939,14 +2939,17 @@ def get_all_skills(request):
 def get_service_items(request):
     """获取自助下单可用的服务项目列表"""
     from apps.system.models import ServiceItem
-    items = ServiceItem.objects.filter(is_deleted=False, is_enabled=True).order_by('sort', 'id')
-    data = [{
-        'id': item.id,
-        'name': item.name,
-        'category': item.category,
-        'unit_price': float(item.unit_price),
-        'description': item.description,
-    } for item in items]
+    try:
+        items = ServiceItem.objects.filter(is_deleted=False, is_enabled=True).order_by('sort', 'id')
+        data = [{
+            'id': item.id,
+            'name': item.name,
+            'category': item.category,
+            'unit_price': float(item.unit_price),
+            'description': item.description,
+        } for item in items]
+    except Exception:
+        data = []
     return success_response(data=data)
 
 

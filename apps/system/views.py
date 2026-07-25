@@ -144,13 +144,26 @@ _CS_CREATE_SQLS = [
         PRIMARY KEY (`id`),
         KEY `idx_keyword` (`keyword`)
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci""",
+    """CREATE TABLE IF NOT EXISTS `sys_service_item` (
+        `id` bigint NOT NULL AUTO_INCREMENT,
+        `created_at` datetime(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6),
+        `updated_at` datetime(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6) ON UPDATE CURRENT_TIMESTAMP(6),
+        `is_deleted` tinyint(1) NOT NULL DEFAULT 0,
+        `name` varchar(100) NOT NULL,
+        `category` varchar(50) NOT NULL DEFAULT '',
+        `unit_price` decimal(10,2) NOT NULL DEFAULT 0,
+        `description` varchar(500) NOT NULL DEFAULT '',
+        `sort` int NOT NULL DEFAULT 0,
+        `is_enabled` tinyint(1) NOT NULL DEFAULT 1,
+        PRIMARY KEY (`id`)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci""",
 ]
 
 
 def _ensure_cs_tables():
     """Ensure customer-service config tables exist before request handlers write to them."""
     global _CS_TABLES_CREATED
-    models = (CSWelcomeConfig, CSKeywordRule)
+    models = (CSWelcomeConfig, CSKeywordRule, ServiceItem)
     if _CS_TABLES_CREATED and all(_table_exists(model) for model in models):
         return True
 
@@ -284,3 +297,19 @@ class ServiceItemViewSet(BaseModelViewSet):
     filterset_fields = ['is_enabled', 'category']
     search_fields = ['name', 'category', 'description']
     ordering_fields = ['sort', 'created_at']
+
+    def get_queryset(self):
+        if _table_exists(ServiceItem):
+            return ServiceItem.objects.all()
+        _ensure_cs_tables()
+        if _table_exists(ServiceItem):
+            return ServiceItem.objects.all()
+        return ServiceItem.objects.none()
+
+    def create(self, request, *args, **kwargs):
+        _ensure_cs_tables()
+        return super().create(request, *args, **kwargs)
+
+    def update(self, request, *args, **kwargs):
+        _ensure_cs_tables()
+        return super().update(request, *args, **kwargs)
