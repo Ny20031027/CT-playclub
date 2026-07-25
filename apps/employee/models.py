@@ -31,6 +31,10 @@ class EmployeeSkill(BaseModel):
     icon = models.ImageField(upload_to='skills/', blank=True, verbose_name='图标')
     sort = models.IntegerField(default=0, verbose_name='排序')
     status = models.BooleanField(default=True, verbose_name='状态')
+    skill_type = models.CharField(max_length=20, default='secondary', choices=[
+        ('primary', '主技能'),
+        ('secondary', '副技能'),
+    ], verbose_name='技能类型')
 
     class Meta:
         db_table = 'emp_skill'
@@ -135,6 +139,10 @@ class EmployeeSkillRelation(BaseModel):
                                     related_name='employee_relations', verbose_name='段位')
     unit_price = models.DecimalField(max_digits=10, decimal_places=2, default=0,
                                      verbose_name='单价(元/小时)')
+    skill_type = models.CharField(max_length=20, default='secondary', choices=[
+        ('primary', '主技能'),
+        ('secondary', '副技能'),
+    ], verbose_name='技能类型')
 
     class Meta:
         db_table = 'emp_skill_relation'

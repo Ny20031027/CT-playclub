@@ -2960,6 +2960,7 @@ def get_my_skills(request):
             'skill_level_id': rel.skill_level.id if rel.skill_level else 0,
             'level_name': rel.skill_level.name if rel.skill_level else '',
             'unit_price': float(rel.unit_price),
+            'skill_type': rel.skill_type,
         })
 
     return success_response(data=my_skills)
@@ -2987,6 +2988,7 @@ def get_all_skills(request):
             'unit_price': float(s.unit_price),
             'game_name': s.game_category.name if s.game_category else '',
             'game_id': s.game_category.id if s.game_category else 0,
+            'skill_type': s.skill_type,
             'levels': levels,
         })
     return success_response(data=data)
@@ -3023,6 +3025,7 @@ def update_my_skills(request):
         skill_id = item.get('skill_id')
         unit_price = item.get('unit_price', 0)
         skill_level_id = item.get('skill_level_id', 0)
+        skill_type = item.get('skill_type', 'secondary')
 
         if not skill_id:
             continue
@@ -3044,6 +3047,7 @@ def update_my_skills(request):
             skill=skill,
             skill_level=skill_level,
             unit_price=unit_price,
+            skill_type=skill_type,
         )
 
     return success_response(msg='技能设置保存成功')
