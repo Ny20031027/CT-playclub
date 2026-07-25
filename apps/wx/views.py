@@ -1956,8 +1956,9 @@ def transfer_order(request, order_id):
         status__in=ACTIVE_ORDER_MEMBER_STATUSES,
     ).select_related('employee'))
     for active_member in active_members:
-        active_member.employee.status = 'idle'
-        active_member.employee.save(update_fields=['status'])
+        if active_member.employee:
+            active_member.employee.status = 'idle'
+            active_member.employee.save(update_fields=['status'])
     OrderMember.objects.filter(order=order, is_deleted=False, status__in=ACTIVE_ORDER_MEMBER_STATUSES).delete()
 
     # 更新订单状态为转单中
