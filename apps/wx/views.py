@@ -1048,7 +1048,9 @@ def create_order(request):
 @api_view(['POST'])
 @permission_classes([IsAuthenticated])
 def create_self_service_order(request):
-    """客户自助下单"""
+    """客户自助下单（支持多技能项）"""
+    from apps.employee.models import EmployeeSkill
+
     user = request.user
     try:
         customer = user.customer
@@ -1063,12 +1065,45 @@ def create_self_service_order(request):
     game_name = request.data.get('game_name', '')
     game_id = request.data.get('game_id', '')
     content = request.data.get('content', '')
-    price = request.data.get('price', 0)
-    duration = request.data.get('duration', 60)
     quantity = request.data.get('quantity', 1)
+    items = request.data.get('items', [])
 
     if not title:
         return error_response(msg='请输入订单标题')
+
+    if not items:
+        return error_response(msg='请至少添加一个服务项目')
+
+    # 计算总价和总时长
+    total_amount = 0
+    total_duration = 0
+    order_items = []
+
+    for item in items:
+        skill_id = item.get('skill_id')
+        skill_name = item.get('skill_name', '')
+        duration = item.get('duration', 60)
+        unit_price = item.get('unit_price', 0)
+
+        if not skill_id:
+            continue
+
+        item_amount = float(unit_price) * duration / 60
+        total_amount += item_amount
+        total_duration += duration
+
+        order_items.append({
+            'skill_id': skill_id,
+            'skill_name': skill_name,
+            'duration': duration,
+            'unit_price': float(unit_price),
+            'amount': item_amount,
+        })
+
+    if not order_items:
+        return error_response(msg='请至少添加一个有效的服务项目')
+
+    total_amount = total_amount * quantity
 
     # 生成订单号
     import random
@@ -1081,16 +1116,34 @@ def create_self_service_order(request):
         status=OrderStatus.PUBLISHED,
         title=title,
         order_type='self_service',
-        duration=duration,
+        duration=total_duration,
         quantity=quantity,
-        unit_price=price,
-        total_amount=float(price) * duration / 60 * quantity if price else 0,
-        pay_amount=float(price) * duration / 60 * quantity if price else 0,
+        unit_price=total_amount / total_duration * 60 if total_duration else 0,
+        total_amount=total_amount,
+        pay_amount=total_amount,
         game_id=game_id,
         game_name=game_name,
         remark=content,
         platform='mini_program',
     )
+
+    # 为每个技能项创建订单成员记录
+    for item in order_items:
+        skill_obj = None
+        try:
+            skill_obj = EmployeeSkill.objects.get(id=item['skill_id'])
+        except EmployeeSkill.DoesNotExist:
+            pass
+
+        OrderMember.objects.create(
+            order=order,
+            skill=skill_obj,
+            unit_price=item['unit_price'],
+            duration=item['duration'],
+            amount=item['amount'] * quantity,
+            status='assigned',
+            remark=item['skill_name'],
+        )
 
     return success_response({
         'order_id': order.id,
@@ -1160,6 +1213,16 @@ def dispatch_hall(request):
         is_reserved = bool(o.assigned_employee_id)
         can_claim = not is_reserved or (current_employee and o.assigned_employee_id == current_employee.id)
 
+        # 获取自助订单的服务项
+        order_items = []
+        if o.order_type == 'self_service':
+            for m in o.order_members.filter(is_deleted=False):
+                order_items.append({
+                    'skill_name': m.skill.name if m.skill else (m.remark or ''),
+                    'duration': m.duration,
+                    'amount': float(m.amount),
+                })
+
         order_list.append({
             'id': o.id,
             'order_no': o.order_no,
@@ -1182,6 +1245,8 @@ def dispatch_hall(request):
             'is_reserved': is_reserved,
             'can_claim': can_claim,
             'assigned_employee_name': o.assigned_employee.nickname if o.assigned_employee else '',
+            'order_type': o.order_type,
+            'order_items': order_items,
         })
 
     return success_response({
