@@ -56,5 +56,12 @@ class SystemConfig(AppConfig):
                         cursor.execute(stmt)
                     except Exception:
                         pass
+                # 确保 sys_service_item 表有 unit 列
+                try:
+                    cursor.execute("SHOW COLUMNS FROM `sys_service_item` LIKE 'unit'")
+                    if not cursor.fetchone():
+                        cursor.execute("ALTER TABLE `sys_service_item` ADD COLUMN `unit` varchar(20) NOT NULL DEFAULT 'hour' COMMENT '计价单位' AFTER `unit_price`")
+                except Exception:
+                    pass
         except Exception:
             pass

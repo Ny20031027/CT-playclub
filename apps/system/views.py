@@ -121,6 +121,21 @@ _cs_logger = _logging.getLogger('system')
 
 _CS_TABLES_CREATED = False
 
+
+def _ensure_column(table, column, col_def):
+    """确保表中存在指定列，不存在则添加"""
+    from django.db import connection
+    try:
+        cursor = connection.cursor()
+        cursor.execute(f"SHOW COLUMNS FROM `{table}` LIKE %s", [column])
+        if not cursor.fetchone():
+            cursor.execute(f"ALTER TABLE `{table}` ADD COLUMN `{column}` {col_def}")
+            _cs_logger.info(f'自动加列成功: {table}.{column}')
+        cursor.close()
+    except Exception as e:
+        _cs_logger.warning(f'自动加列失败 {table}.{column}: {e}')
+
+
 _CS_CREATE_SQLS = [
     """CREATE TABLE IF NOT EXISTS `sys_cs_welcome_config` (
         `id` bigint NOT NULL AUTO_INCREMENT,
@@ -166,6 +181,7 @@ def _ensure_cs_tables():
     global _CS_TABLES_CREATED
     models = (CSWelcomeConfig, CSKeywordRule, ServiceItem)
     if _CS_TABLES_CREATED and all(_table_exists(model) for model in models):
+        _ensure_unit_column()
         return True
 
     try:
@@ -197,6 +213,11 @@ def _ensure_cs_tables():
 
     _CS_TABLES_CREATED = False
     return False
+
+
+def _ensure_unit_column():
+    """确保 sys_service_item 表有 unit 列"""
+    _ensure_column('sys_service_item', 'unit', "varchar(20) NOT NULL DEFAULT 'hour' COMMENT '计价单位'")
 
 
 def _cs_tables_unavailable_response():
