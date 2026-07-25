@@ -1284,6 +1284,8 @@ def my_orders(request):
     for o in orders:
         members = []
         for m in o.order_members.filter(is_deleted=False):
+            if m.employee is None:
+                continue
             members.append({
                 'id': m.id,
                 'employee_name': m.employee.nickname or m.employee.real_name,
@@ -1350,6 +1352,8 @@ def employee_orders(request):
     for o in orders:
         members = []
         for m in o.order_members.filter(is_deleted=False):
+            if m.employee is None:
+                continue
             members.append({
                 'id': m.id,
                 'employee_name': m.employee.nickname or m.employee.real_name,
@@ -1430,6 +1434,8 @@ def order_detail(request, order_id):
 
     members = []
     for m in order.order_members.filter(is_deleted=False):
+        if m.employee is None:
+            continue
         slots = parse_member_slots(m)
         # 获取该成员的评价
         member_comment = OrderComment.objects.filter(
