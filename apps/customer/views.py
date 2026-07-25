@@ -137,13 +137,8 @@ def cs_list(request):
     page = int(request.GET.get('page', 1))
     page_size = int(request.GET.get('page_size', 10))
 
-    # 排除打手和普通客户，确保每个用户只存在于一个列表
-    queryset = CustomerService.objects.select_related('customer', 'customer__user').filter(is_deleted=False).filter(
-        Q(customer__user__isnull=True) | (
-            (Q(customer__user__employee__isnull=True) | Q(customer__user__employee__is_deleted=True)) &
-            Q(customer__user__customer__isnull=True)
-        )
-    )
+    # 客服列表 - 直接返回所有有效客服
+    queryset = CustomerService.objects.select_related('customer', 'customer__user').filter(is_deleted=False)
     if keyword:
         queryset = queryset.filter(
             Q(customer__nickname__icontains=keyword) | Q(customer__phone__icontains=keyword)
@@ -198,6 +193,14 @@ def cs_add(request):
         cs.save(update_fields=['is_deleted', 'status', 'updated_at'])
     else:
         CustomerService.objects.create(customer=customer, status='online')
+
+    # 给用户添加 cs 角色
+    if customer.user:
+        from apps.account.models import Role
+        cs_role = Role.objects.filter(code='cs', is_deleted=False).first()
+        if cs_role and cs_role not in customer.user.roles.all():
+            customer.user.roles.add(cs_role)
+
     return success_response(msg='添加成功')
 
 
@@ -207,6 +210,12 @@ def cs_remove(request, cs_id):
     """移除客服"""
     try:
         cs = CustomerService.objects.get(id=cs_id)
+        # 移除 cs 角色
+        if cs.customer and cs.customer.user:
+            from apps.account.models import Role
+            cs_role = Role.objects.filter(code='cs', is_deleted=False).first()
+            if cs_role:
+                cs.customer.user.roles.remove(cs_role)
         cs.delete()
         return success_response(msg='移除成功')
     except CustomerService.DoesNotExist:
