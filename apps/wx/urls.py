@@ -68,6 +68,7 @@ urlpatterns = [
     path('profile/update/', views.update_profile, name='wx-update-profile'),
     path('skills/my/', views.get_my_skills, name='wx-get-my-skills'),
     path('skills/all/', views.get_all_skills, name='wx-get-all-skills'),
+    path('service-items/', views.get_service_items, name='wx-service-items'),
     path('skills/update/', views.update_my_skills, name='wx-update-my-skills'),
     path('tags/all/', views.get_all_tags, name='wx-get-all-tags'),
 

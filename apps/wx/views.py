@@ -1048,8 +1048,8 @@ def create_order(request):
 @api_view(['POST'])
 @permission_classes([IsAuthenticated])
 def create_self_service_order(request):
-    """客户自助下单（支持多技能项）"""
-    from apps.employee.models import EmployeeSkill
+    """客户自助下单（支持多服务项）"""
+    from apps.system.models import ServiceItem
 
     user = request.user
     try:
@@ -1061,15 +1061,11 @@ def create_self_service_order(request):
             nickname=user.nickname or f'用户{user.id}',
         )
 
-    title = request.data.get('title', '')
     game_name = request.data.get('game_name', '')
     game_id = request.data.get('game_id', '')
     content = request.data.get('content', '')
     quantity = request.data.get('quantity', 1)
     items = request.data.get('items', [])
-
-    if not title:
-        return error_response(msg='请输入订单标题')
 
     if not items:
         return error_response(msg='请至少添加一个服务项目')
@@ -1080,12 +1076,12 @@ def create_self_service_order(request):
     order_items = []
 
     for item in items:
-        skill_id = item.get('skill_id')
-        skill_name = item.get('skill_name', '')
+        service_id = item.get('service_id')
+        service_name = item.get('service_name', '')
         duration = item.get('duration', 60)
         unit_price = item.get('unit_price', 0)
 
-        if not skill_id:
+        if not service_id:
             continue
 
         item_amount = float(unit_price) * duration / 60
@@ -1093,8 +1089,8 @@ def create_self_service_order(request):
         total_duration += duration
 
         order_items.append({
-            'skill_id': skill_id,
-            'skill_name': skill_name,
+            'service_id': service_id,
+            'service_name': service_name,
             'duration': duration,
             'unit_price': float(unit_price),
             'amount': item_amount,
@@ -1105,6 +1101,9 @@ def create_self_service_order(request):
 
     total_amount = total_amount * quantity
 
+    # 自动生成标题：游戏名 + 服务项数量
+    auto_title = f'{game_name}自助下单' if game_name else '自助下单'
+
     # 生成订单号
     import random
     random_suffix = random.randint(1000, 9999)
@@ -1114,7 +1113,7 @@ def create_self_service_order(request):
         order_no=order_no,
         customer=customer,
         status=OrderStatus.PUBLISHED,
-        title=title,
+        title=auto_title,
         order_type='self_service',
         duration=total_duration,
         quantity=quantity,
@@ -1127,22 +1126,15 @@ def create_self_service_order(request):
         platform='mini_program',
     )
 
-    # 为每个技能项创建订单成员记录
+    # 为每个服务项创建订单成员记录
     for item in order_items:
-        skill_obj = None
-        try:
-            skill_obj = EmployeeSkill.objects.get(id=item['skill_id'])
-        except EmployeeSkill.DoesNotExist:
-            pass
-
         OrderMember.objects.create(
             order=order,
-            skill=skill_obj,
             unit_price=item['unit_price'],
             duration=item['duration'],
             amount=item['amount'] * quantity,
             status='assigned',
-            remark=item['skill_name'],
+            remark=item['service_name'],
         )
 
     return success_response({
@@ -2939,6 +2931,22 @@ def get_all_skills(request):
             'game_id': s.game_category.id if s.game_category else 0,
             'levels': levels,
         })
+    return success_response(data=data)
+
+
+@api_view(['GET'])
+@permission_classes([AllowAny])
+def get_service_items(request):
+    """获取自助下单可用的服务项目列表"""
+    from apps.system.models import ServiceItem
+    items = ServiceItem.objects.filter(is_deleted=False, is_enabled=True).order_by('sort', 'id')
+    data = [{
+        'id': item.id,
+        'name': item.name,
+        'category': item.category,
+        'unit_price': float(item.unit_price),
+        'description': item.description,
+    } for item in items]
     return success_response(data=data)
 
 

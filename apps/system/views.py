@@ -6,13 +6,13 @@ from apps.common.response import success_response, error_response
 from apps.common.viewsets import BaseModelViewSet
 from .models import (
     Config, Dictionary, DictionaryItem, OperationLog, ErrorLog,
-    CSWelcomeConfig, CSKeywordRule
+    CSWelcomeConfig, CSKeywordRule, ServiceItem
 )
 from .serializers import (
     ConfigSerializer, DictionarySerializer, DictionaryItemSerializer,
     OperationLogSerializer, ErrorLogSerializer, DictionarySimpleSerializer,
     BannerManageSerializer, AnnouncementManageSerializer,
-    CSWelcomeConfigSerializer, CSKeywordRuleSerializer
+    CSWelcomeConfigSerializer, CSKeywordRuleSerializer, ServiceItemSerializer
 )
 from apps.wx.models import Banner, Announcement
 
@@ -276,3 +276,11 @@ class CSKeywordRuleViewSet(BaseModelViewSet):
             if not _ensure_cs_tables():
                 return _cs_tables_unavailable_response()
             return super().update(request, *args, **kwargs)
+
+
+class ServiceItemViewSet(BaseModelViewSet):
+    queryset = ServiceItem.objects.all()
+    serializer_class = ServiceItemSerializer
+    filterset_fields = ['is_enabled', 'category']
+    search_fields = ['name', 'category', 'description']
+    ordering_fields = ['sort', 'created_at']

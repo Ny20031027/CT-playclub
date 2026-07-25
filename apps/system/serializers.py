@@ -1,7 +1,7 @@
 from rest_framework import serializers
 from .models import (
     Config, Dictionary, DictionaryItem, OperationLog, ErrorLog,
-    CSWelcomeConfig, CSKeywordRule
+    CSWelcomeConfig, CSKeywordRule, ServiceItem
 )
 from apps.wx.models import Banner, Announcement
 
@@ -108,3 +108,14 @@ class CSKeywordRuleSerializer(serializers.ModelSerializer):
         fields = ['id', 'keyword', 'reply_text', 'match_type', 'match_type_display',
                   'sort', 'is_enabled', 'created_at', 'updated_at']
         read_only_fields = ['id', 'created_at', 'updated_at']
+
+
+class ServiceItemSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = ServiceItem
+        fields = ['id', 'name', 'category', 'unit_price', 'description',
+                  'sort', 'is_enabled', 'created_at', 'updated_at']
+        read_only_fields = ['id', 'created_at', 'updated_at']
+        extra_kwargs = {
+            'name': {'required': False, 'allow_blank': True},
+        }
