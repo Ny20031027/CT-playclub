@@ -1368,14 +1368,12 @@
         }
     }
 
-    function addLevelRow(name, priceMin, priceMax, sort) {
+    function addLevelRow(name, unitPrice, sort) {
         const container = document.getElementById('levelRows');
-        const idx = container.children.length;
         const html = `
             <div style="display: flex; gap: 8px; align-items: center; margin-bottom: 8px;" class="level-row">
                 <input type="text" placeholder="段位名" value="${name || ''}" style="flex:1; padding:6px 10px; border:1px solid #ddd; border-radius:4px; font-size:13px;" class="lv-name">
-                <input type="number" placeholder="最低" value="${priceMin || ''}" step="0.01" min="0" style="width:80px; padding:6px 10px; border:1px solid #ddd; border-radius:4px; font-size:13px;" class="lv-min">
-                <input type="number" placeholder="最高" value="${priceMax || ''}" step="0.01" min="0" style="width:80px; padding:6px 10px; border:1px solid #ddd; border-radius:4px; font-size:13px;" class="lv-max">
+                <input type="number" placeholder="单价(元/小时)" value="${unitPrice || ''}" step="0.01" min="0" style="width:120px; padding:6px 10px; border:1px solid #ddd; border-radius:4px; font-size:13px;" class="lv-price">
                 <input type="number" placeholder="排序" value="${sort || 0}" style="width:60px; padding:6px 10px; border:1px solid #ddd; border-radius:4px; font-size:13px;" class="lv-sort">
                 <button type="button" onclick="this.parentElement.remove()" style="background:none; border:none; color:#ff4d4f; cursor:pointer; font-size:16px;">&times;</button>
             </div>
@@ -1423,7 +1421,7 @@
                 // 填充段位
                 document.getElementById('levelRows').innerHTML = '';
                 (s.levels || []).forEach(lv => {
-                    addLevelRow(lv.name, lv.price_min, lv.price_max, lv.sort);
+                    addLevelRow(lv.name, lv.unit_price, lv.sort);
                 });
 
                 showModal('skillModal');
@@ -1438,11 +1436,10 @@
         const levels = [];
         rows.forEach((row, idx) => {
             const name = row.querySelector('.lv-name').value.trim();
-            const priceMin = parseFloat(row.querySelector('.lv-min').value) || 0;
-            const priceMax = parseFloat(row.querySelector('.lv-max').value) || 0;
+            const unitPrice = parseFloat(row.querySelector('.lv-price').value) || 0;
             const sort = parseInt(row.querySelector('.lv-sort').value) || 0;
             if (name) {
-                levels.push({ name, price_min: priceMin, price_max: priceMax, sort });
+                levels.push({ name, unit_price: unitPrice, sort });
             }
         });
         return levels;
