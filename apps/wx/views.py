@@ -1393,11 +1393,11 @@ def order_detail(request, order_id):
 
     try:
         if is_dasher:
-            # 打手可以查看：可接取的订单(published) + 自己已接取的订单
+            # 打手可以查看：可接取的订单(published/transferring) + 自己已接取的订单
             from django.db.models import Q
             order_qs = Order.objects.filter(
                 Q(id=order_id) & (
-                    Q(status='published') | Q(
+                    Q(status__in=['published', 'transferring']) | Q(
                         order_members__employee=employee,
                         order_members__is_deleted=False,
                         order_members__status__in=ACTIVE_ORDER_MEMBER_STATUSES,
