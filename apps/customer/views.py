@@ -22,9 +22,10 @@ class CustomerViewSet(BaseModelViewSet):
 
     def get_queryset(self):
         queryset = super().get_queryset()
-        # 后台管理显示所有客户
+        # 后台管理显示所有客户 - 排除当前有效的客服（未软删除的cs_profile）
+        from django.db.models import Q
         return queryset.filter(
-            cs_profile__isnull=True
+            Q(cs_profile__isnull=True) | Q(cs_profile__is_deleted=True)
         )
 
     @action(detail=False, methods=['get'], url_path='simple')
