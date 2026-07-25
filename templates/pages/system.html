@@ -15,7 +15,6 @@
     <div class="tab-item" onclick="switchTab('tag')">标签设置</div>
     <div class="tab-item" onclick="switchTab('cs')">客服设置</div>
     <div class="tab-item" onclick="switchTab('welcomeKeyword')">欢迎/关键词</div>
-    <div class="tab-item" onclick="switchTab('serviceItem')">服务项目</div>
     <div class="tab-item" onclick="switchTab('logs')">操作日志</div>
 </div>
 
@@ -290,38 +289,6 @@
                 </thead>
                 <tbody id="dictList">
                     <tr><td colspan="5" class="empty-state"><i class="fa-solid fa-spinner fa-spin"></i><br>加载中...</td></tr>
-                </tbody>
-            </table>
-        </div>
-    </div>
-</div>
-
-<div id="serviceItemTab" style="display: none;">
-    <div class="card">
-        <div class="card-header">
-            <div class="card-title">服务项目管理</div>
-            <div class="card-actions">
-                <button class="btn btn-primary" onclick="showAddServiceItemModal()">
-                    <i class="fa-solid fa-plus"></i> 添加服务项目
-                </button>
-            </div>
-        </div>
-        <p style="color: #666; padding: 0 20px; font-size: 13px;">管理自助下单页面可选的服务项目</p>
-        <div class="table-container">
-            <table>
-                <thead>
-                    <tr>
-                        <th>服务名称</th>
-                        <th>分类</th>
-                        <th>默认单价(元/时)</th>
-                        <th>说明</th>
-                        <th>排序</th>
-                        <th>状态</th>
-                        <th>操作</th>
-                    </tr>
-                </thead>
-                <tbody id="serviceItemList">
-                    <tr><td colspan="7" class="empty-state"><i class="fa-solid fa-spinner fa-spin"></i><br>加载中...</td></tr>
                 </tbody>
             </table>
         </div>
@@ -680,58 +647,6 @@
     </div>
 </div>
 
-<div class="modal-overlay" id="serviceItemModal">
-    <div class="modal">
-        <div class="modal-header">
-            <div class="modal-title" id="serviceItemModalTitle">添加服务项目</div>
-            <div class="modal-close" onclick="hideModal('serviceItemModal')">&times;</div>
-        </div>
-        <div class="modal-body">
-            <form id="serviceItemForm">
-                <input type="hidden" id="serviceItemId">
-                <div class="form-group">
-                    <label>服务名称 *</label>
-                    <input type="text" id="serviceItemName" required placeholder="如：上分代练、陪玩、教学">
-                </div>
-                <div class="form-group">
-                    <label>分类</label>
-                    <input type="text" id="serviceItemCategory" placeholder="如：代练、陪玩、教学">
-                </div>
-                <div class="form-group">
-                    <label>默认单价</label>
-                    <input type="number" id="serviceItemPrice" step="0.01" min="0" value="0">
-                </div>
-                <div class="form-group">
-                    <label>计价单位</label>
-                    <select id="serviceItemUnit">
-                        <option value="hour">元/小时</option>
-                        <option value="game">元/局</option>
-                        <option value="wan">元/万</option>
-                        <option value="fixed">固定价格</option>
-                    </select>
-                </div>
-                <div class="form-group">
-                    <label>服务说明</label>
-                    <textarea id="serviceItemDesc" rows="3" placeholder="服务项目的详细说明"></textarea>
-                </div>
-                <div class="form-group">
-                    <label>排序</label>
-                    <input type="number" id="serviceItemSort" value="0" min="0">
-                </div>
-                <div class="form-group">
-                    <label>
-                        <input type="checkbox" id="serviceItemEnabled" checked> 启用
-                    </label>
-                </div>
-            </form>
-        </div>
-        <div class="modal-footer">
-            <button class="btn btn-default" onclick="hideModal('serviceItemModal')">取消</button>
-            <button class="btn btn-primary" onclick="saveServiceItem()">确定</button>
-        </div>
-    </div>
-</div>
-
 <script>
     document.addEventListener('DOMContentLoaded', async function() {
         await loadConfigs();
@@ -757,12 +672,10 @@
         document.getElementById('tagTab').style.display = tab === 'tag' ? 'block' : 'none';
         document.getElementById('csTab').style.display = tab === 'cs' ? 'block' : 'none';
         document.getElementById('welcomeKeywordTab').style.display = tab === 'welcomeKeyword' ? 'block' : 'none';
-        document.getElementById('serviceItemTab').style.display = tab === 'serviceItem' ? 'block' : 'none';
         document.getElementById('logsTab').style.display = tab === 'logs' ? 'block' : 'none';
 
         if (tab === 'cs') loadCSConfig();
         if (tab === 'welcomeKeyword') { loadWelcomeConfig(); loadKeywordRules(); }
-        if (tab === 'serviceItem') loadServiceItems();
     }
 
     let editingConfigId = null;
@@ -1944,133 +1857,5 @@
         }
     }
 
-    // ============ 服务项目管理 ============
-    let editingServiceItemId = null;
-
-    async function loadServiceItems() {
-        try {
-            const result = await get('/system/service-items/');
-            if (result.code === 200) {
-                const items = result.data.results || [];
-                const tbody = document.getElementById('serviceItemList');
-
-                if (items.length === 0) {
-                    tbody.innerHTML = '<tr><td colspan="7" class="empty-state"><i class="fa-solid fa-inbox"></i><br>暂无服务项目</td></tr>';
-                    return;
-                }
-
-                tbody.innerHTML = items.map(item => `
-                    <tr>
-                        <td>${item.name}</td>
-                        <td>${item.category || '-'}</td>
-                        <td>¥${item.unit_price || 0}</td>
-                        <td style="max-width: 200px;">${(item.description || '-').substring(0, 30)}${(item.description || '').length > 30 ? '...' : ''}</td>
-                        <td>${item.sort || 0}</td>
-                        <td>
-                            <span class="badge ${item.is_enabled ? 'badge-success' : 'badge-danger'}">${item.is_enabled ? '启用' : '禁用'}</span>
-                        </td>
-                        <td>
-                            <button class="btn btn-default" onclick="editServiceItem(${item.id})">编辑</button>
-                            <button class="btn btn-danger" onclick="deleteServiceItem(${item.id})">删除</button>
-                        </td>
-                    </tr>
-                `).join('');
-            }
-        } catch (error) {
-            console.error('加载服务项目失败:', error);
-        }
-    }
-
-    function showAddServiceItemModal() {
-        editingServiceItemId = null;
-        document.getElementById('serviceItemForm').reset();
-        document.getElementById('serviceItemId').value = '';
-        document.getElementById('serviceItemEnabled').checked = true;
-        document.getElementById('serviceItemModalTitle').textContent = '添加服务项目';
-        showModal('serviceItemModal');
-    }
-
-    async function editServiceItem(id) {
-        try {
-            const result = await get(`/system/service-items/${id}/`);
-            if (result.code === 200) {
-                const item = result.data;
-                editingServiceItemId = id;
-                document.getElementById('serviceItemModalTitle').textContent = '编辑服务项目';
-                document.getElementById('serviceItemId').value = item.id;
-                document.getElementById('serviceItemName').value = item.name || '';
-                document.getElementById('serviceItemCategory').value = item.category || '';
-                document.getElementById('serviceItemPrice').value = item.unit_price || 0;
-                document.getElementById('serviceItemUnit').value = item.unit || 'hour';
-                document.getElementById('serviceItemDesc').value = item.description || '';
-                document.getElementById('serviceItemSort').value = item.sort || 0;
-                document.getElementById('serviceItemEnabled').checked = item.is_enabled;
-                showModal('serviceItemModal');
-            }
-        } catch (error) {
-            showToast('加载服务项目失败', 'error');
-        }
-    }
-
-    async function saveServiceItem() {
-        const name = document.getElementById('serviceItemName').value;
-        const category = document.getElementById('serviceItemCategory').value;
-        const unit_price = document.getElementById('serviceItemPrice').value;
-        const unit = document.getElementById('serviceItemUnit').value;
-        const description = document.getElementById('serviceItemDesc').value;
-        const sort = document.getElementById('serviceItemSort').value;
-        const is_enabled = document.getElementById('serviceItemEnabled').checked;
-
-        if (!name) {
-            showToast('请输入服务名称', 'error');
-            return;
-        }
-
-        const data = {
-            name: name,
-            category: category,
-            unit_price: parseFloat(unit_price) || 0,
-            unit: unit,
-            description: description,
-            sort: parseInt(sort) || 0,
-            is_enabled: is_enabled
-        };
-
-        try {
-            let result;
-            if (editingServiceItemId) {
-                result = await put(`/system/service-items/${editingServiceItemId}/`, data);
-            } else {
-                result = await post('/system/service-items/', data);
-            }
-
-            if (result.code === 200) {
-                showToast(editingServiceItemId ? '更新成功' : '添加成功', 'success');
-                hideModal('serviceItemModal');
-                editingServiceItemId = null;
-                await loadServiceItems();
-            } else {
-                showToast(result.msg || '操作失败', 'error');
-            }
-        } catch (error) {
-            showToast('操作失败: ' + error.message, 'error');
-        }
-    }
-
-    async function deleteServiceItem(id) {
-        if (!confirm('确定要删除该服务项目吗？')) return;
-
-        try {
-            const result = await del(`/system/service-items/${id}/`);
-            if (result.code === 200) {
-                showToast('删除成功', 'success');
-                await loadServiceItems();
-            } else {
-                showToast(result.msg || '删除失败', 'error');
-            }
-        } catch (error) {
-            showToast('删除失败: ' + error.message, 'error');
-        }
-    }
 </script>
 {% endblock %}

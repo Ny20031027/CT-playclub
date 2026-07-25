@@ -23,9 +23,3 @@ export const getCsKeywordListApi = (params) => request.get('/system/cs-keywords/
 export const createCsKeywordApi = (data) => request.post('/system/cs-keywords/', data)
 export const updateCsKeywordApi = (id, data) => request.put(`/system/cs-keywords/${id}/`, data)
 export const deleteCsKeywordApi = (id) => request.delete(`/system/cs-keywords/${id}/`)
-
-// 服务项目
-export const getServiceItemListApi = (params) => request.get('/system/service-items/', { params })
-export const createServiceItemApi = (data) => request.post('/system/service-items/', data)
-export const updateServiceItemApi = (id, data) => request.put(`/system/service-items/${id}/`, data)
-export const deleteServiceItemApi = (id) => request.delete(`/system/service-items/${id}/`)

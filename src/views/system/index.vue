@@ -67,32 +67,6 @@
           </el-table>
         </div>
       </el-tab-pane>
-      <el-tab-pane label="服务项目" name="serviceItem">
-        <el-button type="success" @click="openServiceItemModal()">新增服务项目</el-button>
-        <el-table :data="serviceItemList" border style="width: 100%; margin-top: 10px">
-          <el-table-column prop="id" label="ID" width="60" />
-          <el-table-column prop="name" label="服务名称" />
-          <el-table-column prop="category" label="分类" width="100" />
-          <el-table-column label="单价" width="130">
-            <template #default="scope">
-              <span style="color: #FF6B6B; font-weight: 600;">¥{{ scope.row.unit_price || 0 }}<span style="font-size: 12px; color: #999;">/{{ scope.row.unit === 'hour' ? '小时' : scope.row.unit === 'game' ? '局' : scope.row.unit === 'wan' ? '万' : '次' }}</span></span>
-            </template>
-          </el-table-column>
-          <el-table-column prop="description" label="说明" show-overflow-tooltip />
-          <el-table-column prop="sort" label="排序" width="70" />
-          <el-table-column label="状态" width="80">
-            <template #default="scope">
-              <el-tag :type="scope.row.is_enabled ? 'success' : 'info'">{{ scope.row.is_enabled ? '启用' : '禁用' }}</el-tag>
-            </template>
-          </el-table-column>
-          <el-table-column label="操作" width="150">
-            <template #default="scope">
-              <el-button type="primary" size="small" @click="openServiceItemModal(scope.row)">编辑</el-button>
-              <el-button type="danger" size="small" @click="handleDeleteServiceItem(scope.row)">删除</el-button>
-            </template>
-          </el-table-column>
-        </el-table>
-      </el-tab-pane>
       <el-tab-pane label="操作日志" name="operation">
         <div class="search-bar">
           <el-input v-model="searchForm.keyword" placeholder="搜索操作" clearable style="width: 200px" />
@@ -162,40 +136,6 @@
         <el-button type="primary" @click="handleSubmitKeyword">确定</el-button>
       </template>
     </el-dialog>
-    <el-dialog :title="isServiceItemEdit ? '编辑服务项目' : '新增服务项目'" :visible.sync="serviceItemDialogVisible" width="550px">
-      <el-form :model="serviceItemForm" label-width="100px">
-        <el-form-item label="服务名称">
-          <el-input v-model="serviceItemForm.name" placeholder="如：上分代练、陪玩、教学" />
-        </el-form-item>
-        <el-form-item label="分类">
-          <el-input v-model="serviceItemForm.category" placeholder="如：代练、陪玩、教学" />
-        </el-form-item>
-        <el-form-item label="默认单价">
-          <el-input-number v-model="serviceItemForm.unit_price" :min="0" :precision="2" :step="10" />
-        </el-form-item>
-        <el-form-item label="计价单位">
-          <el-select v-model="serviceItemForm.unit" style="width: 100%">
-            <el-option label="元/小时" value="hour" />
-            <el-option label="元/局" value="game" />
-            <el-option label="元/万" value="wan" />
-            <el-option label="固定价格" value="fixed" />
-          </el-select>
-        </el-form-item>
-        <el-form-item label="服务说明">
-          <el-input v-model="serviceItemForm.description" type="textarea" :rows="3" placeholder="服务项目的详细说明" />
-        </el-form-item>
-        <el-form-item label="排序">
-          <el-input-number v-model="serviceItemForm.sort" :min="0" />
-        </el-form-item>
-        <el-form-item label="启用">
-          <el-switch v-model="serviceItemForm.is_enabled" />
-        </el-form-item>
-      </el-form>
-      <template #footer>
-        <el-button @click="serviceItemDialogVisible = false">取消</el-button>
-        <el-button type="primary" @click="handleSubmitServiceItem">确定</el-button>
-      </template>
-    </el-dialog>
   </div>
 </template>
 
@@ -207,7 +147,6 @@ import { getDictionaryListApi, createDictionaryApi, updateDictionaryApi, deleteD
 import { getOperationLogApi, getErrorLogApi } from '@/api/system'
 import { getCsWelcomeApi, saveCsWelcomeApi, updateCsWelcomeApi } from '@/api/system'
 import { getCsKeywordListApi, createCsKeywordApi, updateCsKeywordApi, deleteCsKeywordApi } from '@/api/system'
-import { getServiceItemListApi, createServiceItemApi, updateServiceItemApi, deleteServiceItemApi } from '@/api/system'
 
 const activeTab = ref('config')
 const configList = ref([])
@@ -233,12 +172,6 @@ const keywordList = ref([])
 const keywordDialogVisible = ref(false)
 const isKeywordEdit = ref(false)
 const keywordForm = reactive({ id: null, keyword: '', reply_text: '', match_type: 'contains', sort: 0, is_enabled: true })
-
-// 服务项目相关
-const serviceItemList = ref([])
-const serviceItemDialogVisible = ref(false)
-const isServiceItemEdit = ref(false)
-const serviceItemForm = reactive({ id: null, name: '', category: '', unit_price: 0, unit: 'hour', description: '', sort: 0, is_enabled: true })
 
 const loadConfig = async () => {
   try { const res = await getConfigListApi(); configList.value = res.data.results || [] }
@@ -370,47 +303,8 @@ const handleSubmit = async () => {
   } catch (error) { ElMessage.error('操作失败') }
 }
 
-// 服务项目方法
-const loadServiceItems = async () => {
-  try {
-    const res = await getServiceItemListApi()
-    serviceItemList.value = res.data.results || []
-  } catch (error) { console.error('获取服务项目失败', error) }
-}
-
-const openServiceItemModal = (row) => {
-  isServiceItemEdit.value = !!row
-  if (row) {
-    Object.assign(serviceItemForm, { id: row.id, name: row.name, category: row.category, unit_price: row.unit_price, unit: row.unit || 'hour', description: row.description, sort: row.sort, is_enabled: row.is_enabled })
-  } else {
-    Object.assign(serviceItemForm, { id: null, name: '', category: '', unit_price: 0, unit: 'hour', description: '', sort: 0, is_enabled: true })
-  }
-  serviceItemDialogVisible.value = true
-}
-
-const handleSubmitServiceItem = async () => {
-  try {
-    if (isServiceItemEdit.value) {
-      await updateServiceItemApi(serviceItemForm.id, { ...serviceItemForm })
-    } else {
-      await createServiceItemApi({ ...serviceItemForm })
-    }
-    ElMessage.success('操作成功')
-    serviceItemDialogVisible.value = false
-    loadServiceItems()
-  } catch (error) { ElMessage.error('操作失败') }
-}
-
-const handleDeleteServiceItem = async (row) => {
-  try {
-    await deleteServiceItemApi(row.id)
-    ElMessage.success('删除成功')
-    loadServiceItems()
-  } catch (error) { ElMessage.error('删除失败') }
-}
-
 const handlePageChange = (val) => { page.value = val; loadLogs() }
-onMounted(() => { loadConfig(); loadDictionary(); loadLogs(); loadErrorLogs(); loadWelcome(); loadKeywords(); loadServiceItems() })
+onMounted(() => { loadConfig(); loadDictionary(); loadLogs(); loadErrorLogs(); loadWelcome(); loadKeywords() })
 </script>
 
 <style scoped>

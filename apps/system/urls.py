@@ -3,8 +3,7 @@ from rest_framework.routers import DefaultRouter
 from .views import (
     ConfigViewSet, DictionaryViewSet, DictionaryItemViewSet,
     OperationLogViewSet, ErrorLogViewSet, BannerManageViewSet,
-    AnnouncementManageViewSet, CSWelcomeConfigViewSet, CSKeywordRuleViewSet,
-    ServiceItemViewSet
+    AnnouncementManageViewSet, CSWelcomeConfigViewSet, CSKeywordRuleViewSet
 )
 from apps.wx.views import GameCategoryViewSet
 
@@ -19,7 +18,6 @@ router.register(r'banners', BannerManageViewSet, basename='sys-banner')
 router.register(r'announcements', AnnouncementManageViewSet, basename='sys-announcement')
 router.register(r'cs-welcome', CSWelcomeConfigViewSet, basename='sys-cs-welcome')
 router.register(r'cs-keywords', CSKeywordRuleViewSet, basename='sys-cs-keyword')
-router.register(r'service-items', ServiceItemViewSet, basename='sys-service-item')
 
 urlpatterns = [
     path('', include(router.urls)),

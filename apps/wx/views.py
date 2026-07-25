@@ -1048,9 +1048,7 @@ def create_order(request):
 @api_view(['POST'])
 @permission_classes([IsAuthenticated])
 def create_self_service_order(request):
-    """客户自助下单（支持多服务项）"""
-    from apps.system.models import ServiceItem
-
+    """客户自助下单（支持多技能项）"""
     user = request.user
     try:
         customer = user.customer
@@ -1068,7 +1066,7 @@ def create_self_service_order(request):
     items = request.data.get('items', [])
 
     if not items:
-        return error_response(msg='请至少添加一个服务项目')
+        return error_response(msg='请至少选择一个技能')
 
     # 计算总价和总时长
     total_amount = 0
@@ -1076,12 +1074,12 @@ def create_self_service_order(request):
     order_items = []
 
     for item in items:
-        service_id = item.get('service_id')
-        service_name = item.get('service_name', '')
+        skill_id = item.get('skill_id')
+        skill_name = item.get('skill_name', '')
         duration = item.get('duration', 60)
         unit_price = item.get('unit_price', 0)
 
-        if not service_id:
+        if not skill_id:
             continue
 
         item_amount = float(unit_price) * duration / 60
@@ -1089,19 +1087,19 @@ def create_self_service_order(request):
         total_duration += duration
 
         order_items.append({
-            'service_id': service_id,
-            'service_name': service_name,
+            'skill_id': skill_id,
+            'skill_name': skill_name,
             'duration': duration,
             'unit_price': float(unit_price),
             'amount': item_amount,
         })
 
     if not order_items:
-        return error_response(msg='请至少添加一个有效的服务项目')
+        return error_response(msg='请至少选择一个有效的技能')
 
     total_amount = total_amount * quantity
 
-    # 自动生成标题：游戏名 + 服务项数量
+    # 自动生成标题：游戏名 + 技能数
     auto_title = f'{game_name}自助下单' if game_name else '自助下单'
 
     # 生成订单号
@@ -1126,15 +1124,23 @@ def create_self_service_order(request):
         platform='mini_program',
     )
 
-    # 为每个服务项创建订单成员记录
+    # 为每个技能项创建订单成员记录
     for item in order_items:
+        skill_obj = None
+        try:
+            from apps.employee.models import EmployeeSkill
+            skill_obj = EmployeeSkill.objects.get(id=item['skill_id'])
+        except Exception:
+            pass
+
         OrderMember.objects.create(
             order=order,
+            skill=skill_obj,
             unit_price=item['unit_price'],
             duration=item['duration'],
             amount=item['amount'] * quantity,
             status='assigned',
-            remark=item['service_name'],
+            remark=item['skill_name'],
         )
 
     return success_response({
@@ -2931,27 +2937,6 @@ def get_all_skills(request):
             'game_id': s.game_category.id if s.game_category else 0,
             'levels': levels,
         })
-    return success_response(data=data)
-
-
-@api_view(['GET'])
-@permission_classes([AllowAny])
-def get_service_items(request):
-    """获取自助下单可用的服务项目列表"""
-    from apps.system.models import ServiceItem
-    try:
-        items = ServiceItem.objects.filter(is_deleted=False, is_enabled=True).order_by('sort', 'id')
-        data = [{
-            'id': item.id,
-            'name': item.name,
-            'category': item.category,
-            'unit_price': float(item.unit_price),
-            'unit': item.unit,
-            'unit_display': item.get_unit_display_text(),
-            'description': item.description,
-        } for item in items]
-    except Exception:
-        data = []
     return success_response(data=data)
 
 
