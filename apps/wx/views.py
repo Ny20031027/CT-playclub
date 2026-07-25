@@ -2142,8 +2142,9 @@ def complete_order(request, order_id):
         member.status = 'completed'
         member.end_time = timezone.now()
         member.save(update_fields=['status', 'end_time'])
-        member.employee.status = 'idle'
-        member.employee.save(update_fields=['status'])
+        if member.employee:
+            member.employee.status = 'idle'
+            member.employee.save(update_fields=['status'])
 
     return success_response(msg='订单已完结')
 
@@ -2220,8 +2221,9 @@ def end_order(request, order_id):
         member.status = 'completed'
         member.end_time = timezone.now()
         member.save(update_fields=['status', 'end_time'])
-        member.employee.status = 'idle'
-        member.employee.save(update_fields=['status'])
+        if member.employee:
+            member.employee.status = 'idle'
+            member.employee.save(update_fields=['status'])
 
     return success_response(msg='订单已结束')
 
