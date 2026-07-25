@@ -111,10 +111,12 @@ class CSKeywordRuleSerializer(serializers.ModelSerializer):
 
 
 class ServiceItemSerializer(serializers.ModelSerializer):
+    unit_display = serializers.CharField(source='get_unit_display_text', read_only=True)
+
     class Meta:
         model = ServiceItem
-        fields = ['id', 'name', 'category', 'unit_price', 'description',
-                  'sort', 'is_enabled', 'created_at', 'updated_at']
+        fields = ['id', 'name', 'category', 'unit_price', 'unit', 'unit_display',
+                  'description', 'sort', 'is_enabled', 'created_at', 'updated_at']
         read_only_fields = ['id', 'created_at', 'updated_at']
         extra_kwargs = {
             'name': {'required': False, 'allow_blank': True},

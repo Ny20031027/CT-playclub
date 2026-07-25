@@ -698,8 +698,17 @@
                     <input type="text" id="serviceItemCategory" placeholder="如：代练、陪玩、教学">
                 </div>
                 <div class="form-group">
-                    <label>默认单价（元/小时）</label>
+                    <label>默认单价</label>
                     <input type="number" id="serviceItemPrice" step="0.01" min="0" value="0">
+                </div>
+                <div class="form-group">
+                    <label>计价单位</label>
+                    <select id="serviceItemUnit">
+                        <option value="hour">元/小时</option>
+                        <option value="game">元/局</option>
+                        <option value="wan">元/万</option>
+                        <option value="fixed">固定价格</option>
+                    </select>
                 </div>
                 <div class="form-group">
                     <label>服务说明</label>
@@ -1992,6 +2001,7 @@
                 document.getElementById('serviceItemName').value = item.name || '';
                 document.getElementById('serviceItemCategory').value = item.category || '';
                 document.getElementById('serviceItemPrice').value = item.unit_price || 0;
+                document.getElementById('serviceItemUnit').value = item.unit || 'hour';
                 document.getElementById('serviceItemDesc').value = item.description || '';
                 document.getElementById('serviceItemSort').value = item.sort || 0;
                 document.getElementById('serviceItemEnabled').checked = item.is_enabled;
@@ -2006,6 +2016,7 @@
         const name = document.getElementById('serviceItemName').value;
         const category = document.getElementById('serviceItemCategory').value;
         const unit_price = document.getElementById('serviceItemPrice').value;
+        const unit = document.getElementById('serviceItemUnit').value;
         const description = document.getElementById('serviceItemDesc').value;
         const sort = document.getElementById('serviceItemSort').value;
         const is_enabled = document.getElementById('serviceItemEnabled').checked;
@@ -2019,6 +2030,7 @@
             name: name,
             category: category,
             unit_price: parseFloat(unit_price) || 0,
+            unit: unit,
             description: description,
             sort: parseInt(sort) || 0,
             is_enabled: is_enabled

@@ -165,9 +165,16 @@ class CSKeywordRule(BaseModel):
 
 class ServiceItem(BaseModel):
     """自助下单服务项目"""
+    UNIT_CHOICES = [
+        ('hour', '元/小时'),
+        ('game', '元/局'),
+        ('wan', '元/万'),
+        ('fixed', '固定价格'),
+    ]
     name = models.CharField(max_length=100, verbose_name='服务名称', help_text='如：上分代练、陪玩、教学等')
     category = models.CharField(max_length=50, blank=True, default='', verbose_name='分类', help_text='如：代练、陪玩、教学')
-    unit_price = models.DecimalField(max_digits=10, decimal_places=2, default=0, verbose_name='默认单价(元/小时)')
+    unit_price = models.DecimalField(max_digits=10, decimal_places=2, default=0, verbose_name='默认单价')
+    unit = models.CharField(max_length=20, default='hour', choices=UNIT_CHOICES, verbose_name='计价单位')
     description = models.CharField(max_length=500, blank=True, default='', verbose_name='服务说明')
     sort = models.IntegerField(default=0, verbose_name='排序')
     is_enabled = models.BooleanField(default=True, verbose_name='是否启用')
@@ -180,3 +187,6 @@ class ServiceItem(BaseModel):
 
     def __str__(self):
         return self.name
+
+    def get_unit_display_text(self):
+        return dict(self.UNIT_CHOICES).get(self.unit, '元/小时')

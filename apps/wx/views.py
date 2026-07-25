@@ -2946,6 +2946,8 @@ def get_service_items(request):
             'name': item.name,
             'category': item.category,
             'unit_price': float(item.unit_price),
+            'unit': item.unit,
+            'unit_display': item.get_unit_display_text(),
             'description': item.description,
         } for item in items]
     except Exception:

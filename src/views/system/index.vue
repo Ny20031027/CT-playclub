@@ -73,9 +73,9 @@
           <el-table-column prop="id" label="ID" width="60" />
           <el-table-column prop="name" label="服务名称" />
           <el-table-column prop="category" label="分类" width="100" />
-          <el-table-column label="默认单价(元/时)" width="130">
+          <el-table-column label="单价" width="130">
             <template #default="scope">
-              <span style="color: #FF6B6B; font-weight: 600;">¥{{ scope.row.unit_price || 0 }}</span>
+              <span style="color: #FF6B6B; font-weight: 600;">¥{{ scope.row.unit_price || 0 }}<span style="font-size: 12px; color: #999;">/{{ scope.row.unit === 'hour' ? '小时' : scope.row.unit === 'game' ? '局' : scope.row.unit === 'wan' ? '万' : '次' }}</span></span>
             </template>
           </el-table-column>
           <el-table-column prop="description" label="说明" show-overflow-tooltip />
@@ -172,7 +172,14 @@
         </el-form-item>
         <el-form-item label="默认单价">
           <el-input-number v-model="serviceItemForm.unit_price" :min="0" :precision="2" :step="10" />
-          <span style="margin-left: 8px; color: #999;">元/小时</span>
+        </el-form-item>
+        <el-form-item label="计价单位">
+          <el-select v-model="serviceItemForm.unit" style="width: 100%">
+            <el-option label="元/小时" value="hour" />
+            <el-option label="元/局" value="game" />
+            <el-option label="元/万" value="wan" />
+            <el-option label="固定价格" value="fixed" />
+          </el-select>
         </el-form-item>
         <el-form-item label="服务说明">
           <el-input v-model="serviceItemForm.description" type="textarea" :rows="3" placeholder="服务项目的详细说明" />
@@ -231,7 +238,7 @@ const keywordForm = reactive({ id: null, keyword: '', reply_text: '', match_type
 const serviceItemList = ref([])
 const serviceItemDialogVisible = ref(false)
 const isServiceItemEdit = ref(false)
-const serviceItemForm = reactive({ id: null, name: '', category: '', unit_price: 0, description: '', sort: 0, is_enabled: true })
+const serviceItemForm = reactive({ id: null, name: '', category: '', unit_price: 0, unit: 'hour', description: '', sort: 0, is_enabled: true })
 
 const loadConfig = async () => {
   try { const res = await getConfigListApi(); configList.value = res.data.results || [] }
@@ -374,9 +381,9 @@ const loadServiceItems = async () => {
 const openServiceItemModal = (row) => {
   isServiceItemEdit.value = !!row
   if (row) {
-    Object.assign(serviceItemForm, { id: row.id, name: row.name, category: row.category, unit_price: row.unit_price, description: row.description, sort: row.sort, is_enabled: row.is_enabled })
+    Object.assign(serviceItemForm, { id: row.id, name: row.name, category: row.category, unit_price: row.unit_price, unit: row.unit || 'hour', description: row.description, sort: row.sort, is_enabled: row.is_enabled })
   } else {
-    Object.assign(serviceItemForm, { id: null, name: '', category: '', unit_price: 0, description: '', sort: 0, is_enabled: true })
+    Object.assign(serviceItemForm, { id: null, name: '', category: '', unit_price: 0, unit: 'hour', description: '', sort: 0, is_enabled: true })
   }
   serviceItemDialogVisible.value = true
 }
