@@ -73,7 +73,11 @@
           <el-table-column prop="id" label="ID" width="60" />
           <el-table-column prop="name" label="服务名称" />
           <el-table-column prop="category" label="分类" width="100" />
-          <el-table-column prop="unit_price" label="默认单价(元/时)" width="130" />
+          <el-table-column label="默认单价(元/时)" width="130">
+            <template #default="scope">
+              <span style="color: #FF6B6B; font-weight: 600;">¥{{ scope.row.unit_price || 0 }}</span>
+            </template>
+          </el-table-column>
           <el-table-column prop="description" label="说明" show-overflow-tooltip />
           <el-table-column prop="sort" label="排序" width="70" />
           <el-table-column label="状态" width="80">
