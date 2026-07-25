@@ -1161,7 +1161,7 @@ def dispatch_hall(request):
         current_employee = request.user.get_active_employee()
 
     queryset = Order.objects.filter(
-        status='published',
+        status__in=['published', 'transferring'],
         is_deleted=False
     )
 
@@ -1181,7 +1181,7 @@ def dispatch_hall(request):
     for o in orders:
         # 计算剩余席位
         sync_order_seat_state(o)
-        if o.status != 'published':
+        if o.status not in ['published', 'transferring']:
             continue
         remaining_slots = get_remaining_slots(o)
         # 只显示还有剩余席位的订单
@@ -1218,6 +1218,7 @@ def dispatch_hall(request):
             'id': o.id,
             'order_no': o.order_no,
             'title': o.title,
+            'status': o.status,
             'game_name': o.game_name,
             'content': o.remark,
             'price': float(o.unit_price),
@@ -1963,15 +1964,16 @@ def transfer_order(request, order_id):
         active_member.employee.save(update_fields=['status'])
     OrderMember.objects.filter(order=order, is_deleted=False, status__in=ACTIVE_ORDER_MEMBER_STATUSES).delete()
 
-    # 更新订单状态为可接取
-    order.status = 'published'
+    # 更新订单状态为转单中
+    order.status = 'transferring'
     order.locked_slots = 0
     order.leader = None
+    order.assigned_employee = None
     order.customer_confirmed = False
     order.dasher_confirmed = False
     order.transfer_reason = transfer_reason
     order.save(update_fields=[
-        'status', 'locked_slots', 'leader', 'customer_confirmed',
+        'status', 'locked_slots', 'leader', 'assigned_employee', 'customer_confirmed',
         'dasher_confirmed', 'transfer_reason', 'updated_at'
     ])
 

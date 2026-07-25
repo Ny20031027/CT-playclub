@@ -7,6 +7,7 @@ from apps.account.models import User
 
 class OrderStatus(models.TextChoices):
     PUBLISHED = 'published', '可领取'
+    TRANSFERRING = 'transferring', '转单中'
     CLAIMED = 'claimed', '待开始'
     CONFIRMING = 'confirming', '待双方确认'
     IN_PROGRESS = 'in_progress', '进行中'
