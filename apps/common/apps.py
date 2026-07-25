@@ -23,6 +23,7 @@ class CommonConfig(AppConfig):
         from django.core.management import call_command
         from django.db import connections
 
+        # 等待数据库连接就绪
         for i in range(30):
             try:
                 connections['default'].ensure_connection()
@@ -30,26 +31,41 @@ class CommonConfig(AppConfig):
             except Exception:
                 time.sleep(2)
 
-        try:
-            with connections['default'].cursor() as cursor:
-                cursor.execute("SELECT GET_LOCK('playclub_auto_migrate', 0)")
-                locked = cursor.fetchone()[0] == 1
-            if not locked:
-                logger.info('Auto migrate skipped: another worker is running it')
-                return
-
+        # 重试最多3次
+        for attempt in range(3):
             try:
-                self._fix_columns(logger, connections)
-                call_command('migrate', verbosity=1, interactive=False)
-                logger.info('Auto migrate completed')
-            finally:
+                # 确保连接有效
+                connections['default'].ensure_connection()
+
+                with connections['default'].cursor() as cursor:
+                    cursor.execute("SELECT GET_LOCK('playclub_auto_migrate', 0)")
+                    locked = cursor.fetchone()[0] == 1
+                if not locked:
+                    logger.info('Auto migrate skipped: another worker is running it')
+                    return
+
                 try:
-                    with connections['default'].cursor() as cursor:
-                        cursor.execute("SELECT RELEASE_LOCK('playclub_auto_migrate')")
-                except Exception:
-                    pass
-        except Exception as e:
-            logger.error(f'Auto migrate failed: {e}')
+                    self._fix_columns(logger, connections)
+                    call_command('migrate', verbosity=1, interactive=False)
+                    logger.info('Auto migrate completed')
+                finally:
+                    try:
+                        with connections['default'].cursor() as cursor:
+                            cursor.execute("SELECT RELEASE_LOCK('playclub_auto_migrate')")
+                    except Exception:
+                        pass
+                break  # 成功则退出重试
+            except Exception as e:
+                logger.warning(f'Auto migrate attempt {attempt + 1} failed: {e}')
+                if attempt < 2:
+                    time.sleep(5)
+                    # 重置连接
+                    try:
+                        connections['default'].close()
+                    except Exception:
+                        pass
+                else:
+                    logger.error(f'Auto migrate failed after {attempt + 1} attempts')
 
         self._create_default_admin()
 
