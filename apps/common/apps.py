@@ -1,4 +1,5 @@
 import os
+import sys
 import threading
 from django.apps import AppConfig
 
@@ -9,6 +10,10 @@ class CommonConfig(AppConfig):
     verbose_name = '公共模块'
 
     def ready(self):
+        if os.environ.get('PLAYCLUB_SKIP_AUTO_MIGRATE') == '1':
+            return
+        if 'migrate' in sys.argv[1:]:
+            return
         threading.Thread(target=self._auto_migrate, daemon=True).start()
 
     def _auto_migrate(self):
