@@ -1430,8 +1430,24 @@ def order_detail(request, order_id):
     employee = user.get_active_employee()
     is_dasher = bool(employee)
 
+    # 判断是否为客服
+    is_cs = False
     try:
-        if is_dasher:
+        from apps.customer.models import CustomerService
+        CustomerService.objects.get(customer__user=user)
+        is_cs = True
+    except CustomerService.DoesNotExist:
+        pass
+
+    try:
+        if is_cs:
+            # 客服可以查看任何未删除的订单
+            order = Order.objects.filter(
+                id=order_id, is_deleted=False
+            ).select_related('skill', 'customer').prefetch_related(
+                'order_members__employee', 'comments'
+            ).first()
+        elif is_dasher:
             # 打手可以查看：可接取的订单(published/transferring) + 自己已接取的订单
             from django.db.models import Q
             order_qs = Order.objects.filter(
