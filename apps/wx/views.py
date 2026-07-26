@@ -2677,17 +2677,19 @@ def get_cs_messages(request):
         return error_response(msg='?????')
 
     ticket_id = request.GET.get('ticket_id')
-    queryset = CSMessage.objects.filter(customer=customer).only(
-        'id', 'customer', 'cs_user', 'content', 'msg_type', 'is_read', 'sender_type', 'created_at'
-    )
+    base_only_fields = ['id', 'customer', 'cs_user', 'content', 'msg_type', 'is_read', 'sender_type', 'created_at']
 
     if _cs_message_has_ticket_column():
+        queryset = CSMessage.objects.filter(customer=customer).only(
+            *(base_only_fields + ['ticket'])
+        )
         if ticket_id:
             queryset = queryset.filter(ticket_id=ticket_id)
         else:
             queryset = queryset.filter(ticket__isnull=True)
         messages = queryset.select_related('cs_user', 'ticket__order').order_by('created_at')
     else:
+        queryset = CSMessage.objects.filter(customer=customer).only(*base_only_fields)
         messages = queryset.select_related('cs_user').order_by('created_at')
 
     data = [_serialize_cs_message(msg) for msg in messages]
@@ -2794,17 +2796,19 @@ def get_cs_chat_messages(request):
     except Customer.DoesNotExist:
         return error_response(msg='客户不存在')
 
-    queryset = CSMessage.objects.filter(customer=customer).only(
-        'id', 'customer', 'cs_user', 'content', 'msg_type', 'is_read', 'sender_type', 'created_at'
-    )
+    base_only_fields = ['id', 'customer', 'cs_user', 'content', 'msg_type', 'is_read', 'sender_type', 'created_at']
 
     if _cs_message_has_ticket_column():
+        queryset = CSMessage.objects.filter(customer=customer).only(
+            *(base_only_fields + ['ticket'])
+        )
         if ticket_id:
             queryset = queryset.filter(ticket_id=ticket_id)
         else:
             queryset = queryset.filter(ticket__isnull=True)
         messages = queryset.select_related('cs_user', 'ticket__order').order_by('created_at')
     else:
+        queryset = CSMessage.objects.filter(customer=customer).only(*base_only_fields)
         messages = queryset.select_related('cs_user').order_by('created_at')
 
     data = [_serialize_cs_message(msg) for msg in messages]
