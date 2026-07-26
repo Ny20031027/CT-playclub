@@ -493,6 +493,16 @@ table tr:hover {
     color: #409eff;
 }
 
+.badge-primary {
+    background: #e1f3fb;
+    color: #42a5f5;
+}
+
+.badge-default {
+    background: #f0f0f0;
+    color: #999;
+}
+
 .empty-state {
     text-align: center;
     padding: 40px;
