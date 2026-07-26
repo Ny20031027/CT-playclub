@@ -80,4 +80,9 @@ urlpatterns = [
     path('team/invite/', views.invite_to_team, name='wx-invite-team'),
     path('team/handle-invite/', views.handle_team_invite, name='wx-handle-team-invite'),
     path('team/leave/', views.leave_team, name='wx-leave-team'),
+
+    # 打卡
+    path('attendance/status/', views.get_attendance_status, name='wx-attendance-status'),
+    path('attendance/clock-in/', views.clock_in, name='wx-clock-in'),
+    path('attendance/clock-out/', views.clock_out, name='wx-clock-out'),
 ]

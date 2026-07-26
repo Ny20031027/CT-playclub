@@ -135,6 +135,10 @@ class CustomerService(BaseModel):
         ('offline', '离线'),
         ('busy', '忙碌'),
     ], verbose_name='在线状态')
+    work_status = models.CharField(max_length=20, default='off_duty', choices=[
+        ('on_duty', '上班'),
+        ('off_duty', '下班'),
+    ], verbose_name='上下班状态')
     remark = models.CharField(max_length=500, blank=True, verbose_name='备注')
 
     class Meta:
@@ -144,6 +148,29 @@ class CustomerService(BaseModel):
 
     def __str__(self):
         return f"{self.customer.nickname} - 客服"
+
+
+class CSAttendance(BaseModel):
+    """客服打卡记录"""
+    cs = models.ForeignKey(CustomerService, on_delete=models.CASCADE,
+                           related_name='attendance_records', verbose_name='客服')
+    punch_type = models.CharField(max_length=20, choices=[
+        ('clock_in', '上班打卡'),
+        ('clock_out', '下班打卡'),
+    ], verbose_name='打卡类型')
+    punch_time = models.DateTimeField(auto_now_add=True, verbose_name='打卡时间')
+    location = models.CharField(max_length=200, blank=True, verbose_name='打卡地点')
+    ip_address = models.CharField(max_length=50, blank=True, verbose_name='IP地址')
+    remark = models.CharField(max_length=500, blank=True, verbose_name='备注')
+
+    class Meta:
+        db_table = 'cs_attendance'
+        verbose_name = '客服打卡记录'
+        verbose_name_plural = verbose_name
+        ordering = ['-created_at']
+
+    def __str__(self):
+        return f"{self.cs.customer.nickname} - {self.get_punch_type_display()} - {self.punch_time.strftime('%Y-%m-%d %H:%M')}"
 
 
 class CSMessage(BaseModel):

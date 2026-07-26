@@ -2965,11 +2965,26 @@ def user_profile(request):
     # 判断用户类型
     user_type = 'customer'
     employee_obj = related['employee']
+    customer_obj = related['customer']
+    is_cs = False
+    try:
+        if customer_obj and customer_obj.cs_profile and not customer_obj.cs_profile.is_deleted:
+            is_cs = True
+    except Exception:
+        is_cs = False
     try:
         if employee_obj:
             user_type = 'dasher'
+        elif is_cs:
+            user_type = 'cs'
     except Exception:
         pass
+
+    work_status = 'off_duty'
+    if user_type == 'dasher' and employee_obj:
+        work_status = employee_obj.work_status
+    elif user_type == 'cs' and is_cs:
+        work_status = customer_obj.cs_profile.work_status
 
     # 统计数据
     order_count = 0
@@ -3025,6 +3040,7 @@ def user_profile(request):
         'balance': round(balance, 2),
         'is_busy': is_busy,
         'status': 'busy' if is_busy else 'idle',
+        'work_status': work_status,
         'level_num': employee_obj.level_num if employee_obj else 0,
         'intro': employee_obj.intro if employee_obj else '',
         'commission_balance': float(employee_obj.commission_balance) if employee_obj else 0,
@@ -3710,4 +3726,192 @@ def cs_cancel_order(request, ticket_id):
         'order_id': order.id,
         'order_no': order.order_no,
         'status': order.status,
+    })
+
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def get_attendance_status(request):
+    """获取打卡状态"""
+    from apps.customer.models import CustomerService, CSAttendance
+
+    user = request.user
+    user_type = 'customer'
+    work_status = 'off_duty'
+    today_records = []
+
+    related = get_related_profile_objects(user)
+    employee_obj = related['employee']
+    customer_obj = related['customer']
+
+    is_cs = False
+    try:
+        if customer_obj and customer_obj.cs_profile and not customer_obj.cs_profile.is_deleted:
+            is_cs = True
+    except Exception:
+        is_cs = False
+
+    if employee_obj:
+        user_type = 'dasher'
+        work_status = employee_obj.work_status
+        today_start = timezone.now().replace(hour=0, minute=0, second=0, microsecond=0)
+        records = employee_obj.attendance_records.filter(
+            is_deleted=False,
+            created_at__gte=today_start,
+        ).order_by('created_at')
+        for r in records:
+            today_records.append({
+                'id': r.id,
+                'punch_type': r.punch_type,
+                'punch_type_display': r.get_punch_type_display(),
+                'punch_time': r.punch_time.strftime('%H:%M:%S'),
+                'location': r.location or '',
+            })
+    elif is_cs:
+        user_type = 'cs'
+        cs = customer_obj.cs_profile
+        work_status = cs.work_status
+        today_start = timezone.now().replace(hour=0, minute=0, second=0, microsecond=0)
+        records = cs.attendance_records.filter(
+            is_deleted=False,
+            created_at__gte=today_start,
+        ).order_by('created_at')
+        for r in records:
+            today_records.append({
+                'id': r.id,
+                'punch_type': r.punch_type,
+                'punch_type_display': r.get_punch_type_display(),
+                'punch_time': r.punch_time.strftime('%H:%M:%S'),
+                'location': r.location or '',
+            })
+    else:
+        return error_response(msg='您没有打卡权限')
+
+    now = timezone.now()
+    date_str = now.strftime('%Y-%m-%d')
+    weekday = ['周一', '周二', '周三', '周四', '周五', '周六', '周日'][now.weekday()]
+
+    return success_response({
+        'user_type': user_type,
+        'work_status': work_status,
+        'work_status_display': '上班' if work_status == 'on_duty' else '下班',
+        'date': date_str,
+        'weekday': weekday,
+        'current_time': now.strftime('%H:%M:%S'),
+        'today_records': today_records,
+    })
+
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def clock_in(request):
+    """上班打卡"""
+    from apps.customer.models import CustomerService, CSAttendance
+
+    user = request.user
+    related = get_related_profile_objects(user)
+    employee_obj = related['employee']
+    customer_obj = related['customer']
+
+    is_cs = False
+    try:
+        if customer_obj and customer_obj.cs_profile and not customer_obj.cs_profile.is_deleted:
+            is_cs = True
+    except Exception:
+        is_cs = False
+
+    location = request.data.get('location', '').strip()
+    ip_address = request.META.get('REMOTE_ADDR', '')
+
+    if employee_obj:
+        if employee_obj.work_status == 'on_duty':
+            return error_response(msg='您今天已上班打卡')
+        employee_obj.work_status = 'on_duty'
+        employee_obj.online_status = True
+        employee_obj.save(update_fields=['work_status', 'online_status', 'updated_at'])
+        from apps.employee.models import EmployeeAttendance
+        EmployeeAttendance.objects.create(
+            employee=employee_obj,
+            punch_type='clock_in',
+            location=location,
+            ip_address=ip_address,
+        )
+    elif is_cs:
+        cs = customer_obj.cs_profile
+        if cs.work_status == 'on_duty':
+            return error_response(msg='您今天已上班打卡')
+        cs.work_status = 'on_duty'
+        cs.status = 'online'
+        cs.save(update_fields=['work_status', 'status', 'updated_at'])
+        CSAttendance.objects.create(
+            cs=cs,
+            punch_type='clock_in',
+            location=location,
+            ip_address=ip_address,
+        )
+    else:
+        return error_response(msg='您没有打卡权限')
+
+    return success_response(msg='上班打卡成功', data={
+        'work_status': 'on_duty',
+        'punch_time': timezone.now().strftime('%H:%M:%S'),
+    })
+
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def clock_out(request):
+    """下班打卡"""
+    from apps.customer.models import CustomerService, CSAttendance
+
+    user = request.user
+    related = get_related_profile_objects(user)
+    employee_obj = related['employee']
+    customer_obj = related['customer']
+
+    is_cs = False
+    try:
+        if customer_obj and customer_obj.cs_profile and not customer_obj.cs_profile.is_deleted:
+            is_cs = True
+    except Exception:
+        is_cs = False
+
+    location = request.data.get('location', '').strip()
+    ip_address = request.META.get('REMOTE_ADDR', '')
+    remark = request.data.get('remark', '').strip()
+
+    if employee_obj:
+        if employee_obj.work_status == 'off_duty':
+            return error_response(msg='您今天已下班打卡')
+        employee_obj.work_status = 'off_duty'
+        employee_obj.online_status = False
+        employee_obj.save(update_fields=['work_status', 'online_status', 'updated_at'])
+        from apps.employee.models import EmployeeAttendance
+        EmployeeAttendance.objects.create(
+            employee=employee_obj,
+            punch_type='clock_out',
+            location=location,
+            ip_address=ip_address,
+            remark=remark,
+        )
+    elif is_cs:
+        cs = customer_obj.cs_profile
+        if cs.work_status == 'off_duty':
+            return error_response(msg='您今天已下班打卡')
+        cs.work_status = 'off_duty'
+        cs.status = 'offline'
+        cs.save(update_fields=['work_status', 'status', 'updated_at'])
+        CSAttendance.objects.create(
+            cs=cs,
+            punch_type='clock_out',
+            location=location,
+            ip_address=ip_address,
+            remark=remark,
+        )
+    else:
+        return error_response(msg='您没有打卡权限')
+
+    return success_response(msg='下班打卡成功', data={
+        'work_status': 'off_duty',
+        'punch_time': timezone.now().strftime('%H:%M:%S'),
     })
