@@ -21,7 +21,7 @@ class EmployeeSkillSerializer(serializers.ModelSerializer):
     class Meta:
         model = EmployeeSkill
         fields = ['id', 'name', 'category', 'game_category', 'game_category_id', 'game_category_name',
-                  'unit_price', 'icon', 'sort', 'status', 'skill_type', 'levels', 'created_at']
+                  'unit_price', 'icon', 'sort', 'status', 'skill_type', 'min_people', 'levels', 'created_at']
         read_only_fields = ['id', 'created_at']
 
 

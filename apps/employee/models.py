@@ -35,6 +35,8 @@ class EmployeeSkill(BaseModel):
         ('primary', '主技能'),
         ('secondary', '副技能'),
     ], verbose_name='技能类型')
+    min_people = models.IntegerField(default=1, verbose_name='最低下单人数',
+                                     help_text='客户在小程序下单时该技能最少需要选择的人数')
 
     class Meta:
         db_table = 'emp_skill'

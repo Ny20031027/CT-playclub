@@ -907,6 +907,7 @@ def employee_detail(request, emp_id):
             'category': rel.skill.category,
             'price': float(rel.unit_price),
             'level': rel.skill_level.name if rel.skill_level else '',
+            'min_people': rel.skill.min_people or 1,
         })
 
     tags = [{'name': t.name, 'color': t.color} for t in emp.tags.filter(status=True)]
@@ -994,6 +995,17 @@ def create_order(request):
         skill = EmployeeSkill.objects.get(id=skill_id, status=True)
     except EmployeeSkill.DoesNotExist:
         return error_response(msg='服务类型不存在')
+
+    # 校验最低下单人数
+    min_people = skill.min_people or 1
+    if min_people < 1:
+        min_people = 1
+    try:
+        quantity = int(quantity)
+    except (TypeError, ValueError):
+        quantity = 1
+    if quantity < min_people:
+        return error_response(msg=f'该技能至少需要{min_people}人下单')
 
     # 计算价格
     unit_price = 0

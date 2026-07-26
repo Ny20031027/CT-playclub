@@ -152,13 +152,14 @@
                         <th>技能名称</th>
                         <th>游戏分类</th>
                         <th>技能类型</th>
+                        <th>最低下单人数</th>
                         <th>段位</th>
                         <th>状态</th>
                         <th>操作</th>
                     </tr>
                 </thead>
                 <tbody id="skillList">
-                    <tr><td colspan="6" class="empty-state"><i class="fa-solid fa-spinner fa-spin"></i><br>加载中...</td></tr>
+                    <tr><td colspan="7" class="empty-state"><i class="fa-solid fa-spinner fa-spin"></i><br>加载中...</td></tr>
                 </tbody>
             </table>
         </div>
@@ -559,6 +560,11 @@
                         <option value="secondary">副技能</option>
                         <option value="primary">主技能</option>
                     </select>
+                </div>
+                <div class="form-group">
+                    <label>最低下单人数 *</label>
+                    <input type="number" id="skillMinPeople" value="1" min="1" max="20" required placeholder="客户在小程序下单时最少需要选择的人数，默认1">
+                    <small style="color: #999; font-size: 12px;">客户在小程序下单时，该技能最少需要选择的人数（例如：5人车队则填5）</small>
                 </div>
                 <hr style="margin: 15px 0; border: none; border-top: 1px solid #eee;">
                 <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;">
@@ -1350,18 +1356,22 @@
                 const tbody = document.getElementById('skillList');
 
                 if (skills.length === 0) {
-                    tbody.innerHTML = '<tr><td colspan="6" class="empty-state"><i class="fa-solid fa-inbox"></i><br>暂无技能数据</td></tr>';
+                    tbody.innerHTML = '<tr><td colspan="7" class="empty-state"><i class="fa-solid fa-inbox"></i><br>暂无技能数据</td></tr>';
                     return;
                 }
 
                 tbody.innerHTML = skills.map(s => {
                     const levels = (s.levels || []).map(l => l.name + '(¥' + l.unit_price + ')').join('、');
                     const typeLabel = s.skill_type === 'primary' ? '<span class="badge badge-primary">主技能</span>' : '<span class="badge badge-default">副技能</span>';
+                    const minPeople = (s.min_people && s.min_people > 1)
+                        ? `<span class="badge badge-warning">${s.min_people}人起</span>`
+                        : '<span style="color:#999;">1人</span>';
                     return `
                     <tr>
                         <td>${s.name}</td>
                         <td>${s.game_category_name || '-'}</td>
                         <td>${typeLabel}</td>
+                        <td>${minPeople}</td>
                         <td>${levels || '<span style="color:#999;">未设置段位</span>'}</td>
                         <td>
                             <span class="badge ${s.status ? 'badge-success' : 'badge-danger'}">${s.status ? '启用' : '禁用'}</span>
@@ -1395,6 +1405,7 @@
         document.getElementById('skillModalTitle').textContent = '添加技能';
         document.getElementById('skillForm').reset();
         document.getElementById('skillId').value = '';
+        document.getElementById('skillMinPeople').value = 1;
         document.getElementById('levelRows').innerHTML = '';
         await loadSkillGameCategories();
         showModal('skillModal');
@@ -1425,6 +1436,7 @@
                 document.getElementById('skillSort').value = s.sort || 0;
                 document.getElementById('skillStatus').value = s.status ? 'true' : 'false';
                 document.getElementById('skillType').value = s.skill_type || 'secondary';
+                document.getElementById('skillMinPeople').value = s.min_people || 1;
 
                 await loadSkillGameCategories();
                 document.getElementById('skillGameCategory').value = s.game_category || '';
@@ -1463,10 +1475,15 @@
         const sort = document.getElementById('skillSort').value;
         const status = document.getElementById('skillStatus').value === 'true';
         const skillType = document.getElementById('skillType').value;
+        const minPeople = parseInt(document.getElementById('skillMinPeople').value) || 1;
         const levels = collectLevels();
 
         if (!name) {
             showToast('请输入技能名称', 'error');
+            return;
+        }
+        if (minPeople < 1) {
+            showToast('最低下单人数不能小于1', 'error');
             return;
         }
 
@@ -1476,6 +1493,7 @@
             sort: parseInt(sort) || 0,
             status,
             skill_type: skillType,
+            min_people: minPeople,
             levels,
         };
 
