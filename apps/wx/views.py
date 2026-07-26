@@ -1164,7 +1164,6 @@ def create_self_service_order(request):
     for item in order_items:
         skill_obj = None
         try:
-            from apps.employee.models import EmployeeSkill
             skill_obj = EmployeeSkill.objects.get(id=item['skill_id'])
         except Exception:
             pass
