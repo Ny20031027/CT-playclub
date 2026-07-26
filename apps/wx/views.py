@@ -1672,11 +1672,11 @@ def claim_order(request, order_id):
     if order.assigned_employee_id and order.assigned_employee_id != employee.id:
         return error_response(msg='该订单为预约订单，仅被预约的打手可以接取')
 
-    # 检查是否已在选秀队列中
+    # 检查是否已在选秀队列中（含软删除记录，因为唯一索引是物理索引）
     existing_candidate = OrderCandidate.objects.filter(
-        order=order, employee=employee, is_deleted=False
+        order=order, employee=employee
     ).first()
-    if existing_candidate:
+    if existing_candidate and not existing_candidate.is_deleted:
         return error_response(msg='您已在该订单的选秀队列中')
 
     # 检查是否已是正式成员
@@ -1686,8 +1686,13 @@ def claim_order(request, order_id):
     if existing_member:
         return error_response(msg='您已经是该订单的打手')
 
-    # 创建选秀候选人记录
-    candidate = OrderCandidate.objects.create(order=order, employee=employee)
+    # 创建或恢复选秀候选人记录
+    if existing_candidate and existing_candidate.is_deleted:
+        existing_candidate.is_deleted = False
+        existing_candidate.save(update_fields=['is_deleted', 'updated_at'])
+        candidate = existing_candidate
+    else:
+        candidate = OrderCandidate.objects.create(order=order, employee=employee)
 
     # 如果该打手在活跃队伍中，把所有活跃队友也一并加入选秀队列
     team_applied_count = 1  # 已申请人数（含自己）
@@ -1702,20 +1707,38 @@ def claim_order(request, order_id):
             .values_list('employee_id', flat=True)
         )
         if teammate_ids:
-            # 排除已是正式成员或已在选秀队列的队友
+            # 排除已是正式成员的队友
             already_member_ids = set(OrderMember.objects.filter(
                 order=order, employee_id__in=teammate_ids,
                 is_deleted=False, status__in=['accepted', 'in_progress']
             ).values_list('employee_id', flat=True))
-            already_candidate_ids = set(OrderCandidate.objects.filter(
-                order=order, employee_id__in=teammate_ids, is_deleted=False
-            ).values_list('employee_id', flat=True))
-            skip_ids = already_member_ids | already_candidate_ids
-            apply_ids = [tid for tid in teammate_ids if tid not in skip_ids]
-            new_candidates = [
-                OrderCandidate(order=order, employee_id=tid) for tid in apply_ids
+            # 查询所有已有候选人记录的队友（含软删除，因为唯一索引是物理索引）
+            existing_candidates = OrderCandidate.objects.filter(
+                order=order, employee_id__in=teammate_ids
+            )
+            active_candidate_ids = set()
+            soft_deleted_candidates = []
+            for ec in existing_candidates:
+                if ec.is_deleted:
+                    soft_deleted_candidates.append(ec)
+                else:
+                    active_candidate_ids.add(ec.employee_id)
+            # 需要新建申请的队友：排除已是正式成员、已在选秀队列的
+            apply_ids = [
+                tid for tid in teammate_ids
+                if tid not in already_member_ids and tid not in active_candidate_ids
             ]
-            if new_candidates:
+            # 恢复软删除的候选人记录
+            for ec in soft_deleted_candidates:
+                if ec.employee_id not in already_member_ids:
+                    ec.is_deleted = False
+                    ec.save(update_fields=['is_deleted', 'updated_at'])
+                    team_applied_count += 1
+            # 新建候选人记录
+            if apply_ids:
+                new_candidates = [
+                    OrderCandidate(order=order, employee_id=tid) for tid in apply_ids
+                ]
                 OrderCandidate.objects.bulk_create(new_candidates)
                 team_applied_count += len(new_candidates)
 
