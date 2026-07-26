@@ -2,8 +2,8 @@
   <div class="login-container">
     <div class="login-card">
       <div class="login-header">
-        <h1>陪玩店管理平台</h1>
-        <p>PlayClub Management System</p>
+        <h1>黑金电竞管理平台</h1>
+        <p>黑金电竞 Management System</p>
       </div>
       <el-form ref="formRef" :model="form" :rules="rules" label-width="80px">
         <el-form-item label="用户名" prop="username">

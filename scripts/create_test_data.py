@@ -256,7 +256,7 @@ def create_banners():
 def create_announcements():
     """创建公告"""
     announcements_data = [
-        {'title': '欢迎使用CT电竞陪玩平台', 'content': '专业游戏陪玩，让游戏更有趣', 'type': 'info', 'sort': 1},
+        {'title': '欢迎使用黑金电竞陪玩平台', 'content': '专业游戏陪玩，让游戏更有趣', 'type': 'info', 'sort': 1},
         {'title': '新用户注册送优惠券', 'content': '新用户注册即送10元优惠券', 'type': 'activity', 'sort': 2},
     ]
     

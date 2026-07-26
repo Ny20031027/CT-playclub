@@ -48,7 +48,7 @@
           <router-view />
         </el-main>
         <el-footer class="footer">
-          <span>© 2026 陪玩店综合管理平台 PlayClub Management System</span>
+          <span>© 2026 黑金电竞管理平台</span>
         </el-footer>
       </el-container>
     </el-container>
