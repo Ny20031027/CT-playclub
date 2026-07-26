@@ -1689,9 +1689,43 @@ def claim_order(request, order_id):
     # 创建选秀候选人记录
     candidate = OrderCandidate.objects.create(order=order, employee=employee)
 
+    # 如果该打手在活跃队伍中，把所有活跃队友也一并加入选秀队列
+    team_applied_count = 1  # 已申请人数（含自己）
+    my_membership = TeamMember.objects.filter(
+        employee=employee, status='active'
+    ).select_related('team').first()
+    if my_membership and my_membership.team.status:
+        teammate_ids = list(
+            TeamMember.objects.filter(
+                team=my_membership.team, status='active'
+            ).exclude(employee=employee)
+            .values_list('employee_id', flat=True)
+        )
+        if teammate_ids:
+            # 排除已是正式成员或已在选秀队列的队友
+            already_member_ids = set(OrderMember.objects.filter(
+                order=order, employee_id__in=teammate_ids,
+                is_deleted=False, status__in=['accepted', 'in_progress']
+            ).values_list('employee_id', flat=True))
+            already_candidate_ids = set(OrderCandidate.objects.filter(
+                order=order, employee_id__in=teammate_ids, is_deleted=False
+            ).values_list('employee_id', flat=True))
+            skip_ids = already_member_ids | already_candidate_ids
+            apply_ids = [tid for tid in teammate_ids if tid not in skip_ids]
+            new_candidates = [
+                OrderCandidate(order=order, employee_id=tid) for tid in apply_ids
+            ]
+            if new_candidates:
+                OrderCandidate.objects.bulk_create(new_candidates)
+                team_applied_count += len(new_candidates)
+
+    msg = '已加入选秀队列，等待客户挑选'
+    if team_applied_count > 1:
+        msg = f'已为您及{team_applied_count - 1}位队友加入选秀队列，等待客户挑选'
+
     return success_response(
-        msg='已加入选秀队列，等待客户挑选',
-        data={'candidate_id': candidate.id}
+        msg=msg,
+        data={'candidate_id': candidate.id, 'applied_count': team_applied_count}
     )
 
 
