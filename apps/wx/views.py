@@ -3201,16 +3201,21 @@ def invite_to_team(request):
     except Employee.DoesNotExist:
         return error_response(msg='目标打手不存在')
 
-    # 检查目标是否已在队伍中
-    if TeamMember.objects.filter(team=team, employee=target, status__in=['active', 'invited']).exists():
+    # 检查目标是否已在队伍中（活跃或已邀请）
+    member = TeamMember.objects.filter(team=team, employee=target).first()
+    if member and member.status in ['active', 'invited']:
         return error_response(msg='该打手已在队伍中')
 
     # 检查目标是否有队伍
     if TeamMember.objects.filter(employee=target, status='active').exists():
         return error_response(msg='该打手已在其他队伍中')
 
-    # 创建邀请
-    TeamMember.objects.create(team=team, employee=target, status='invited')
+    # 创建或更新邀请记录
+    if member:
+        member.status = 'invited'
+        member.save()
+    else:
+        TeamMember.objects.create(team=team, employee=target, status='invited')
 
     # 发送通知给目标打手
     notice = Notice.objects.create(
