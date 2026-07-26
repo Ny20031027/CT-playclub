@@ -1076,6 +1076,34 @@ def create_self_service_order(request):
     if not items:
         return error_response(msg='请至少选择一个技能')
 
+    # 校验人数
+    try:
+        quantity = int(quantity)
+    except (TypeError, ValueError):
+        quantity = 1
+    if quantity < 1:
+        quantity = 1
+
+    # 计算所有选中技能中最高的最低人数限制
+    skill_ids = [item.get('skill_id') for item in items if item.get('skill_id')]
+    if skill_ids:
+        from django.db.models import Max
+        max_min_people = EmployeeSkill.objects.filter(
+            id__in=skill_ids, status=True
+        ).aggregate(max_min=Max('min_people'))['max_min'] or 1
+        if max_min_people < 1:
+            max_min_people = 1
+        if quantity < max_min_people:
+            skill_name = ''
+            top_skill = EmployeeSkill.objects.filter(
+                id__in=skill_ids, min_people=max_min_people, status=True
+            ).first()
+            if top_skill:
+                skill_name = top_skill.name
+            return error_response(
+                msg=f'技能「{skill_name}」至少需要{max_min_people}人下单' if skill_name else f'至少需要{max_min_people}人下单'
+            )
+
     # 计算总价和总时长
     total_amount = 0
     total_duration = 0
@@ -3001,6 +3029,7 @@ def get_all_skills(request):
             'game_name': s.game_category.name if s.game_category else '',
             'game_id': s.game_category.id if s.game_category else 0,
             'skill_type': s.skill_type,
+            'min_people': s.min_people or 1,
             'levels': levels,
         })
     return success_response(data=data)
