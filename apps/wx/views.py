@@ -2822,7 +2822,28 @@ def get_cs_chat_messages(request):
     return success_response({
         'messages': data,
         'customer_avatar': customer_avatar,
+        'ticket': _get_ticket_order_brief(ticket_id) if ticket_id else None,
     })
+
+
+def _get_ticket_order_brief(ticket_id):
+    """获取工单关联订单的简要信息（供客服聊天页判断按钮显示）"""
+    try:
+        ticket = SupportTicket.objects.select_related('order').get(id=ticket_id)
+    except SupportTicket.DoesNotExist:
+        return None
+    order = ticket.order
+    if order is None:
+        return None
+    return {
+        'ticket_id': ticket.id,
+        'ticket_no': ticket.ticket_no,
+        'ticket_status': ticket.status,
+        'order_id': order.id,
+        'order_no': order.order_no,
+        'order_status': order.status,
+        'order_status_display': order.get_status_display(),
+    }
 
 
 @api_view(['POST'])
@@ -3585,3 +3606,89 @@ def cs_close_ticket(request, ticket_id):
     ticket.save()
 
     return success_response(msg='工单已关闭')
+
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+@transaction.atomic
+def cs_cancel_order(request, ticket_id):
+    """客服取消转单中的订单
+
+    规则：
+    - 仅客服可操作
+    - 仅当订单处于"转单中"(transferring)状态时可取消
+    - 取消后订单状态变为"已取消"，工单自动关闭
+    - 通知客户
+    """
+    from apps.customer.models import CustomerService
+
+    user = request.user
+
+    # 校验客服身份
+    try:
+        cs = CustomerService.objects.get(customer__user=user)
+    except CustomerService.DoesNotExist:
+        return error_response(msg='您不是客服')
+
+    # 获取工单
+    try:
+        ticket = SupportTicket.objects.select_related('order', 'customer').get(
+            id=ticket_id, is_deleted=False
+        )
+    except SupportTicket.DoesNotExist:
+        return error_response(msg='工单不存在')
+
+    order = ticket.order
+    if order is None or order.is_deleted:
+        return error_response(msg='关联订单不存在')
+
+    # 仅允许转单中状态的订单被客服取消
+    if order.status != OrderStatus.TRANSFERRING:
+        return error_response(
+            msg=f'当前订单状态为「{order.get_status_display()}」，仅「转单中」状态可由客服取消'
+        )
+
+    reason = request.data.get('reason', '').strip()
+    if not reason:
+        return error_response(msg='请填写取消原因')
+
+    # 取消订单
+    order.status = OrderStatus.CANCELLED
+    order.cancel_time = timezone.now()
+    cancel_reason_text = f'客服取消（工单:{ticket.ticket_no}）：{reason}'
+    order.cancel_reason = cancel_reason_text[:500]
+    order.save(update_fields=['status', 'cancel_time', 'cancel_reason', 'updated_at'])
+
+    # 关闭工单
+    ticket.status = SupportTicket.TicketStatus.CLOSED
+    ticket.handler = user
+    handle_remark = request.data.get('remark', '').strip()
+    ticket.handle_remark = f'客服取消订单。原因：{reason}' + (f' 备注：{handle_remark}' if handle_remark else '')
+    ticket.closed_at = timezone.now()
+    ticket.save(update_fields=['status', 'handler', 'handle_remark', 'closed_at', 'updated_at'])
+
+    # 通知客户
+    notice = Notice.objects.create(
+        title='订单已取消',
+        content=f'您的订单「{order.order_no}」经客服核实已取消。原因：{reason}。如有疑问请联系客服。',
+        type='order',
+        level='info',
+        sender=user,
+        target_type='user',
+        target_ids=str(ticket.customer.user_id),
+        extra=json.dumps({
+            'type': 'order_cancelled',
+            'order_id': order.id,
+            'order_no': order.order_no,
+            'ticket_id': ticket.id,
+            'reason': reason,
+        }),
+        publish_time=timezone.now(),
+    )
+    UserNotice.objects.create(notice=notice, user=ticket.customer.user)
+
+    return success_response(msg='订单已取消，已通知客户', data={
+        'order_id': order.id,
+        'order_no': order.order_no,
+        'status': order.status,
+    })

@@ -45,6 +45,7 @@ urlpatterns = [
     path('tickets/', views.my_tickets, name='wx-my-tickets'),
     path('cs/tickets/', views.cs_ticket_list, name='wx-cs-ticket-list'),
     path('cs/tickets/<int:ticket_id>/close/', views.cs_close_ticket, name='wx-cs-close-ticket'),
+    path('cs/tickets/<int:ticket_id>/cancel-order/', views.cs_cancel_order, name='wx-cs-cancel-order'),
 
     # 消息
     path('notices/', views.my_notices, name='wx-my-notices'),
