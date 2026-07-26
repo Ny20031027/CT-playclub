@@ -1713,34 +1713,35 @@ def claim_order(request, order_id):
                 is_deleted=False, status__in=['accepted', 'in_progress']
             ).values_list('employee_id', flat=True))
             # 查询所有已有候选人记录的队友（含软删除，因为唯一索引是物理索引）
-            existing_candidates = OrderCandidate.objects.filter(
+            existing_candidates_map = {}  # employee_id -> candidate
+            for ec in OrderCandidate.objects.filter(
                 order=order, employee_id__in=teammate_ids
-            )
-            active_candidate_ids = set()
-            soft_deleted_candidates = []
-            for ec in existing_candidates:
-                if ec.is_deleted:
-                    soft_deleted_candidates.append(ec)
-                else:
-                    active_candidate_ids.add(ec.employee_id)
-            # 需要新建申请的队友：排除已是正式成员、已在选秀队列的
-            apply_ids = [
-                tid for tid in teammate_ids
-                if tid not in already_member_ids and tid not in active_candidate_ids
-            ]
-            # 恢复软删除的候选人记录
-            for ec in soft_deleted_candidates:
-                if ec.employee_id not in already_member_ids:
+            ):
+                existing_candidates_map[ec.employee_id] = ec
+
+            # 逐个处理队友：软删除则恢复，无记录则新建，活跃则跳过
+            apply_ids = []
+            for tid in teammate_ids:
+                if tid in already_member_ids:
+                    continue  # 已是正式成员，跳过
+                ec = existing_candidates_map.get(tid)
+                if ec is None:
+                    # 完全没记录，需要新建
+                    apply_ids.append(tid)
+                elif ec.is_deleted:
+                    # 软删除记录，恢复
                     ec.is_deleted = False
                     ec.save(update_fields=['is_deleted', 'updated_at'])
                     team_applied_count += 1
-            # 新建候选人记录
+                # else: 已在选秀队列（is_deleted=False），跳过
+
+            # 批量新建完全没有记录的队友
             if apply_ids:
                 new_candidates = [
                     OrderCandidate(order=order, employee_id=tid) for tid in apply_ids
                 ]
                 OrderCandidate.objects.bulk_create(new_candidates)
-                team_applied_count += len(new_candidates)
+                team_applied_count += len(apply_ids)
 
     msg = '已加入选秀队列，等待客户挑选'
     if team_applied_count > 1:
