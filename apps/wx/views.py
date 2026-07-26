@@ -3384,7 +3384,6 @@ def leave_team(request):
 # ============ 售后工单 ============
 
 @api_view(['POST'])
-@api_view(['POST'])
 @permission_classes([IsAuthenticated])
 def create_support_ticket(request, order_id):
     """?????? - ????"""
