@@ -23,7 +23,8 @@
                     <th>头像</th>
                     <th>昵称</th>
                     <th>手机号</th>
-                    <th>状态</th>
+                    <th>在线状态</th>
+                    <th>上下班</th>
                     <th>操作</th>
                 </tr>
             </thead>
@@ -121,7 +122,7 @@
                 const tbody = document.getElementById('csList');
                 
                 if (list.length === 0) {
-                    tbody.innerHTML = '<tr><td colspan="6" class="empty-state"><i class="fa-solid fa-inbox"></i><br>暂无客服</td></tr>';
+                    tbody.innerHTML = '<tr><td colspan="7" class="empty-state"><i class="fa-solid fa-inbox"></i><br>暂无客服</td></tr>';
                     return;
                 }
 
@@ -132,6 +133,7 @@
                         <td>${cs.nickname || '-'}</td>
                         <td>${cs.phone || '-'}</td>
                         <td><span class="badge ${cs.status === 'online' ? 'badge-success' : 'badge-secondary'}">${cs.status === 'online' ? '在线' : '离线'}</span></td>
+                        <td><span class="badge ${cs.work_status === 'on_duty' ? 'badge-primary' : 'badge-gray'}">${cs.work_status === 'on_duty' ? '上班中' : '已下班'}</span></td>
                         <td>
                             <button class="btn btn-danger" onclick="removeCS(${cs.id})">移除</button>
                         </td>

@@ -88,7 +88,7 @@ class EmployeeSerializer(serializers.ModelSerializer):
         fields = ['id', 'user', 'username', 'password', 'employee_no', 'real_name', 'nickname',
                   'phone', 'avatar', 'avatar_url', 'gender', 'age', 'birthday', 'id_card',
                   'id_card_verified', 'department', 'department_name', 'level', 'level_num', 'status',
-                  'online_status', 'skills', 'tags', 'tag_names', 'skill_list',
+                  'online_status', 'work_status', 'skills', 'tags', 'tag_names', 'skill_list',
                   'intro', 'rating', 'order_count', 'total_duration', 'join_date',
                   'bank_name', 'bank_card', 'alipay', 'wechat', 'qq', 'sort', 'remark',
                   'wallet', 'created_at', 'updated_at']

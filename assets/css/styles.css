@@ -498,6 +498,16 @@ table tr:hover {
     color: #42a5f5;
 }
 
+.badge-secondary {
+    background: #f4f4f5;
+    color: #909399;
+}
+
+.badge-gray {
+    background: #f5f5f5;
+    color: #909399;
+}
+
 .badge-default {
     background: #f0f0f0;
     color: #999;

@@ -24,14 +24,15 @@
                     <th>昵称</th>
                     <th>真实姓名</th>
                     <th>等级</th>
-                    <th>状态</th>
+                    <th>接单状态</th>
+                    <th>上下班</th>
                     <th>评分</th>
                     <th>接单数</th>
                     <th>操作</th>
                 </tr>
             </thead>
             <tbody id="employeeList">
-                <tr><td colspan="9" class="empty-state"><i class="fa-solid fa-spinner fa-spin"></i><br>加载中...</td></tr>
+                <tr><td colspan="10" class="empty-state"><i class="fa-solid fa-spinner fa-spin"></i><br>加载中...</td></tr>
             </tbody>
         </table>
     </div>
@@ -200,7 +201,7 @@
                 const tbody = document.getElementById('employeeList');
                 
                 if (employees.length === 0) {
-                    tbody.innerHTML = '<tr><td colspan="9" class="empty-state"><i class="fa-solid fa-inbox"></i><br>暂无数据</td></tr>';
+                    tbody.innerHTML = '<tr><td colspan="10" class="empty-state"><i class="fa-solid fa-inbox"></i><br>暂无数据</td></tr>';
                     return;
                 }
 
@@ -225,6 +226,8 @@
                     const status = statusMap[emp.status] || { text: emp.status, class: 'badge-info' };
                     const levelText = emp.level_num || 0;
                     const avatar = avatarHtml(emp, 48);
+                    const workStatusClass = emp.work_status === 'on_duty' ? 'badge-primary' : 'badge-gray';
+                    const workStatusText = emp.work_status === 'on_duty' ? '上班中' : '已下班';
                     return `
                     <tr>
                         <td>${emp.id}</td>
@@ -233,6 +236,7 @@
                         <td>${emp.real_name || '-'}</td>
                         <td>${levelText}</td>
                         <td><span class="badge ${status.class}">${status.text}</span></td>
+                        <td><span class="badge ${workStatusClass}">${workStatusText}</span></td>
                         <td>${emp.rating || 0.0}</td>
                         <td>${emp.order_count || 0}</td>
                         <td>
@@ -247,7 +251,7 @@
             }
         } catch (error) {
                 console.error('加载打手数据失败:', error);
-                document.getElementById('employeeList').innerHTML = '<tr><td colspan="9" class="empty-state"><i class="fa-solid fa-exclamation-triangle"></i><br>加载失败</td></tr>';
+                document.getElementById('employeeList').innerHTML = '<tr><td colspan="10" class="empty-state"><i class="fa-solid fa-exclamation-triangle"></i><br>加载失败</td></tr>';
             }
     }
 

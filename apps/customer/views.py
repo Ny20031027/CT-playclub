@@ -159,6 +159,7 @@ def cs_list(request):
             'avatar_url': build_media_url(record.customer.avatar, request),
             'phone': record.customer.phone,
             'status': record.status,
+            'work_status': record.work_status,
         })
 
     return success_response({
