@@ -83,6 +83,7 @@ urlpatterns = [
 
     # 打卡
     path('attendance/status/', views.get_attendance_status, name='wx-attendance-status'),
+    path('attendance/records/', views.attendance_records, name='wx-attendance-records'),
     path('attendance/clock-in/', views.clock_in, name='wx-clock-in'),
     path('attendance/clock-out/', views.clock_out, name='wx-clock-out'),
 ]

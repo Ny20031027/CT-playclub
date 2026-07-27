@@ -3915,3 +3915,68 @@ def clock_out(request):
         'work_status': 'off_duty',
         'punch_time': timezone.now().strftime('%H:%M:%S'),
     })
+
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def attendance_records(request):
+    """获取打卡记录列表"""
+    from apps.customer.models import CustomerService, CSAttendance
+
+    user = request.user
+    related = get_related_profile_objects(user)
+    employee_obj = related['employee']
+    customer_obj = related['customer']
+
+    page = int(request.GET.get('page', 1))
+    page_size = int(request.GET.get('page_size', 20))
+
+    is_cs = False
+    try:
+        if customer_obj and customer_obj.cs_profile and not customer_obj.cs_profile.is_deleted:
+            is_cs = True
+    except Exception:
+        is_cs = False
+
+    records = []
+    if employee_obj:
+        queryset = employee_obj.attendance_records.filter(is_deleted=False).order_by('-created_at')
+        total = queryset.count()
+        start = (page - 1) * page_size
+        end = start + page_size
+        for r in queryset[start:end]:
+            records.append({
+                'id': r.id,
+                'punch_type': r.punch_type,
+                'punch_type_display': r.get_punch_type_display(),
+                'punch_date': r.punch_time.strftime('%Y-%m-%d'),
+                'punch_time': r.punch_time.strftime('%H:%M:%S'),
+                'location': r.location or '',
+                'remark': r.remark or '',
+            })
+    elif is_cs:
+        cs = customer_obj.cs_profile
+        queryset = cs.attendance_records.filter(is_deleted=False).order_by('-created_at')
+        total = queryset.count()
+        start = (page - 1) * page_size
+        end = start + page_size
+        for r in queryset[start:end]:
+            records.append({
+                'id': r.id,
+                'punch_type': r.punch_type,
+                'punch_type_display': r.get_punch_type_display(),
+                'punch_date': r.punch_time.strftime('%Y-%m-%d'),
+                'punch_time': r.punch_time.strftime('%H:%M:%S'),
+                'location': r.location or '',
+                'remark': r.remark or '',
+            })
+    else:
+        return error_response(msg='您没有打卡权限')
+
+    return success_response({
+        'results': records,
+        'total': total,
+        'page': page,
+        'page_size': page_size,
+        'pages': (total + page_size - 1) // page_size,
+    })
