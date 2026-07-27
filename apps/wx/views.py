@@ -3940,7 +3940,7 @@ def attendance_records(request):
 
     records = []
     if employee_obj:
-        queryset = employee_obj.attendance_records.filter(is_deleted=False).order_by('-created_at')
+        queryset = employee_obj.attendance_records.filter(is_deleted=False).order_by('-punch_time')
         total = queryset.count()
         start = (page - 1) * page_size
         end = start + page_size
@@ -3956,7 +3956,7 @@ def attendance_records(request):
             })
     elif is_cs:
         cs = customer_obj.cs_profile
-        queryset = cs.attendance_records.filter(is_deleted=False).order_by('-created_at')
+        queryset = cs.attendance_records.filter(is_deleted=False).order_by('-punch_time')
         total = queryset.count()
         start = (page - 1) * page_size
         end = start + page_size
