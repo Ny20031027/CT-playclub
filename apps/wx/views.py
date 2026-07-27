@@ -3757,8 +3757,8 @@ def get_attendance_status(request):
         today_start = timezone.now().replace(hour=0, minute=0, second=0, microsecond=0)
         records = employee_obj.attendance_records.filter(
             is_deleted=False,
-            created_at__gte=today_start,
-        ).order_by('created_at')
+            punch_time__gte=today_start,
+        ).order_by('punch_time')
         for r in records:
             today_records.append({
                 'id': r.id,
@@ -3774,8 +3774,8 @@ def get_attendance_status(request):
         today_start = timezone.now().replace(hour=0, minute=0, second=0, microsecond=0)
         records = cs.attendance_records.filter(
             is_deleted=False,
-            created_at__gte=today_start,
-        ).order_by('created_at')
+            punch_time__gte=today_start,
+        ).order_by('punch_time')
         for r in records:
             today_records.append({
                 'id': r.id,
