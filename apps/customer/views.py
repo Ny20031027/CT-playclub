@@ -89,9 +89,13 @@ class CustomerViewSet(BaseModelViewSet):
         if amount <= 0:
             return success_response(code=400, msg='充值金额必须大于0')
         
-        # 计算黑钻数量 (1元 = 10黑钻)
-        ratio = float(request.data.get('ratio', 10) or 10)
-        coins = int(amount * ratio)
+        # 优先使用前端传递的 coins，如果没有则根据比例计算
+        coins = int(request.data.get('coins', 0) or 0)
+        if coins <= 0:
+            ratio = float(request.data.get('ratio', 10) or 10)
+            coins = int(amount * ratio)
+        else:
+            ratio = float(request.data.get('ratio', 10) or 10)
         
         customer.balance += amount
         customer.coins += coins

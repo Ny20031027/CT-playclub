@@ -3000,6 +3000,7 @@ def user_profile(request):
     order_count = 0
     total_spent = 0
     balance = 0
+    coins = 0
     is_busy = False
     if user_type == 'customer':
         try:
@@ -3013,10 +3014,12 @@ def user_profile(request):
                 ).values_list('pay_amount', flat=True)
             ) or 0
             balance = float(customer.balance) if customer.balance else 0
+            coins = int(customer.coins) if customer.coins else 0
         except Exception:
             order_count = 0
             total_spent = 0
             balance = 0
+            coins = 0
     elif user_type == 'dasher' and employee_obj:
         order_count = employee_obj.order_count if employee_obj else 0
         # 检查是否有进行中的订单
@@ -3048,6 +3051,8 @@ def user_profile(request):
         'order_count': order_count,
         'total_spent': round(total_spent, 2),
         'balance': round(balance, 2),
+        'coins': coins,
+        'customer_id': customer_obj.id if customer_obj else None,
         'is_busy': is_busy,
         'status': 'busy' if is_busy else 'idle',
         'work_status': work_status,
