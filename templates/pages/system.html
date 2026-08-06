@@ -2680,12 +2680,16 @@
                 services.forEach(function (s) {
                     ctList.forEach(function (ct) {
                         var key = (d.name || '') + '|' + l.name + '|' + s.name + '|' + ct;
+                        var basePrice = Number(gp.base_price) || 0;
+                        var deltaSum = Number(d.price_delta || 0) + Number(l.price_delta || 0) + Number(s.price_delta || 0);
+                        var defaultPrice = basePrice + deltaSum;
+                        if (ct === 'double') { defaultPrice = defaultPrice * 2; }
                         rules.push({
                             difficulty_name: d.name || '',
                             level_name: l.name,
                             service_name: s.name,
                             companion_type: ct,
-                            unit_price: existing[key] !== undefined ? existing[key] : (Number(gp.base_price) || 0),
+                            unit_price: existing[key] !== undefined ? existing[key] : Number(defaultPrice.toFixed(2)),
                             status: true,
                             sort: sort++
                         });

@@ -309,12 +309,12 @@ class EmployeeSkillViewSet(BaseModelViewSet):
                         'gameplay': gameplay,
                         'name': option_names[option_index],
                         'price_delta': self._decimal(row.get('price_delta', 0), 'price_delta'),
-                        'is_recommended': row.get('is_recommended', False),
                         'sort': row.get('sort', option_index),
                         'status': row.get('status', True),
                     }
                     if has_description:
                         values['description'] = str(row.get('description', '')).strip()
+                        values['is_recommended'] = row.get('is_recommended', False)
                     model.objects.create(**values)
 
             difficulty_names = set(str(row.get('name', '')).strip() for row in difficulties)

@@ -103,8 +103,12 @@ class CustomerViewSet(BaseModelViewSet):
         customer.save(update_fields=['balance', 'coins'])
         
         # 记录充值记录
+        import datetime
+        import uuid
         from apps.finance.models import Recharge
+        recharge_no = f"RCG{datetime.datetime.now().strftime('%Y%m%d%H%M%S')}{uuid.uuid4().hex[:6].upper()}"
         Recharge.objects.create(
+            recharge_no=recharge_no,
             customer=customer,
             amount=amount,
             coins=coins,
