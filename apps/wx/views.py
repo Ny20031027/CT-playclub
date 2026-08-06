@@ -4374,7 +4374,7 @@ def dasher_dashboard(request):
     my_in_progress = my_today_members.filter(status='in_progress').count()
     my_completed = my_today_members.filter(status__in=['completed', 'reviewed']).count()
     my_total_amount = my_today_members.aggregate(
-        total=Sum('settle_amount')
+        total=Sum('commission_amount')
     )['total'] or 0
 
     return success_response({
