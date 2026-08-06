@@ -242,7 +242,23 @@ class EmployeeSkillViewSet(BaseModelViewSet):
         if len(names) != len(set(names)):
             raise serializers.ValidationError({'gameplays': '同一技能下玩法名称不能重复'})
 
-        kept_ids = []
+        # 预先删除本次不再保留的玩法，避免重命名时与待删除记录的 (skill, name) 唯一键冲突
+        keep_ids = set()
+        keep_names = set()
+        for index, item in enumerate(gameplays_data):
+            gameplay_id = item.get('id')
+            if gameplay_id:
+                keep_ids.add(gameplay_id)
+            else:
+                keep_names.add(names[index])
+        existing_gameplays = SkillGameplay.objects.filter(skill=skill)
+        if keep_names:
+            keep_ids.update(existing_gameplays.filter(name__in=keep_names).values_list('id', flat=True))
+        if keep_ids:
+            existing_gameplays.exclude(id__in=keep_ids).delete()
+        else:
+            existing_gameplays.delete()
+
         gameplay_fields = [
             'name', 'description', 'difficulty_enabled', 'gender_limit',
             'companion_mode', 'settlement_unit', 'remark_required', 'sort', 'status'
@@ -273,11 +289,15 @@ class EmployeeSkillViewSet(BaseModelViewSet):
                 raise serializers.ValidationError({'settlement_unit': '不支持的结算单位'})
 
             gameplay_id = item.get('id')
+            gameplay = None
             if gameplay_id:
                 gameplay = SkillGameplay.objects.filter(id=gameplay_id, skill=skill).first()
                 if gameplay is None:
                     raise serializers.ValidationError({'gameplays': f'玩法ID {gameplay_id} 不属于当前技能'})
-            else:
+            if gameplay is None:
+                # id 未传或不可用时，按 (skill, name) 唯一键匹配现有玩法，避免重复创建
+                gameplay = SkillGameplay.objects.filter(skill=skill, name=names[index]).first()
+            if gameplay is None:
                 gameplay = SkillGameplay(skill=skill)
 
             for field in gameplay_fields:
@@ -293,7 +313,6 @@ class EmployeeSkillViewSet(BaseModelViewSet):
             gameplay.female_price_delta = female_price_delta
             gameplay.sort = item.get('sort', index)
             gameplay.save()
-            kept_ids.append(gameplay.id)
 
             difficulties = item.get('difficulties', []) if gameplay.difficulty_enabled else []
             levels = item.get('levels', [])
@@ -369,8 +388,6 @@ class EmployeeSkillViewSet(BaseModelViewSet):
                     unit_price=self._decimal(row.get('unit_price', 0), 'unit_price'),
                     status=row.get('status', True),
                 )
-
-        SkillGameplay.objects.filter(skill=skill).exclude(id__in=kept_ids).delete()
 
     @transaction.atomic
     def create(self, request, *args, **kwargs):
