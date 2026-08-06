@@ -4292,7 +4292,7 @@ def dasher_dashboard(request):
         return error_response(msg='您不是打手')
 
     # 今日时间范围（使用naive datetime，兼容USE_TZ=False + MySQL）
-    today = timezone.localtime(timezone.now()).date()
+    today = timezone.now().date()
     today_start = datetime.datetime.combine(today, datetime.time.min)
     today_end = datetime.datetime.combine(today, datetime.time.max)
 
