@@ -231,6 +231,56 @@ class CommonConfig(AppConfig):
                 cursor.execute("ALTER TABLE cs_message ADD FOREIGN KEY (ticket_id) REFERENCES ord_support_ticket(id) ON DELETE SET NULL")
                 logger.info('Added cs_message.ticket_id foreign key')
 
+            # === 自助下单：SkillGameplay 性别加价字段 ===
+            for col_name, col_def in [
+                ('gender_limit', "varchar(20) NOT NULL DEFAULT 'unlimited'"),
+                ('male_price_delta', "decimal(10,2) NOT NULL DEFAULT 0.00"),
+                ('female_price_delta', "decimal(10,2) NOT NULL DEFAULT 0.00"),
+            ]:
+                cursor.execute(f"""
+                    SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
+                    WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'emp_skill_gameplay' AND COLUMN_NAME = '{col_name}'
+                """)
+                if cursor.fetchone()[0] == 0:
+                    cursor.execute(f"ALTER TABLE emp_skill_gameplay ADD COLUMN {col_name} {col_def}")
+                    logger.info(f'Added emp_skill_gameplay.{col_name} column')
+
+            # === 自助下单：GameplayLevelOption 允许服务列表 ===
+            cursor.execute("""
+                SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
+                WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'emp_gameplay_level_option' AND COLUMN_NAME = 'allowed_services'
+            """)
+            if cursor.fetchone()[0] == 0:
+                cursor.execute("ALTER TABLE emp_gameplay_level_option ADD COLUMN allowed_services json NULL")
+                logger.info('Added emp_gameplay_level_option.allowed_services column')
+
+            # === 自助下单：GameplayPriceRule 性别要求 ===
+            cursor.execute("""
+                SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
+                WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'emp_gameplay_price_rule' AND COLUMN_NAME = 'gender_requirement'
+            """)
+            if cursor.fetchone()[0] == 0:
+                cursor.execute("ALTER TABLE emp_gameplay_price_rule ADD COLUMN gender_requirement varchar(20) NOT NULL DEFAULT 'any'")
+                logger.info('Added emp_gameplay_price_rule.gender_requirement column')
+
+            # === 自助下单：更新 GameplayPriceRule 的 unique_together ===
+            try:
+                cursor.execute("SHOW INDEX FROM emp_gameplay_price_rule")
+                indexes = cursor.fetchall()
+                for idx in indexes:
+                    key_name = idx[4]
+                    if key_name and key_name.startswith('uniq_'):
+                        cursor.execute(f"ALTER TABLE emp_gameplay_price_rule DROP INDEX `{key_name}`")
+                        logger.info(f'Dropped old index {key_name} on emp_gameplay_price_rule')
+                cursor.execute("""
+                    ALTER TABLE emp_gameplay_price_rule
+                    ADD UNIQUE CONSTRAINT uniq_gameplay_price_rule
+                    (gameplay_id, difficulty_name, level_name, service_name, gender_requirement, companion_type)
+                """)
+                logger.info('Updated unique_together for emp_gameplay_price_rule')
+            except Exception as e:
+                logger.warning(f'Failed to update unique_together for emp_gameplay_price_rule: {e}')
+
         except Exception as e:
             logger.error(f'Failed to update columns via SQL: {e}')
 
