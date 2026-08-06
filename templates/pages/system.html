@@ -854,20 +854,6 @@
                     <label>技能介绍</label>
                     <textarea id="selfServiceSkillDescription" rows="3" placeholder="技能详细介绍"></textarea>
                 </div>
-                <div class="form-row">
-                    <div class="form-group">
-                        <label>试音模式</label>
-                        <select id="selfServiceSkillTrialMode">
-                            <option value="disabled">不支持</option>
-                            <option value="optional">可选</option>
-                            <option value="required">必须</option>
-                        </select>
-                    </div>
-                    <div class="form-group">
-                        <label>最低下单人数</label>
-                        <input type="number" id="selfServiceSkillMinPeople" value="1" min="1">
-                    </div>
-                </div>
                 <div class="form-group">
                     <label>下单须知</label>
                     <textarea id="selfServiceSkillOrderNotice" rows="3" placeholder="下单时显示的须知内容"></textarea>
@@ -2406,10 +2392,8 @@
         document.getElementById('selfServiceSkillCategory').value = '';
         document.getElementById('selfServiceSkillSort').value = '0';
         document.getElementById('selfServiceSkillDescription').value = '';
-        document.getElementById('selfServiceSkillTrialMode').value = 'disabled';
         document.getElementById('selfServiceSkillOrderNotice').value = '';
         document.getElementById('selfServiceSkillRemarkPlaceholder').value = '';
-        document.getElementById('selfServiceSkillMinPeople').value = '1';
         document.getElementById('selfServiceSkillSelfService').checked = true;
         document.getElementById('selfServiceSkillStatus').checked = true;
         selfServiceGameplays = [];
@@ -2434,10 +2418,8 @@
             document.getElementById('selfServiceSkillCategory').value = s.category || '';
             document.getElementById('selfServiceSkillSort').value = (s.sort === undefined || s.sort === null) ? 0 : s.sort;
             document.getElementById('selfServiceSkillDescription').value = s.description || '';
-            document.getElementById('selfServiceSkillTrialMode').value = s.trial_mode || 'disabled';
             document.getElementById('selfServiceSkillOrderNotice').value = s.order_notice || '';
             document.getElementById('selfServiceSkillRemarkPlaceholder').value = s.remark_placeholder || '';
-            document.getElementById('selfServiceSkillMinPeople').value = s.min_people || 1;
             document.getElementById('selfServiceSkillSelfService').checked = !!s.self_service_enabled;
             document.getElementById('selfServiceSkillStatus').checked = !!s.status;
 
@@ -2520,6 +2502,8 @@
     }
 
     function buildSelfServiceGameplayFields(idx, gp) {
+        var showGenderPrice = (gp.gender_limit === 'optional');
+        var showGenderColumn = (gp.gender_limit === 'unlimited' || gp.gender_limit === 'optional');
         return '<div class="form-row">' +
             '<div class="form-group"><label>描述</label><input type="text" value="' + escAttr(gp.description) + '" onchange="updateSelfServiceGp(' + idx + ',\'description\',this.value)"></div>' +
             '<div class="form-group"><label>基础价格</label><input type="number" step="0.01" min="0" value="' + escAttr(gp.base_price) + '" onchange="updateSelfServiceGp(' + idx + ',\'base_price\',parseFloat(this.value)||0)"></div>' +
@@ -2528,9 +2512,15 @@
             '<div class="form-group"><label>排序</label><input type="number" value="' + escAttr(gp.sort) + '" onchange="updateSelfServiceGp(' + idx + ',\'sort\',parseInt(this.value)||0)"></div>' +
         '</div>' +
         '<div class="form-row">' +
-            '<div class="form-group"><label>性别限制</label><select onchange="updateSelfServiceGp(' + idx + ',\'gender_limit\',this.value)">' + selectOpts(['unlimited', 'male', 'female'], ['不限', '仅男', '仅女'], gp.gender_limit) + '</select></div>' +
+            '<div class="form-group"><label>服务者性别</label><select onchange="updateSelfServiceGp(' + idx + ',\'gender_limit\',this.value);renderSelfServiceGameplays()">' +
+                selectOpts(['unlimited', 'male_only', 'female_only', 'optional'], ['不限（不加价）', '只男（固定）', '只女（固定）', '性别可选（加价）'], gp.gender_limit) +
+            '</select></div>' +
             '<div class="form-group"><label>陪玩模式</label><select onchange="updateSelfServiceGp(' + idx + ',\'companion_mode\',this.value)">' + selectOpts(['single', 'double', 'both'], ['单人', '双人', '均可'], gp.companion_mode) + '</select></div>' +
             '<div class="form-group"><label>结算单位</label><select onchange="updateSelfServiceGp(' + idx + ',\'settlement_unit\',this.value)">' + selectOpts(['round', 'hour'], ['按局', '按小时'], gp.settlement_unit) + '</select></div>' +
+            (showGenderPrice ?
+                '<div class="form-group"><label>选男加价</label><input type="number" step="0.01" min="0" value="' + escAttr(gp.male_price_delta || 0) + '" onchange="updateSelfServiceGp(' + idx + ',\'male_price_delta\',parseFloat(this.value)||0)"></div>' +
+                '<div class="form-group"><label>选女加价</label><input type="number" step="0.01" min="0" value="' + escAttr(gp.female_price_delta || 0) + '" onchange="updateSelfServiceGp(' + idx + ',\'female_price_delta\',parseFloat(this.value)||0)"></div>'
+                : '') +
         '</div>' +
         '<div class="form-row">' +
             '<div class="form-group"><label class="checkbox-label"><input type="checkbox" ' + (gp.difficulty_enabled ? 'checked' : '') + ' onchange="updateSelfServiceGp(' + idx + ',\'difficulty_enabled\',this.checked)"> 启用难度</label></div>' +
@@ -2541,10 +2531,13 @@
 
     function buildSelfServiceSubSection(title, idx, type, gp) {
         var items = gp[type] || [];
-        var colspan = type === 'difficulties' ? 5 : 7;
+        var serviceOptions = gp.services || [];
+        var colspan = type === 'difficulties' ? 5 : (type === 'levels' ? 8 : 7);
         var head, body;
         if (type === 'difficulties') {
             head = '<tr><th>名称</th><th style="width:100px;">加价</th><th style="width:70px;">排序</th><th style="width:60px;">启用</th><th style="width:40px;"></th></tr>';
+        } else if (type === 'levels') {
+            head = '<tr><th>名称</th><th>描述</th><th style="width:90px;">加价</th><th style="width:60px;">推荐</th><th>允许的服务（留空=全部）</th><th style="width:70px;">排序</th><th style="width:60px;">启用</th><th style="width:40px;"></th></tr>';
         } else {
             head = '<tr><th>名称</th><th>描述</th><th style="width:90px;">加价</th><th style="width:60px;">推荐</th><th style="width:70px;">排序</th><th style="width:60px;">启用</th><th style="width:40px;"></th></tr>';
         }
@@ -2559,6 +2552,31 @@
                         '<td><input type="number" value="' + escAttr(item.sort) + '" onchange="updateSelfServiceOption(' + idx + ',\'difficulties\',' + oi + ',\'sort\',parseInt(this.value)||0)"></td>' +
                         '<td style="text-align:center;"><input type="checkbox" ' + (item.status !== false ? 'checked' : '') + ' onchange="updateSelfServiceOption(' + idx + ',\'difficulties\',' + oi + ',\'status\',this.checked)"></td>' +
                         '<td style="text-align:center;"><button class="row-del" onclick="removeSelfServiceOption(' + idx + ',\'difficulties\',' + oi + ')">&times;</button></td>' +
+                    '</tr>';
+                } else if (type === 'levels') {
+                    var allowed = item.allowed_services || [];
+                    var sels = serviceOptions.filter(function (s) { return s.name && s.name.trim() && s.status !== false; });
+                    var serviceChecks = '<div style="max-height:90px;overflow-y:auto;display:flex;flex-wrap:wrap;gap:6px;padding:4px;">';
+                    if (sels.length === 0) {
+                        serviceChecks += '<span style="color:#bbb;font-size:12px;">先在"服务设置"中添加服务</span>';
+                    } else {
+                        serviceChecks += '<label style="font-size:12px;color:#888;display:flex;align-items:center;gap:3px;"><input type="checkbox" ' + (allowed.length === 0 ? 'checked' : '') + ' onchange="selfServiceLevelToggleAllServices(' + idx + ',' + oi + ',this.checked)">全部</label>';
+                        sels.forEach(function (sv, si) {
+                            var sname = sv.name.trim();
+                            var checked = (allowed.length === 0) || allowed.indexOf(sname) >= 0;
+                            serviceChecks += '<label style="font-size:12px;display:flex;align-items:center;gap:3px;"><input type="checkbox" ' + (checked ? 'checked' : '') + ' onchange="selfServiceLevelToggleService(' + idx + ',' + oi + ',' + si + ',this.checked)">' + escHtml(sname) + '</label>';
+                        });
+                    }
+                    serviceChecks += '</div>';
+                    return '<tr>' +
+                        '<td><input type="text" value="' + escAttr(item.name) + '" onchange="updateSelfServiceOption(' + idx + ',\'levels\',' + oi + ',\'name\',this.value)"></td>' +
+                        '<td><input type="text" value="' + escAttr(item.description) + '" onchange="updateSelfServiceOption(' + idx + ',\'levels\',' + oi + ',\'description\',this.value)"></td>' +
+                        '<td><input type="number" step="0.01" value="' + escAttr(item.price_delta) + '" onchange="updateSelfServiceOption(' + idx + ',\'levels\',' + oi + ',\'price_delta\',parseFloat(this.value)||0)"></td>' +
+                        '<td style="text-align:center;"><input type="checkbox" ' + (item.is_recommended ? 'checked' : '') + ' onchange="updateSelfServiceOption(' + idx + ',\'levels\',' + oi + ',\'is_recommended\',this.checked)"></td>' +
+                        '<td style="min-width:180px;">' + serviceChecks + '</td>' +
+                        '<td><input type="number" value="' + escAttr(item.sort) + '" onchange="updateSelfServiceOption(' + idx + ',\'levels\',' + oi + ',\'sort\',parseInt(this.value)||0)"></td>' +
+                        '<td style="text-align:center;"><input type="checkbox" ' + (item.status !== false ? 'checked' : '') + ' onchange="updateSelfServiceOption(' + idx + ',\'levels\',' + oi + ',\'status\',this.checked)"></td>' +
+                        '<td style="text-align:center;"><button class="row-del" onclick="removeSelfServiceOption(' + idx + ',\'levels\',' + oi + ')">&times;</button></td>' +
                     '</tr>';
                 } else {
                     return '<tr>' +
@@ -2583,26 +2601,39 @@
     function buildSelfServicePriceRulesSection(idx, gp) {
         var rules = gp.price_rules || [];
         var ctMap = { single: '单人', double: '双人' };
+        var grMap = { any: '不限', male: '男', female: '女' };
+        var genderEnabled = (gp.gender_limit === 'unlimited' || gp.gender_limit === 'optional');
+        var colCount = genderEnabled ? 7 : 6;
         var body;
         if (rules.length === 0) {
-            body = '<tr><td colspan="6" style="text-align:center;color:#999;">暂无价格规则，请先配置难度/等级/服务后点击"重新生成"</td></tr>';
+            body = '<tr><td colspan="' + colCount + '" style="text-align:center;color:#999;">暂无价格规则，请先配置难度/等级/服务后点击"重新生成"</td></tr>';
         } else {
             body = rules.map(function (r, ri) {
-                return '<tr>' +
+                var row = '<tr>' +
                     '<td>' + escHtml(r.difficulty_name || '-') + '</td>' +
                     '<td>' + escHtml(r.level_name || '-') + '</td>' +
-                    '<td>' + escHtml(r.service_name || '-') + '</td>' +
-                    '<td>' + (ctMap[r.companion_type] || r.companion_type) + '</td>' +
+                    '<td>' + escHtml(r.service_name || '-') + '</td>';
+                if (genderEnabled) {
+                    row += '<td>' + (grMap[r.gender_requirement] || '不限') + '</td>';
+                }
+                row += '<td>' + (ctMap[r.companion_type] || r.companion_type) + '</td>' +
                     '<td><input type="number" step="0.01" min="0" value="' + escAttr(r.unit_price) + '" onchange="updateSelfServicePriceRule(' + idx + ',' + ri + ',\'unit_price\',parseFloat(this.value)||0)"></td>' +
                     '<td style="text-align:center;"><input type="checkbox" ' + (r.status !== false ? 'checked' : '') + ' onchange="updateSelfServicePriceRule(' + idx + ',' + ri + ',\'status\',this.checked)"></td>' +
                 '</tr>';
+                return row;
             }).join('');
         }
+        var header = '<tr><th>难度</th><th>等级</th><th>服务</th>';
+        if (genderEnabled) header += '<th style="width:80px;">性别</th>';
+        header += '<th style="width:90px;">陪玩类型</th><th style="width:100px;">单价</th><th style="width:60px;">启用</th></tr>';
+        var hint = '根据已配置的难度/等级/服务';
+        if (genderEnabled) hint += '/性别';
+        hint += '/陪玩类型组合生成价格行，填写每行单价。';
         return '<div class="sub-section">' +
             '<div class="sub-section-title"><span>价格规则</span>' +
             '<button class="btn btn-default btn-sm" onclick="regenerateSelfServicePriceRules(' + idx + ')"><i class="fa-solid fa-rotate"></i> 重新生成</button></div>' +
-            '<p class="hint">根据已配置的难度/等级/服务/陪玩类型组合生成价格行，填写每行单价。</p>' +
-            '<table class="sub-table"><thead><tr><th>难度</th><th>等级</th><th>服务</th><th style="width:90px;">陪玩类型</th><th style="width:100px;">单价</th><th style="width:60px;">启用</th></tr></thead><tbody>' + body + '</tbody></table>' +
+            '<p class="hint">' + hint + '</p>' +
+            '<table class="sub-table"><thead>' + header + '</thead><tbody>' + body + '</tbody></table>' +
         '</div>';
     }
 
@@ -2610,10 +2641,39 @@
     function updateSelfServiceOption(gpIdx, type, oi, field, value) { selfServiceGameplays[gpIdx][type][oi][field] = value; }
     function updateSelfServicePriceRule(gpIdx, ri, field, value) { selfServiceGameplays[gpIdx].price_rules[ri][field] = value; }
 
+    function selfServiceLevelToggleAllServices(gpIdx, oi, checked) {
+        var gp = selfServiceGameplays[gpIdx];
+        var sels = (gp.services || []).filter(function (s) { return s.name && s.name.trim() && s.status !== false; });
+        if (checked) {
+            gp.levels[oi].allowed_services = [];
+        } else {
+            gp.levels[oi].allowed_services = sels.map(function (s) { return s.name.trim(); });
+        }
+        renderSelfServiceGameplays();
+    }
+    function selfServiceLevelToggleService(gpIdx, oi, si, checked) {
+        var gp = selfServiceGameplays[gpIdx];
+        var sels = (gp.services || []).filter(function (s) { return s.name && s.name.trim() && s.status !== false; });
+        var sname = sels[si].name.trim();
+        var current = gp.levels[oi].allowed_services || [];
+        var currentFull = current.length === 0;
+        // Convert "all" -> explicit list first
+        if (currentFull) {
+            current = sels.map(function (s) { return s.name.trim(); });
+        }
+        var idx2 = current.indexOf(sname);
+        if (checked && idx2 < 0) { current.push(sname); }
+        else if (!checked && idx2 >= 0) { current.splice(idx2, 1); }
+        // If all selected, go back to [] for "any"
+        if (current.length === sels.length) { current = []; }
+        gp.levels[oi].allowed_services = current;
+    }
+
     function addSelfServiceGameplay() {
         selfServiceGameplays.push({
             name: '', description: '', difficulty_enabled: false,
-            gender_limit: 'unlimited', companion_mode: 'both', settlement_unit: 'hour',
+            gender_limit: 'unlimited', male_price_delta: 0, female_price_delta: 0,
+            companion_mode: 'both', settlement_unit: 'hour',
             min_quantity: 1, quantity_step: 1, base_price: 0, remark_required: false,
             sort: selfServiceGameplays.length, status: true, _collapsed: false,
             difficulties: [], levels: [], services: [], price_rules: []
@@ -2637,7 +2697,7 @@
         if (type === 'difficulties') {
             selfServiceGameplays[gpIdx].difficulties.push({ name: '', price_delta: 0, sort: nextSort, status: true });
         } else if (type === 'levels') {
-            selfServiceGameplays[gpIdx].levels.push({ name: '', description: '', price_delta: 0, is_recommended: false, sort: nextSort, status: true });
+            selfServiceGameplays[gpIdx].levels.push({ name: '', description: '', price_delta: 0, is_recommended: false, allowed_services: [], sort: nextSort, status: true });
         } else if (type === 'services') {
             selfServiceGameplays[gpIdx].services.push({ name: '', description: '', price_delta: 0, is_recommended: false, sort: nextSort, status: true });
         }
@@ -2665,33 +2725,52 @@
         else if (gp.companion_mode === 'double') ctList = ['double'];
         else ctList = ['single', 'double'];
 
+        // 性别规则列表：unlimited/optional 都生成三档（any/male/female），只男/只女各生成一档
+        var grList = ['any'];
+        if (gp.gender_limit === 'unlimited' || gp.gender_limit === 'optional') grList = ['any', 'male', 'female'];
+        else if (gp.gender_limit === 'male_only') grList = ['male'];
+        else if (gp.gender_limit === 'female_only') grList = ['female'];
+        var maleDelta = Number(gp.male_price_delta) || 0;
+        var femaleDelta = Number(gp.female_price_delta) || 0;
+
         if (levels.length === 0 || services.length === 0) {
             showToast('请先配置等级和服务后再生成价格规则', 'error');
             return;
         }
         var existing = {};
         (gp.price_rules || []).forEach(function (r) {
-            existing[(r.difficulty_name || '') + '|' + (r.level_name || '') + '|' + (r.service_name || '') + '|' + r.companion_type] = r.unit_price;
+            var gr = r.gender_requirement || 'any';
+            existing[(r.difficulty_name || '') + '|' + (r.level_name || '') + '|' + (r.service_name || '') + '|' + gr + '|' + r.companion_type] = r.unit_price;
         });
         var rules = [];
         var sort = 0;
         diffs.forEach(function (d) {
             levels.forEach(function (l) {
-                services.forEach(function (s) {
-                    ctList.forEach(function (ct) {
-                        var key = (d.name || '') + '|' + l.name + '|' + s.name + '|' + ct;
-                        var basePrice = Number(gp.base_price) || 0;
-                        var deltaSum = Number(d.price_delta || 0) + Number(l.price_delta || 0) + Number(s.price_delta || 0);
-                        var defaultPrice = basePrice + deltaSum;
-                        if (ct === 'double') { defaultPrice = defaultPrice * 2; }
-                        rules.push({
-                            difficulty_name: d.name || '',
-                            level_name: l.name,
-                            service_name: s.name,
-                            companion_type: ct,
-                            unit_price: existing[key] !== undefined ? existing[key] : Number(defaultPrice.toFixed(2)),
-                            status: true,
-                            sort: sort++
+                // 等级关联服务过滤：如果 allowed_services 有值，则只生成该等级允许的服务组合
+                var levelServices = services;
+                if (l.allowed_services && l.allowed_services.length > 0) {
+                    levelServices = services.filter(function (s) { return l.allowed_services.indexOf(s.name.trim()) >= 0; });
+                }
+                if (levelServices.length === 0) return;
+                levelServices.forEach(function (s) {
+                    grList.forEach(function (gr) {
+                        ctList.forEach(function (ct) {
+                            var key = (d.name || '') + '|' + l.name + '|' + s.name + '|' + gr + '|' + ct;
+                            var basePrice = Number(gp.base_price) || 0;
+                            var deltaSum = Number(d.price_delta || 0) + Number(l.price_delta || 0) + Number(s.price_delta || 0);
+                            var genderDelta = gr === 'male' ? maleDelta : (gr === 'female' ? femaleDelta : 0);
+                            var defaultPrice = basePrice + deltaSum + genderDelta;
+                            if (ct === 'double') { defaultPrice = defaultPrice * 2; }
+                            rules.push({
+                                difficulty_name: d.name || '',
+                                level_name: l.name,
+                                service_name: s.name,
+                                gender_requirement: gr,
+                                companion_type: ct,
+                                unit_price: existing[key] !== undefined ? existing[key] : Number(defaultPrice.toFixed(2)),
+                                status: true,
+                                sort: sort++
+                            });
                         });
                     });
                 });
@@ -2708,10 +2787,9 @@
             category: document.getElementById('selfServiceSkillCategory').value.trim(),
             sort: parseInt(document.getElementById('selfServiceSkillSort').value) || 0,
             description: document.getElementById('selfServiceSkillDescription').value,
-            trial_mode: document.getElementById('selfServiceSkillTrialMode').value,
+            trial_mode: 'optional',
             order_notice: document.getElementById('selfServiceSkillOrderNotice').value,
             remark_placeholder: document.getElementById('selfServiceSkillRemarkPlaceholder').value,
-            min_people: parseInt(document.getElementById('selfServiceSkillMinPeople').value) || 1,
             self_service_enabled: document.getElementById('selfServiceSkillSelfService').checked,
             status: document.getElementById('selfServiceSkillStatus').checked,
             gameplays: selfServiceGameplays.map(function (gp) {
@@ -2720,6 +2798,8 @@
                     description: gp.description || '',
                     difficulty_enabled: !!gp.difficulty_enabled,
                     gender_limit: gp.gender_limit || 'unlimited',
+                    male_price_delta: Number(gp.male_price_delta) || 0,
+                    female_price_delta: Number(gp.female_price_delta) || 0,
                     companion_mode: gp.companion_mode || 'both',
                     settlement_unit: gp.settlement_unit || 'hour',
                     min_quantity: Number(gp.min_quantity) || 0,
@@ -2732,7 +2812,7 @@
                         return { name: d.name.trim(), price_delta: Number(d.price_delta) || 0, sort: parseInt(d.sort) || 0, status: d.status !== false };
                     }),
                     levels: (gp.levels || []).filter(function (l) { return l.name && l.name.trim(); }).map(function (l) {
-                        return { name: l.name.trim(), description: l.description || '', price_delta: Number(l.price_delta) || 0, is_recommended: !!l.is_recommended, sort: parseInt(l.sort) || 0, status: l.status !== false };
+                        return { name: l.name.trim(), description: l.description || '', price_delta: Number(l.price_delta) || 0, is_recommended: !!l.is_recommended, allowed_services: l.allowed_services || [], sort: parseInt(l.sort) || 0, status: l.status !== false };
                     }),
                     services: (gp.services || []).filter(function (s) { return s.name && s.name.trim(); }).map(function (s) {
                         return { name: s.name.trim(), description: s.description || '', price_delta: Number(s.price_delta) || 0, is_recommended: !!s.is_recommended, sort: parseInt(s.sort) || 0, status: s.status !== false };
@@ -2742,6 +2822,7 @@
                             difficulty_name: r.difficulty_name || '',
                             level_name: r.level_name || '',
                             service_name: r.service_name || '',
+                            gender_requirement: r.gender_requirement || 'any',
                             companion_type: r.companion_type || 'single',
                             unit_price: Number(r.unit_price) || 0,
                             status: r.status !== false

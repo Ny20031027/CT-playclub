@@ -69,6 +69,7 @@ def _build_profile_payload(user, related, nickname=None):
                 ).aggregate(sum=Sum('pay_amount'))['sum'] or 0
             ),
             'balance': float(customer.balance) if customer.balance else 0,
+            'coins': int(customer.coins) if customer.coins else 0,
             'is_busy': False,
             'status': 'idle',
             'level_num': 0,

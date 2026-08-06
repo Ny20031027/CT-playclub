@@ -88,8 +88,11 @@ class SkillGameplay(BaseModel):
     description = models.CharField(max_length=500, blank=True, verbose_name='玩法说明')
     difficulty_enabled = models.BooleanField(default=False, verbose_name='启用难度')
     gender_limit = models.CharField(max_length=20, default='unlimited', choices=[
-        ('unlimited', '不限'), ('male', '只男'), ('female', '只女'),
+        ('unlimited', '不限（不加价）'), ('male_only', '只男（固定）'), ('female_only', '只女（固定）'),
+        ('optional', '性别可选（加价）'),
     ], verbose_name='服务者性别')
+    male_price_delta = models.DecimalField(max_digits=10, decimal_places=2, default=0, verbose_name='选男加价')
+    female_price_delta = models.DecimalField(max_digits=10, decimal_places=2, default=0, verbose_name='选女加价')
     companion_mode = models.CharField(max_length=20, default='single', choices=[
         ('single', '单陪'), ('double', '双陪'), ('both', '单陪和双陪'),
     ], verbose_name='陪玩类型')
@@ -135,6 +138,7 @@ class GameplayLevelOption(BaseModel):
     description = models.CharField(max_length=200, blank=True, verbose_name='等级说明')
     price_delta = models.DecimalField(max_digits=10, decimal_places=2, default=0, verbose_name='加价')
     is_recommended = models.BooleanField(default=False, verbose_name='推荐')
+    allowed_services = models.JSONField(default=list, blank=True, verbose_name='允许的服务名称（空=全部）')
     sort = models.IntegerField(default=0, verbose_name='排序')
     status = models.BooleanField(default=True, verbose_name='状态')
 
@@ -169,6 +173,9 @@ class GameplayPriceRule(BaseModel):
     difficulty_name = models.CharField(max_length=50, blank=True, verbose_name='难度')
     level_name = models.CharField(max_length=50, blank=True, verbose_name='等级')
     service_name = models.CharField(max_length=80, blank=True, verbose_name='服务')
+    gender_requirement = models.CharField(max_length=20, default='any', choices=[
+        ('any', '不限'), ('male', '男'), ('female', '女'),
+    ], verbose_name='性别要求')
     companion_type = models.CharField(max_length=20, default='single', choices=[
         ('single', '单陪'), ('double', '双陪'),
     ], verbose_name='陪玩类型')
@@ -179,7 +186,8 @@ class GameplayPriceRule(BaseModel):
         db_table = 'emp_gameplay_price_rule'
         ordering = ['id']
         unique_together = [(
-            'gameplay', 'difficulty_name', 'level_name', 'service_name', 'companion_type'
+            'gameplay', 'difficulty_name', 'level_name', 'service_name',
+            'gender_requirement', 'companion_type'
         )]
 
 

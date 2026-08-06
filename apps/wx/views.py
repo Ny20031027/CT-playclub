@@ -1011,16 +1011,13 @@ def create_order(request):
     except EmployeeSkill.DoesNotExist:
         return error_response(msg='服务类型不存在')
 
-    # 校验最低下单人数
-    min_people = skill.min_people or 1
-    if min_people < 1:
-        min_people = 1
+    # 校验数量
     try:
         quantity = int(quantity)
     except (TypeError, ValueError):
         quantity = 1
-    if quantity < min_people:
-        return error_response(msg=f'该技能至少需要{min_people}人下单')
+    if quantity < 1:
+        return error_response(msg='购买数量不能小于1')
 
     # 计算价格
     unit_price = 0
@@ -1098,26 +1095,6 @@ def create_self_service_order_legacy(request):
         quantity = 1
     if quantity < 1:
         quantity = 1
-
-    # 计算所有选中技能中最高的最低人数限制
-    skill_ids = [item.get('skill_id') for item in items if item.get('skill_id')]
-    if skill_ids:
-        from django.db.models import Max
-        max_min_people = EmployeeSkill.objects.filter(
-            id__in=skill_ids, status=True
-        ).aggregate(max_min=Max('min_people'))['max_min'] or 1
-        if max_min_people < 1:
-            max_min_people = 1
-        if quantity < max_min_people:
-            skill_name = ''
-            top_skill = EmployeeSkill.objects.filter(
-                id__in=skill_ids, min_people=max_min_people, status=True
-            ).first()
-            if top_skill:
-                skill_name = top_skill.name
-            return error_response(
-                msg=f'技能「{skill_name}」至少需要{max_min_people}人下单' if skill_name else f'至少需要{max_min_people}人下单'
-            )
 
     # 计算总价和总时长
     total_amount = 0
@@ -1243,6 +1220,24 @@ def create_self_service_order(request):
     if service is None:
         return error_response(msg='请选择有效的服务')
 
+    # 校验：所选服务是否属于该等级允许的列表
+    allowed_services = list(getattr(level, 'allowed_services', None) or [])
+    if allowed_services and service.name not in allowed_services:
+        return error_response(msg=f'等级“{level.name}”不提供服务“{service.name}”')
+
+    # 处理性别选择
+    gender_requirement = None
+    if gameplay.gender_limit in ('male_only', 'male'):
+        gender_requirement = 'male'
+    elif gameplay.gender_limit in ('female_only', 'female'):
+        gender_requirement = 'female'
+    elif gameplay.gender_limit in ('optional', 'unlimited'):
+        gender_requirement = request.data.get('gender_requirement', 'any')
+        if gender_requirement not in ('any', 'male', 'female'):
+            gender_requirement = 'any'
+    else:
+        gender_requirement = 'any'
+
     companion_type = request.data.get('companion_type', 'single')
     allowed_companions = {
         'single': {'single'}, 'double': {'double'}, 'both': {'single', 'double'}
@@ -1280,23 +1275,54 @@ def create_self_service_order(request):
         'level_name': level.name,
         'service_name': service.name,
     }
+
+    # 计算性别加价（仅 optional 模式下的具体选择才加价；规则内已覆盖的走 SKU 价）
+    gender_price_delta = Decimal('0')
+    if gameplay.gender_limit == 'optional':
+        if gender_requirement == 'male':
+            gender_price_delta = Decimal(gameplay.male_price_delta)
+        elif gender_requirement == 'female':
+            gender_price_delta = Decimal(gameplay.female_price_delta)
+
+    # 匹配：在 companion_type 范围内，按性别特异度 + 其他字段特异度找最佳
+    # 规则 gender_requirement 取值：any(通用) / male(要求男) / female(要求女)
+    # 用户选择的 gender_requirement 取值：male / female（optional），any（不限/只男/只女映射后）
     matching_rules = []
     for rule in gameplay.price_rules.filter(status=True, companion_type=companion_type):
-        if all(
+        # 性别维度匹配：any 可匹配任何选择；male 只匹配 male；female 只匹配 female
+        if rule.gender_requirement == 'any':
+            gender_match = True
+            gender_score = 0
+        elif rule.gender_requirement == 'male':
+            gender_match = (gender_requirement == 'male')
+            gender_score = 1
+        else:  # female
+            gender_match = (gender_requirement == 'female')
+            gender_score = 1
+        if not gender_match:
+            continue
+        # 其他维度
+        field_match = all(
             not getattr(rule, field) or getattr(rule, field) == value
             for field, value in selected_names.items()
-        ):
-            specificity = sum(bool(getattr(rule, field)) for field in selected_names)
-            matching_rules.append((specificity, rule.id, rule))
+        )
+        if not field_match:
+            continue
+        field_score = sum(bool(getattr(rule, field)) for field in selected_names)
+        specificity = gender_score + field_score
+        matching_rules.append((specificity, rule.id, rule))
     matching_rules.sort(key=lambda item: (item[0], item[1]), reverse=True)
 
     if matching_rules:
         unit_price = matching_rules[0][2].unit_price
+        # SKU 中若使用 any 的通用规则且用户选了具体性别，仍需加性别加价
+        if matching_rules[0][2].gender_requirement == 'any':
+            unit_price = Decimal(unit_price) + gender_price_delta
         price_source = 'sku'
     else:
         if companion_type == 'double':
             return error_response(msg='该双陪组合尚未配置价格，请选择其他规格')
-        unit_price = gameplay.base_price + level.price_delta + service.price_delta
+        unit_price = gameplay.base_price + level.price_delta + service.price_delta + gender_price_delta
         if difficulty:
             unit_price += difficulty.price_delta
         price_source = 'formula'
@@ -1312,7 +1338,7 @@ def create_self_service_order(request):
     game_name = skill.game_category.name if skill.game_category else skill.name
 
     snapshot = {
-        'version': 1,
+        'version': 2,
         'skill_id': skill.id,
         'skill_name': skill.name,
         'gameplay_id': gameplay.id,
@@ -1323,7 +1349,8 @@ def create_self_service_order(request):
         'level': level.name,
         'service_id': service.id,
         'service': service.name,
-        'gender_requirement': gameplay.gender_limit,
+        'gender_requirement': gender_requirement,
+        'gender_price_delta': float(gender_price_delta),
         'companion_type': companion_type,
         'people_count': people_count,
         'settlement_type': gameplay.settlement_unit,
@@ -3352,6 +3379,7 @@ def get_self_service_catalog(request):
                     'description': item.description,
                     'price_delta': float(item.price_delta),
                     'is_recommended': item.is_recommended,
+                    'allowed_services': list(item.allowed_services or []),
                     'sort': item.sort,
                 }
                 for item in gameplay.level_options.filter(status=True).order_by('sort', 'id')
@@ -3376,6 +3404,7 @@ def get_self_service_catalog(request):
                     'difficulty_name': rule.difficulty_name,
                     'level_name': rule.level_name,
                     'service_name': rule.service_name,
+                    'gender_requirement': rule.gender_requirement,
                     'companion_type': rule.companion_type,
                     'unit_price': float(rule.unit_price),
                 }
@@ -3387,6 +3416,8 @@ def get_self_service_catalog(request):
                 'description': gameplay.description,
                 'difficulty_enabled': gameplay.difficulty_enabled,
                 'gender_limit': gameplay.gender_limit,
+                'male_price_delta': float(gameplay.male_price_delta),
+                'female_price_delta': float(gameplay.female_price_delta),
                 'companion_mode': gameplay.companion_mode,
                 'settlement_unit': gameplay.settlement_unit,
                 'min_quantity': float(gameplay.min_quantity),

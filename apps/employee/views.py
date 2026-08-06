@@ -252,6 +252,8 @@ class EmployeeSkillViewSet(BaseModelViewSet):
             min_quantity = self._decimal(item.get('min_quantity', 1), 'min_quantity')
             quantity_step = self._decimal(item.get('quantity_step', 1), 'quantity_step')
             base_price = self._decimal(item.get('base_price', 0), 'base_price')
+            male_price_delta = self._decimal(item.get('male_price_delta', 0), 'male_price_delta')
+            female_price_delta = self._decimal(item.get('female_price_delta', 0), 'female_price_delta')
 
             if settlement_unit == 'hour':
                 if min_quantity < Decimal('0.5'):
@@ -280,6 +282,8 @@ class EmployeeSkillViewSet(BaseModelViewSet):
             gameplay.min_quantity = min_quantity
             gameplay.quantity_step = quantity_step
             gameplay.base_price = base_price
+            gameplay.male_price_delta = male_price_delta
+            gameplay.female_price_delta = female_price_delta
             gameplay.sort = item.get('sort', index)
             gameplay.save()
             kept_ids.append(gameplay.id)
@@ -294,12 +298,14 @@ class EmployeeSkillViewSet(BaseModelViewSet):
             if not services:
                 raise serializers.ValidationError({'services': f'玩法“{gameplay.name}”请至少添加一个服务'})
 
+            service_names_set = set(str(row.get('name', '')).strip() for row in services)
+
             option_specs = [
-                (GameplayDifficulty, difficulties, False),
-                (GameplayLevelOption, levels, True),
-                (GameplayService, services, True),
+                (GameplayDifficulty, difficulties, False, False),
+                (GameplayLevelOption, levels, True, True),
+                (GameplayService, services, True, False),
             ]
-            for model, rows, has_description in option_specs:
+            for model, rows, has_description, has_allowed_services in option_specs:
                 option_names = [str(row.get('name', '')).strip() for row in rows]
                 if any(not name for name in option_names) or len(option_names) != len(set(option_names)):
                     raise serializers.ValidationError({'gameplays': f'玩法"{gameplay.name}"的选项名称为空或重复'})
@@ -315,6 +321,10 @@ class EmployeeSkillViewSet(BaseModelViewSet):
                     if has_description:
                         values['description'] = str(row.get('description', '')).strip()
                         values['is_recommended'] = row.get('is_recommended', False)
+                    if has_allowed_services:
+                        raw_services = row.get('allowed_services', []) or []
+                        valid_services = [s for s in raw_services if s and s in service_names_set]
+                        values['allowed_services'] = valid_services
                     model.objects.create(**values)
 
             difficulty_names = set(str(row.get('name', '')).strip() for row in difficulties)
@@ -326,6 +336,9 @@ class EmployeeSkillViewSet(BaseModelViewSet):
                 difficulty_name = str(row.get('difficulty_name', '')).strip() if gameplay.difficulty_enabled else ''
                 level_name = str(row.get('level_name', '')).strip()
                 service_name = str(row.get('service_name', '')).strip()
+                gender_requirement = row.get('gender_requirement', 'any')
+                if gender_requirement not in ('any', 'male', 'female'):
+                    gender_requirement = 'any'
                 companion_type = row.get('companion_type', 'single')
                 if difficulty_name and difficulty_name not in difficulty_names:
                     raise serializers.ValidationError({'price_rules': f'价格规则引用了不存在的难度：{difficulty_name}'})
@@ -335,7 +348,7 @@ class EmployeeSkillViewSet(BaseModelViewSet):
                     raise serializers.ValidationError({'price_rules': f'价格规则引用了不存在的服务：{service_name}'})
                 if gameplay.companion_mode != 'both' and companion_type != gameplay.companion_mode:
                     raise serializers.ValidationError({'price_rules': '价格规则陪玩类型与玩法配置不一致'})
-                key = (difficulty_name, level_name, service_name, companion_type)
+                key = (difficulty_name, level_name, service_name, gender_requirement, companion_type)
                 if key in seen_rules:
                     raise serializers.ValidationError({'price_rules': '存在重复的组合价格规则'})
                 seen_rules.add(key)
@@ -344,6 +357,7 @@ class EmployeeSkillViewSet(BaseModelViewSet):
                     difficulty_name=difficulty_name,
                     level_name=level_name,
                     service_name=service_name,
+                    gender_requirement=gender_requirement,
                     companion_type=companion_type,
                     unit_price=self._decimal(row.get('unit_price', 0), 'unit_price'),
                     status=row.get('status', True),
