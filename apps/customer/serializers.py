@@ -31,10 +31,10 @@ class CustomerSerializer(serializers.ModelSerializer):
         model = Customer
         fields = ['id', 'user', 'nickname', 'avatar', 'avatar_url', 'phone', 'email', 'gender',
                   'age', 'wechat', 'qq', 'level', 'level_name', 'level_color',
-                  'tags', 'tag_names', 'total_amount', 'total_orders', 'balance',
+                  'tags', 'tag_names', 'total_amount', 'total_orders', 'balance', 'coins',
                   'status', 'source', 'first_order_date', 'last_order_date',
                   'remark', 'address', 'is_blacklisted', 'created_at', 'updated_at']
-        read_only_fields = ['id', 'total_amount', 'total_orders', 'balance',
+        read_only_fields = ['id', 'total_amount', 'total_orders', 'balance', 'coins',
                             'first_order_date', 'last_order_date', 'created_at', 'updated_at']
 
     def get_tag_names(self, obj):

@@ -14,6 +14,7 @@ urlpatterns = [
 
     # 游戏分类
     path('games/', views.game_list, name='wx-game-list'),
+    path('game-banners/<int:game_id>/', views.game_banners, name='wx-game-banners'),
 
     # 陪玩师
     path('employees/', views.employee_list, name='wx-employee-list'),

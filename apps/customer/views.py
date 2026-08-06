@@ -88,8 +88,28 @@ class CustomerViewSet(BaseModelViewSet):
         amount = float(request.data.get('amount', 0) or 0)
         if amount <= 0:
             return success_response(code=400, msg='充值金额必须大于0')
+        
+        # 计算黑钻数量 (1元 = 10黑钻)
+        ratio = float(request.data.get('ratio', 10) or 10)
+        coins = int(amount * ratio)
+        
         customer.balance += amount
-        customer.save(update_fields=['balance'])
+        customer.coins += coins
+        customer.save(update_fields=['balance', 'coins'])
+        
+        # 记录充值记录
+        from apps.finance.models import Recharge
+        Recharge.objects.create(
+            customer=customer,
+            amount=amount,
+            coins=coins,
+            ratio=ratio,
+            payment_method=request.data.get('payment_method', 'balance'),
+            status='completed',
+            operator=request.user,
+            remark=request.data.get('remark', ''),
+        )
+        
         CustomerConsumeRecord.objects.create(
             customer=customer,
             amount=amount,

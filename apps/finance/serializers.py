@@ -1,6 +1,6 @@
 from rest_framework import serializers
 from .models import (
-    Wallet, Transaction, Settlement, SettlementDetail, Salary, Withdraw
+    Wallet, Transaction, Settlement, SettlementDetail, Salary, Withdraw, Recharge
 )
 
 
@@ -106,4 +106,24 @@ class WithdrawSerializer(serializers.ModelSerializer):
         import datetime
         import uuid
         validated_data['withdraw_no'] = f"WIT{datetime.datetime.now().strftime('%Y%m%d%H%M%S')}{uuid.uuid4().hex[:6].upper()}"
+        return super().create(validated_data)
+
+
+class RechargeSerializer(serializers.ModelSerializer):
+    customer_name = serializers.CharField(source='customer.nickname', read_only=True)
+    operator_name = serializers.CharField(source='operator.username', read_only=True)
+    status_text = serializers.CharField(source='get_status_display', read_only=True)
+    payment_method_text = serializers.CharField(source='get_payment_method_display', read_only=True)
+
+    class Meta:
+        model = Recharge
+        fields = ['id', 'recharge_no', 'customer', 'customer_name', 'amount', 'coins',
+                  'ratio', 'payment_method', 'payment_method_text', 'status', 'status_text',
+                  'operator', 'operator_name', 'remark', 'created_at']
+        read_only_fields = ['id', 'recharge_no', 'created_at']
+
+    def create(self, validated_data):
+        import datetime
+        import uuid
+        validated_data['recharge_no'] = f"RCG{datetime.datetime.now().strftime('%Y%m%d%H%M%S')}{uuid.uuid4().hex[:6].upper()}"
         return super().create(validated_data)

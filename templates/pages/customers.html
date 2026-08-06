@@ -25,13 +25,14 @@
                     <th>手机号</th>
                     <th>等级</th>
                     <th>消费金额</th>
+                    <th>黑钻</th>
                     <th>订单数</th>
                     <th>状态</th>
                     <th>操作</th>
                 </tr>
             </thead>
             <tbody id="customerList">
-                <tr><td colspan="9" class="empty-state"><i class="fa-solid fa-spinner fa-spin"></i><br>加载中...</td></tr>
+                <tr><td colspan="10" class="empty-state"><i class="fa-solid fa-spinner fa-spin"></i><br>加载中...</td></tr>
             </tbody>
         </table>
     </div>
@@ -88,7 +89,7 @@
                 const tbody = document.getElementById('customerList');
                 
                 if (customers.length === 0) {
-                    tbody.innerHTML = '<tr><td colspan="9" class="empty-state"><i class="fa-solid fa-inbox"></i><br>暂无数据</td></tr>';
+                    tbody.innerHTML = '<tr><td colspan="10" class="empty-state"><i class="fa-solid fa-inbox"></i><br>暂无数据</td></tr>';
                     return;
                 }
                 
@@ -100,6 +101,7 @@
                         <td>${cust.phone || '-'}</td>
                         <td><span class="badge ${getLevelBadge(cust.level)}">${getLevelText(cust.level)}</span></td>
                         <td>¥${formatMoney(cust.total_spent)}</td>
+                        <td><span class="badge badge-warning">💎 ${cust.coins || 0}</span></td>
                         <td>${cust.order_count || 0}</td>
                         <td><span class="badge ${cust.is_active ? 'badge-success' : 'badge-danger'}">${cust.is_active ? '正常' : '禁用'}</span></td>
                         <td>

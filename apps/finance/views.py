@@ -6,11 +6,11 @@ from django.db.models import Sum
 from apps.common.response import success_response, error_response
 from apps.common.viewsets import BaseModelViewSet
 from .models import (
-    Wallet, Transaction, Settlement, SettlementDetail, Salary, Withdraw
+    Wallet, Transaction, Settlement, SettlementDetail, Salary, Withdraw, Recharge
 )
 from .serializers import (
     WalletSerializer, TransactionSerializer, SettlementSerializer,
-    SettlementDetailSerializer, SalarySerializer, WithdrawSerializer
+    SettlementDetailSerializer, SalarySerializer, WithdrawSerializer, RechargeSerializer
 )
 
 
@@ -211,3 +211,47 @@ def finance_overview(request):
         'pendingSettlement': float(pending_settlement),
     }
     return success_response(data)
+
+
+class RechargeViewSet(BaseModelViewSet):
+    queryset = Recharge.objects.all()
+    serializer_class = RechargeSerializer
+    filterset_fields = ['status', 'payment_method', 'customer']
+    search_fields = ['recharge_no', 'customer__nickname']
+    ordering_fields = ['amount', 'created_at']
+
+    @action(detail=False, methods=['get'], url_path='customer-recharges')
+    def customer_recharges(self, request):
+        """获取指定客户的充值记录"""
+        customer_id = request.query_params.get('customer_id')
+        if not customer_id:
+            return error_response(msg='请指定客户ID')
+        
+        queryset = self.get_queryset().filter(customer_id=customer_id)
+        page = self.paginate_queryset(queryset)
+        if page is not None:
+            serializer = self.get_serializer(page, many=True)
+            return self.get_paginated_response(serializer.data)
+        serializer = self.get_serializer(queryset, many=True)
+        return success_response(serializer.data)
+
+    @action(detail=True, methods=['post'], url_path='cancel')
+    def cancel(self, request, pk=None):
+        """取消充值记录"""
+        recharge = self.get_object()
+        if recharge.status != 'pending':
+            return error_response(msg='只有待完成的充值记录才能取消')
+        recharge.status = 'cancelled'
+        recharge.save()
+        return success_response(msg='已取消')
+
+    def perform_create(self, serializer):
+        """创建充值记录时，同时更新客户余额和黑钻"""
+        instance = serializer.save()
+        # 更新客户余额和黑钻
+        if instance.status == 'completed':
+            from apps.customer.models import Customer
+            customer = instance.customer
+            customer.balance += instance.amount
+            customer.coins += instance.coins
+            customer.save(update_fields=['balance', 'coins'])

@@ -37,6 +37,9 @@ def system_view(request):
 def cs_manage_view(request):
     return render(request, 'pages/cs-manage.html')
 
+def game_banners_view(request):
+    return render(request, 'pages/game-banners.html')
+
 urlpatterns = [
     path('admin/', admin.site.urls),
     path('login/', login_view, name='login'),
@@ -49,6 +52,7 @@ urlpatterns = [
     path('statistics/', statistics_view, name='statistics'),
     path('system/', system_view, name='system'),
     path('cs-manage/', cs_manage_view, name='cs-manage'),
+    path('game-banners/', game_banners_view, name='game-banners'),
     path('api/account/', include('apps.account.urls')),
     path('api/employee/', include('apps.employee.urls')),
     path('api/customer/', include('apps.customer.urls')),

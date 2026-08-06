@@ -1,0 +1,292 @@
+{% extends 'layout.html' %}
+
+{% block content %}
+<script>
+    document.getElementById('pageTitle').textContent = '游戏轮播图管理';
+</script>
+
+<div class="card">
+    <div class="card-header">
+        <div class="card-title">游戏分类轮播图</div>
+        <div class="card-actions">
+            <button class="btn btn-primary" onclick="showAddModal()">
+                <i class="fa-solid fa-plus"></i> 添加轮播图
+            </button>
+        </div>
+    </div>
+    <div class="table-container">
+        <table>
+            <thead>
+                <tr>
+                    <th>所属游戏</th>
+                    <th>图片</th>
+                    <th>标题</th>
+                    <th>跳转链接</th>
+                    <th>排序</th>
+                    <th>状态</th>
+                    <th>操作</th>
+                </tr>
+            </thead>
+            <tbody id="bannerList">
+                <tr><td colspan="7" class="empty-state"><i class="fa-solid fa-spinner fa-spin"></i><br>加载中...</td></tr>
+            </tbody>
+        </table>
+    </div>
+</div>
+
+<div class="modal-overlay" id="bannerModal">
+    <div class="modal">
+        <div class="modal-header">
+            <div class="modal-title" id="bannerModalTitle">添加轮播图</div>
+            <div class="modal-close" onclick="hideModal('bannerModal')">&times;</div>
+        </div>
+        <div class="modal-body">
+            <form id="bannerForm">
+                <input type="hidden" id="bannerId">
+                <div class="form-group">
+                    <label>所属游戏 *</label>
+                    <select id="bannerGameId" required>
+                        <option value="">请选择游戏</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label>标题</label>
+                    <input type="text" id="bannerTitle" placeholder="请输入标题">
+                </div>
+                <div class="form-group">
+                    <label>图片 *</label>
+                    <div class="upload-area" id="bannerImageUpload">
+                        <input type="file" id="bannerImageFile" accept="image/*" style="display: none;" onchange="handleImageUpload(event)">
+                        <div class="upload-placeholder" id="bannerImagePreview" onclick="document.getElementById('bannerImageFile').click()">
+                            <i class="fa-solid fa-cloud-arrow-up"></i>
+                            <p>点击上传图片</p>
+                        </div>
+                    </div>
+                    <input type="hidden" id="bannerImage">
+                </div>
+                <div class="form-group">
+                    <label>跳转链接</label>
+                    <input type="text" id="bannerLinkUrl" placeholder="请输入跳转链接，可不填">
+                </div>
+                <div class="form-group">
+                    <label>排序</label>
+                    <input type="number" id="bannerSort" value="0" min="0">
+                </div>
+                <div class="form-group">
+                    <label>状态</label>
+                    <select id="bannerStatus">
+                        <option value="true">启用</option>
+                        <option value="false">禁用</option>
+                    </select>
+                </div>
+            </form>
+        </div>
+        <div class="modal-footer">
+            <button class="btn btn-default" onclick="hideModal('bannerModal')">取消</button>
+            <button class="btn btn-primary" onclick="saveBanner()">确定</button>
+        </div>
+    </div>
+</div>
+
+<script>
+    var API_BASE = '/api/system/';
+    var GAMES_API = '/api/wx/games/';
+
+    var gameListCache = [];
+
+    function escapeHtmlAttr(value) {
+        if (!value) return '';
+        var div = document.createElement('div');
+        div.textContent = String(value);
+        return div.innerHTML;
+    }
+
+    function loadGames() {
+        return fetch(GAMES_API, { credentials: 'same-origin' })
+            .then(function(r) { return r.json(); })
+            .then(function(data) {
+                if (data.code === 200) {
+                    gameListCache = data.data || [];
+                    var sel = document.getElementById('bannerGameId');
+                    sel.innerHTML = '<option value="">请选择游戏</option>' +
+                        gameListCache.map(function(g) {
+                            return '<option value="' + g.id + '">' + escapeHtmlAttr(g.name) + '</option>';
+                        }).join('');
+                }
+                return gameListCache;
+            });
+    }
+
+    function loadBanners() {
+        var tbody = document.getElementById('bannerList');
+        tbody.innerHTML = '<tr><td colspan="7" class="empty-state"><i class="fa-solid fa-spinner fa-spin"></i><br>加载中...</td></tr>';
+
+        fetch(API_BASE + 'game-banners/', { credentials: 'same-origin' })
+            .then(function(r) { return r.json(); })
+            .then(function(data) {
+                var list = data.results || data.data || [];
+                if (!list.length) {
+                    tbody.innerHTML = '<tr><td colspan="7" class="empty-state"><i class="fa-solid fa-inbox"></i><br>暂无轮播图，请先添加</td></tr>';
+                    return;
+                }
+                tbody.innerHTML = list.map(function(b) {
+                    var statusBadge = b.status
+                        ? '<span class="badge badge-success">启用</span>'
+                        : '<span class="badge badge-danger">禁用</span>';
+                    var imgHtml = b.image
+                        ? '<img src="' + escapeHtmlAttr(b.image) + '" style="width:120px;height:60px;object-fit:cover;border-radius:4px;">'
+                        : '<span style="color:#999">-</span>';
+                    var gameName = b.game_name || (gameListCache.find(function(g) { return g.id === b.game; }) || {}).name || '-';
+                    return '<tr>' +
+                        '<td>' + escapeHtmlAttr(gameName) + '</td>' +
+                        '<td>' + imgHtml + '</td>' +
+                        '<td>' + escapeHtmlAttr(b.title || '-') + '</td>' +
+                        '<td>' + escapeHtmlAttr(b.link_url || '-') + '</td>' +
+                        '<td>' + (b.sort || 0) + '</td>' +
+                        '<td>' + statusBadge + '</td>' +
+                        '<td>' +
+                            '<button class="btn btn-sm btn-default" onclick="editBanner(' + b.id + ')">编辑</button> ' +
+                            '<button class="btn btn-sm btn-danger" onclick="deleteBanner(' + b.id + ')">删除</button>' +
+                        '</td>' +
+                    '</tr>';
+                }).join('');
+            })
+            .catch(function(err) {
+                tbody.innerHTML = '<tr><td colspan="7" class="empty-state" style="color:#e74c3c;">加载失败</td></tr>';
+                console.error(err);
+            });
+    }
+
+    function showAddModal() {
+        document.getElementById('bannerModalTitle').textContent = '添加轮播图';
+        document.getElementById('bannerForm').reset();
+        document.getElementById('bannerId').value = '';
+        document.getElementById('bannerImage').value = '';
+        document.getElementById('bannerImagePreview').style.display = 'none';
+        document.getElementById('bannerImageUpload').classList.add('has-image');
+        document.getElementById('bannerSort').value = '0';
+        document.getElementById('bannerStatus').value = 'true';
+        if (gameListCache.length === 0) {
+            loadGames().then(function() {
+                document.getElementById('bannerModal').style.display = 'flex';
+            });
+        } else {
+            document.getElementById('bannerModal').style.display = 'flex';
+        }
+    }
+
+    function hideModal(id) {
+        document.getElementById(id).style.display = 'none';
+    }
+
+    function editBanner(id) {
+        fetch(API_BASE + 'game-banners/' + id + '/', { credentials: 'same-origin' })
+            .then(function(r) { return r.json(); })
+            .then(function(b) {
+                document.getElementById('bannerModalTitle').textContent = '编辑轮播图';
+                document.getElementById('bannerId').value = b.id;
+                document.getElementById('bannerGameId').value = b.game;
+                document.getElementById('bannerTitle').value = b.title || '';
+                document.getElementById('bannerLinkUrl').value = b.link_url || '';
+                document.getElementById('bannerSort').value = b.sort || 0;
+                document.getElementById('bannerStatus').value = String(b.status);
+                document.getElementById('bannerImage').value = b.image || '';
+                var preview = document.getElementById('bannerImagePreview');
+                if (b.image) {
+                    preview.innerHTML = '<img src="' + escapeHtmlAttr(b.image) + '" style="width:100%;height:100%;object-fit:cover;border-radius:8px;">';
+                    preview.style.display = 'block';
+                    document.getElementById('bannerImageUpload').classList.add('has-image');
+                } else {
+                    preview.style.display = 'none';
+                }
+                document.getElementById('bannerModal').style.display = 'flex';
+            });
+    }
+
+    function deleteBanner(id) {
+        if (!confirm('确定要删除这条轮播图吗？')) return;
+        fetch(API_BASE + 'game-banners/' + id + '/', {
+            method: 'DELETE',
+            credentials: 'same-origin'
+        }).then(function() {
+            loadBanners();
+        });
+    }
+
+    function handleImageUpload(event) {
+        var file = event.target.files[0];
+        if (!file) return;
+        var formData = new FormData();
+        formData.append('file', file);
+        fetch('/api/upload/upload/', {
+            method: 'POST',
+            body: formData,
+            credentials: 'same-origin'
+        }).then(function(r) { return r.json(); })
+            .then(function(data) {
+                if (data.file_url || data.url) {
+                    var url = data.file_url || data.url;
+                    document.getElementById('bannerImage').value = url;
+                    var preview = document.getElementById('bannerImagePreview');
+                    preview.innerHTML = '<img src="' + escapeHtmlAttr(url) + '" style="width:100%;height:100%;object-fit:cover;border-radius:8px;">';
+                    preview.style.display = 'block';
+                    document.getElementById('bannerImageUpload').classList.add('has-image');
+                } else {
+                    alert('上传失败');
+                }
+            })
+            .catch(function(err) {
+                alert('上传失败');
+                console.error(err);
+            });
+    }
+
+    function saveBanner() {
+        var id = document.getElementById('bannerId').value;
+        var gameId = document.getElementById('bannerGameId').value;
+        var image = document.getElementById('bannerImage').value;
+
+        if (!gameId) {
+            alert('请选择所属游戏');
+            return;
+        }
+        if (!image) {
+            alert('请上传图片');
+            return;
+        }
+
+        var payload = {
+            game: parseInt(gameId),
+            title: document.getElementById('bannerTitle').value,
+            image: image,
+            link_url: document.getElementById('bannerLinkUrl').value,
+            sort: parseInt(document.getElementById('bannerSort').value) || 0,
+            status: document.getElementById('bannerStatus').value === 'true'
+        };
+
+        var url = id ? API_BASE + 'game-banners/' + id + '/' : API_BASE + 'game-banners/';
+        var method = id ? 'PUT' : 'POST';
+
+        fetch(url, {
+            method: method,
+            headers: { 'Content-Type': 'application/json' },
+            credentials: 'same-origin',
+            body: JSON.stringify(payload)
+        }).then(function(r) { return r.json(); })
+            .then(function(data) {
+                if (data.id || data.code === 200) {
+                    hideModal('bannerModal');
+                    loadBanners();
+                } else {
+                    alert('保存失败：' + (data.detail || data.msg || ''));
+                }
+            })
+            .catch(function(err) {
+                alert('保存失败');
+                console.error(err);
+            });
+    }
+
+    loadGames().then(loadBanners);
+</script>
+{% endblock %}

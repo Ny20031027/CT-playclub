@@ -213,3 +213,38 @@ class Withdraw(BaseModel):
 
     def __str__(self):
         return self.withdraw_no
+
+
+class Recharge(BaseModel):
+    """充值记录"""
+    recharge_no = models.CharField(max_length=50, unique=True, verbose_name='充值单号')
+    customer = models.ForeignKey('customer.Customer', on_delete=models.CASCADE,
+                                 related_name='recharges', verbose_name='客户')
+    amount = models.DecimalField(max_digits=10, decimal_places=2, verbose_name='充值金额')
+    coins = models.IntegerField(verbose_name='充值黑钻数量')
+    ratio = models.DecimalField(max_digits=5, decimal_places=2, default=10.00,
+                                verbose_name='兑换比例(1元=多少黑钻)')
+    payment_method = models.CharField(max_length=20, default='balance', choices=[
+        ('balance', '余额充值'),
+        ('alipay', '支付宝'),
+        ('wechat', '微信'),
+        ('bank', '银行卡'),
+    ], verbose_name='支付方式')
+    status = models.CharField(max_length=20, default='completed', choices=[
+        ('pending', '待完成'),
+        ('completed', '已完成'),
+        ('failed', '失败'),
+        ('cancelled', '已取消'),
+    ], verbose_name='状态')
+    operator = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, blank=True,
+                                 related_name='recharges', verbose_name='操作人')
+    remark = models.CharField(max_length=500, blank=True, verbose_name='备注')
+
+    class Meta:
+        db_table = 'fin_recharge'
+        verbose_name = '充值记录'
+        verbose_name_plural = verbose_name
+        ordering = ['-created_at']
+
+    def __str__(self):
+        return f"{self.recharge_no} - {self.customer.nickname} - {self.amount}元"

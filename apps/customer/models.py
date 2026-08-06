@@ -66,6 +66,7 @@ class Customer(BaseModel):
     total_orders = models.IntegerField(default=0, verbose_name='累计订单数')
     balance = models.DecimalField(max_digits=12, decimal_places=2, default=0,
                                   verbose_name='账户余额')
+    coins = models.IntegerField(default=0, verbose_name='黑钻数量')
     status = models.BooleanField(default=True, verbose_name='状态')
     source = models.CharField(max_length=50, blank=True, verbose_name='来源渠道')
     first_order_date = models.DateTimeField(null=True, blank=True, verbose_name='首单时间')

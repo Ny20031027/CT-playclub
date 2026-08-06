@@ -12,9 +12,10 @@ from .serializers import (
     ConfigSerializer, DictionarySerializer, DictionaryItemSerializer,
     OperationLogSerializer, ErrorLogSerializer, DictionarySimpleSerializer,
     BannerManageSerializer, AnnouncementManageSerializer,
-    CSWelcomeConfigSerializer, CSKeywordRuleSerializer
+    CSWelcomeConfigSerializer, CSKeywordRuleSerializer,
+    GameBannerManageSerializer
 )
-from apps.wx.models import Banner, Announcement
+from apps.wx.models import Banner, Announcement, GameBanner
 
 
 class ConfigViewSet(BaseModelViewSet):
@@ -105,6 +106,14 @@ class AnnouncementManageViewSet(BaseModelViewSet):
     serializer_class = AnnouncementManageSerializer
     filterset_fields = ['type', 'status']
     search_fields = ['title', 'content']
+    ordering_fields = ['sort', 'created_at']
+
+
+class GameBannerManageViewSet(BaseModelViewSet):
+    queryset = GameBanner.objects.all()
+    serializer_class = GameBannerManageSerializer
+    filterset_fields = ['game', 'status']
+    search_fields = ['title']
     ordering_fields = ['sort', 'created_at']
 
 

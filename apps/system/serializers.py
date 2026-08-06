@@ -3,7 +3,7 @@ from .models import (
     Config, Dictionary, DictionaryItem, OperationLog, ErrorLog,
     CSWelcomeConfig, CSKeywordRule
 )
-from apps.wx.models import Banner, Announcement
+from apps.wx.models import Banner, Announcement, GameBanner
 
 
 class ConfigSerializer(serializers.ModelSerializer):
@@ -107,6 +107,16 @@ class CSKeywordRuleSerializer(serializers.ModelSerializer):
         model = CSKeywordRule
         fields = ['id', 'keyword', 'reply_text', 'match_type', 'match_type_display',
                   'sort', 'is_enabled', 'created_at', 'updated_at']
+        read_only_fields = ['id', 'created_at', 'updated_at']
+
+
+class GameBannerManageSerializer(serializers.ModelSerializer):
+    game_name = serializers.CharField(source='game.name', read_only=True)
+
+    class Meta:
+        model = GameBanner
+        fields = ['id', 'game', 'game_name', 'title', 'image', 'link_url', 'sort',
+                  'status', 'created_at', 'updated_at']
         read_only_fields = ['id', 'created_at', 'updated_at']
 
 

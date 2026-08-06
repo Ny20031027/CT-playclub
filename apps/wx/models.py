@@ -82,6 +82,25 @@ class GameCategory(BaseModel):
         return self.name
 
 
+class GameBanner(BaseModel):
+    """游戏分类轮播图"""
+    game = models.ForeignKey(GameCategory, on_delete=models.CASCADE, related_name='banners', verbose_name='游戏分类')
+    title = models.CharField(max_length=200, blank=True, verbose_name='标题')
+    image = models.CharField(max_length=500, verbose_name='图片URL')
+    link_url = models.CharField(max_length=500, blank=True, verbose_name='跳转链接')
+    sort = models.IntegerField(default=0, verbose_name='排序')
+    status = models.BooleanField(default=True, verbose_name='状态')
+
+    class Meta:
+        db_table = 'wx_game_banner'
+        verbose_name = '游戏轮播图'
+        verbose_name_plural = verbose_name
+        ordering = ['game__id', 'sort', '-created_at']
+
+    def __str__(self):
+        return self.title or f'GameBanner {self.id}'
+
+
 class Gift(BaseModel):
     """礼物"""
     name = models.CharField(max_length=100, verbose_name='礼物名称')

@@ -1,5 +1,5 @@
 from rest_framework import serializers
-from .models import WxUser, Banner, Announcement, GameCategory, Gift
+from .models import WxUser, Banner, Announcement, GameCategory, Gift, GameBanner
 
 
 class WxUserSerializer(serializers.ModelSerializer):
@@ -51,3 +51,29 @@ class GiftSerializer(serializers.ModelSerializer):
     class Meta:
         model = Gift
         fields = ['id', 'name', 'icon', 'price']
+
+
+class GameBannerSerializer(serializers.ModelSerializer):
+    """小程序端游戏轮播图序列化"""
+    class Meta:
+        model = GameBanner
+        fields = ['id', 'game', 'title', 'image', 'link_url']
+
+    def to_representation(self, instance):
+        ret = super().to_representation(instance)
+        image = ret.get('image', '')
+        if image and not image.startswith('http'):
+            request = self.context.get('request')
+            if request:
+                ret['image'] = request.build_absolute_uri(image)
+        return ret
+
+
+class GameBannerManageSerializer(serializers.ModelSerializer):
+    """管理后台游戏轮播图序列化"""
+    game_name = serializers.CharField(source='game.name', read_only=True)
+
+    class Meta:
+        model = GameBanner
+        fields = ['id', 'game', 'game_name', 'title', 'image', 'link_url', 'sort', 'status', 'created_at']
+        read_only_fields = ['id', 'created_at']

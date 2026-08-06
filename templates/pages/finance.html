@@ -39,6 +39,7 @@
 <div class="tabs">
     <div class="tab-item active" onclick="switchTab('revenue')">收入记录</div>
     <div class="tab-item" onclick="switchTab('withdraw')">提现记录</div>
+    <div class="tab-item" onclick="switchTab('recharge')">充值记录</div>
 </div>
 
 <div id="revenueTab" style="display: block;">
@@ -96,6 +97,41 @@
     </div>
 </div>
 
+<div id="rechargeTab" style="display: none;">
+    <div class="card">
+        <div class="card-header">
+            <div class="card-title">充值记录</div>
+            <div class="card-actions">
+                <input type="text" class="search-input" id="rechargeSearch" placeholder="搜索客户昵称/充值单号">
+                <button class="btn btn-primary" onclick="showModal('addRechargeModal')">
+                    <i class="fa-solid fa-plus"></i> 新增充值
+                </button>
+            </div>
+        </div>
+        <div class="table-container">
+            <table>
+                <thead>
+                    <tr>
+                        <th>ID</th>
+                        <th>充值单号</th>
+                        <th>客户</th>
+                        <th>金额</th>
+                        <th>黑钻</th>
+                        <th>支付方式</th>
+                        <th>状态</th>
+                        <th>操作人</th>
+                        <th>时间</th>
+                        <th>操作</th>
+                    </tr>
+                </thead>
+                <tbody id="rechargeList">
+                    <tr><td colspan="10" class="empty-state"><i class="fa-solid fa-spinner fa-spin"></i><br>加载中...</td></tr>
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
 <div class="modal-overlay" id="addWithdrawModal">
     <div class="modal">
         <div class="modal-header">
@@ -139,12 +175,66 @@
     </div>
 </div>
 
+<div class="modal-overlay" id="addRechargeModal">
+    <div class="modal">
+        <div class="modal-header">
+            <div class="modal-title">新增充值</div>
+            <div class="modal-close" onclick="hideModal('addRechargeModal')">&times;</div>
+        </div>
+        <div class="modal-body">
+            <form id="addRechargeForm">
+                <div class="form-group">
+                    <label>客户</label>
+                    <select id="rechargeCustomer" required>
+                        <option value="">请选择客户</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label>充值金额（元）</label>
+                    <input type="number" id="rechargeAmount" step="0.01" min="0.01" required oninput="calculateCoins()">
+                </div>
+                <div class="form-group">
+                    <label>兑换比例（1元 = X黑钻）</label>
+                    <input type="number" id="rechargeRatio" step="1" min="1" value="10" required oninput="calculateCoins()">
+                </div>
+                <div class="form-group">
+                    <label>黑钻数量</label>
+                    <input type="number" id="rechargeCoins" readonly>
+                </div>
+                <div class="form-group">
+                    <label>支付方式</label>
+                    <select id="rechargeMethod">
+                        <option value="balance">余额充值</option>
+                        <option value="alipay">支付宝</option>
+                        <option value="wechat">微信</option>
+                        <option value="bank">银行卡</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label>备注</label>
+                    <input type="text" id="rechargeRemark">
+                </div>
+            </form>
+        </div>
+        <div class="modal-footer">
+            <button class="btn btn-default" onclick="hideModal('addRechargeModal')">取消</button>
+            <button class="btn btn-primary" onclick="addRecharge()">确定</button>
+        </div>
+    </div>
+</div>
+
 <script>
     document.addEventListener('DOMContentLoaded', async function() {
         await loadOverview();
         await loadRevenue();
         await loadWithdraws();
         await loadEmployeeOptions();
+        await loadCustomerOptions();
+        await loadRecharges();
+        
+        document.getElementById('rechargeSearch').addEventListener('input', debounce(async function() {
+            await loadRecharges();
+        }, 300));
     });
 
     async function loadOverview() {
@@ -259,6 +349,7 @@
         
         document.getElementById('revenueTab').style.display = tab === 'revenue' ? 'block' : 'none';
         document.getElementById('withdrawTab').style.display = tab === 'withdraw' ? 'block' : 'none';
+        document.getElementById('rechargeTab').style.display = tab === 'recharge' ? 'block' : 'none';
     }
 
     async function addWithdraw() {
@@ -326,6 +417,143 @@
         } catch (error) {
             showToast(error.message, 'error');
         }
+    }
+
+    async function loadCustomerOptions() {
+        try {
+            const result = await get('/customer/customers/', { page_size: 100 });
+            if (result.code === 200) {
+                const list = result.data.results || [];
+                const select = document.getElementById('rechargeCustomer');
+                select.innerHTML = '<option value="">请选择客户</option>' +
+                    list.map(c => `<option value="${c.id}">${c.nickname || c.phone || c.id}</option>`).join('');
+            }
+        } catch (error) { console.error('加载客户列表失败:', error); }
+    }
+
+    async function loadRecharges() {
+        const keyword = document.getElementById('rechargeSearch').value;
+        try {
+            const params = {};
+            if (keyword) {
+                params.search = keyword;
+            }
+            const result = await get('/finance/recharges/', params);
+            if (result.code === 200) {
+                const recharges = result.data.results || [];
+                const tbody = document.getElementById('rechargeList');
+                
+                if (recharges.length === 0) {
+                    tbody.innerHTML = '<tr><td colspan="10" class="empty-state"><i class="fa-solid fa-inbox"></i><br>暂无数据</td></tr>';
+                    return;
+                }
+                
+                tbody.innerHTML = recharges.map(r => `
+                    <tr>
+                        <td>${r.id}</td>
+                        <td>${r.recharge_no || '-'}</td>
+                        <td>${r.customer_name || '-'}</td>
+                        <td>¥${formatMoney(r.amount)}</td>
+                        <td><span class="badge badge-warning">💎 ${r.coins || 0}</span></td>
+                        <td>${r.payment_method_text || '-'}</td>
+                        <td><span class="badge ${getRechargeStatusBadge(r.status)}">${getRechargeStatusText(r.status)}</span></td>
+                        <td>${r.operator_name || '-'}</td>
+                        <td>${formatDate(r.created_at)}</td>
+                        <td>
+                            ${r.status === 'pending' ? `<button class="btn btn-danger" onclick="cancelRecharge(${r.id})">取消</button>` : '-'}
+                        </td>
+                    </tr>
+                `).join('');
+            }
+        } catch (error) {
+            console.error('加载充值记录失败:', error);
+        }
+    }
+
+    function calculateCoins() {
+        const amount = parseFloat(document.getElementById('rechargeAmount').value) || 0;
+        const ratio = parseFloat(document.getElementById('rechargeRatio').value) || 10;
+        const coins = Math.floor(amount * ratio);
+        document.getElementById('rechargeCoins').value = coins;
+    }
+
+    async function addRecharge() {
+        const customerId = document.getElementById('rechargeCustomer').value;
+        const amount = document.getElementById('rechargeAmount').value;
+        const ratio = document.getElementById('rechargeRatio').value;
+        const coins = document.getElementById('rechargeCoins').value;
+        const method = document.getElementById('rechargeMethod').value;
+        const remark = document.getElementById('rechargeRemark').value;
+
+        if (!customerId) {
+            showToast('请选择客户', 'error');
+            return;
+        }
+        if (!amount || parseFloat(amount) <= 0) {
+            showToast('请输入正确的充值金额', 'error');
+            return;
+        }
+        
+        try {
+            const result = await post('/finance/recharges/', {
+                customer: parseInt(customerId),
+                amount: parseFloat(amount),
+                ratio: parseFloat(ratio),
+                coins: parseInt(coins),
+                payment_method: method,
+                remark: remark
+            });
+            
+            if (result.code === 200) {
+                showToast('充值成功', 'success');
+                hideModal('addRechargeModal');
+                document.getElementById('addRechargeForm').reset();
+                document.getElementById('rechargeCoins').value = '';
+                await loadRecharges();
+                await loadOverview();
+            } else {
+                showToast(result.msg, 'error');
+            }
+        } catch (error) {
+            showToast(error.message, 'error');
+        }
+    }
+
+    async function cancelRecharge(id) {
+        if (!confirm('确定要取消该充值记录吗？')) return;
+        
+        try {
+            const result = await post(`/finance/recharges/${id}/cancel/`);
+            if (result.code === 200) {
+                showToast('已取消', 'success');
+                await loadRecharges();
+                await loadOverview();
+            } else {
+                showToast(result.msg, 'error');
+            }
+        } catch (error) {
+            showToast(error.message, 'error');
+        }
+    }
+
+    function getRechargeStatusText(status) {
+        const map = {
+            'pending': '待完成',
+            'completed': '已完成',
+            'failed': '失败',
+            'cancelled': '已取消'
+        };
+        return map[status] || status;
+    }
+
+    function getRechargeStatusBadge(status) {
+        const map = {
+            'pending': 'badge-warning',
+            'completed': 'badge-success',
+            'failed': 'badge-danger',
+            'cancelled': 'badge-info'
+        };
+        return map[status] || 'badge-info';
     }
 </script>
 {% endblock %}

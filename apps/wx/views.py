@@ -17,10 +17,10 @@ from apps.employee.models import Employee, EmployeeSkill, EmployeeSkillRelation,
 from apps.order.models import Order, OrderMember, OrderComment, OrderPrice, OrderStatus, SupportTicket, OrderCandidate
 from apps.order.comment_utils import create_order_comment_with_retry
 from apps.notice.models import Notice, UserNotice
-from .models import WxUser, Banner, Announcement, GameCategory, Gift
+from .models import WxUser, Banner, Announcement, GameCategory, Gift, GameBanner
 from .serializers import (
     WxUserSerializer, BannerSerializer, AnnouncementSerializer,
-    GameCategorySerializer, GiftSerializer
+    GameCategorySerializer, GiftSerializer, GameBannerSerializer
 )
 
 
@@ -796,6 +796,16 @@ def game_list(request):
     """游戏分类列表（与首页共用）"""
     games = GameCategory.objects.filter(status=True, is_deleted=False).order_by('sort', 'id')
     return success_response(GameCategorySerializer(games, many=True, context={'request': request}).data)
+
+
+@api_view(['GET'])
+@permission_classes([AllowAny])
+def game_banners(request, game_id):
+    """获取指定游戏的轮播图"""
+    banners = GameBanner.objects.filter(
+        game_id=game_id, status=True, is_deleted=False
+    ).order_by('sort', 'id')[:5]
+    return success_response(GameBannerSerializer(banners, many=True, context={'request': request}).data)
 
 
 # ============ 陪玩师模块 ============

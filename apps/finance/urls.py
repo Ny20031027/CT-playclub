@@ -2,7 +2,7 @@ from django.urls import path, include
 from rest_framework.routers import DefaultRouter
 from .views import (
     WalletViewSet, TransactionViewSet, SettlementViewSet,
-    SettlementDetailViewSet, SalaryViewSet, WithdrawViewSet,
+    SettlementDetailViewSet, SalaryViewSet, WithdrawViewSet, RechargeViewSet,
     finance_overview
 )
 
@@ -13,6 +13,7 @@ router.register(r'settlements', SettlementViewSet, basename='settlement')
 router.register(r'settlement-details', SettlementDetailViewSet, basename='settlement-detail')
 router.register(r'salaries', SalaryViewSet, basename='salary')
 router.register(r'withdraws', WithdrawViewSet, basename='withdraw')
+router.register(r'recharges', RechargeViewSet, basename='recharge')
 
 urlpatterns = [
     path('overview/', finance_overview),
