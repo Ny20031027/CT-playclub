@@ -38,6 +38,11 @@ class GameCategoryViewSet(BaseModelViewSet):
     ordering_fields = ['sort', 'id']
     permission_classes = [AllowAny]
 
+    def list(self, request, *args, **kwargs):
+        queryset = self.filter_queryset(self.get_queryset())
+        serializer = self.get_serializer(queryset, many=True)
+        return success_response({'results': serializer.data})
+
 # 微信小程序配置 - 需要在 settings.py 或环境变量中配置
 WX_APPID = getattr(settings, 'WX_APPID', '')
 WX_SECRET = getattr(settings, 'WX_SECRET', '')
@@ -1314,17 +1319,29 @@ def create_self_service_order(request):
     matching_rules.sort(key=lambda item: (item[0], item[1]), reverse=True)
 
     if matching_rules:
-        unit_price = matching_rules[0][2].unit_price
-        # SKU 中若使用 any 的通用规则且用户选了具体性别，仍需加性别加价
-        if matching_rules[0][2].gender_requirement == 'any':
-            unit_price = Decimal(unit_price) + gender_price_delta
-        price_source = 'sku'
+        sku_unit_price = matching_rules[0][2].unit_price
+        # SKU 规则价若等于 base_price（视为未配置），走公式兜底
+        if Decimal(str(sku_unit_price)) > Decimal(str(gameplay.base_price)):
+            unit_price = Decimal(str(sku_unit_price))
+            if matching_rules[0][2].gender_requirement == 'any':
+                unit_price += gender_price_delta
+            # 双陪：规则未单独配置价格时仍需 ×2
+            if companion_type == 'double':
+                unit_price *= 2
+            price_source = 'sku'
+        else:
+            unit_price = gameplay.base_price + level.price_delta + service.price_delta + gender_price_delta
+            if difficulty:
+                unit_price += difficulty.price_delta
+            if companion_type == 'double':
+                unit_price *= 2
+            price_source = 'formula'
     else:
-        if companion_type == 'double':
-            return error_response(msg='该双陪组合尚未配置价格，请选择其他规格')
         unit_price = gameplay.base_price + level.price_delta + service.price_delta + gender_price_delta
         if difficulty:
             unit_price += difficulty.price_delta
+        if companion_type == 'double':
+            unit_price *= 2
         price_source = 'formula'
 
     unit_price = Decimal(unit_price).quantize(Decimal('0.01'), rounding=ROUND_HALF_UP)
