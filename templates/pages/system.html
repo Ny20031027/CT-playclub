@@ -2413,6 +2413,7 @@
         document.getElementById('selfServiceSkillSelfService').checked = true;
         document.getElementById('selfServiceSkillStatus').checked = true;
         selfServiceGameplays = [];
+        addSelfServiceGameplay();
         renderSelfServiceGameplays();
         switchSelfServiceEditTab('basic', document.querySelector('#selfServiceEditTabs .tab-item'));
         showModal('selfServiceSkillModal');
@@ -2787,6 +2788,7 @@
     async function saveSelfServiceSkill() {
         var data = collectSelfServiceFormData();
         if (!data.name) { showToast('请输入技能名称', 'error'); return; }
+        if (data.gameplays.length === 0) { showToast('请至少添加一个玩法', 'error'); return; }
         for (var i = 0; i < data.gameplays.length; i++) {
             if (!data.gameplays[i].name) {
                 showToast('第 ' + (i + 1) + ' 个玩法名称不能为空', 'error');

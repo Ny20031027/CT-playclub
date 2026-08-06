@@ -355,9 +355,13 @@ class EmployeeSkillViewSet(BaseModelViewSet):
     def create(self, request, *args, **kwargs):
         levels_data = request.data.get('levels', [])
         gameplays_data = request.data.get('gameplays', [])
+        self_service_enabled = request.data.get('self_service_enabled', False)
         name = request.data.get('name', '')
         if name:
             EmployeeSkill.objects.filter(name=name, is_deleted=True).delete()
+
+        if self_service_enabled and (not gameplays_data or len(gameplays_data) == 0):
+            raise serializers.ValidationError({'gameplays': '启用自助下单时必须至少添加一个玩法'})
 
         serializer = self.get_serializer(data=request.data)
         serializer.is_valid(raise_exception=True)
@@ -381,6 +385,15 @@ class EmployeeSkillViewSet(BaseModelViewSet):
         instance = self.get_object()
         levels_data = request.data.get('levels', None)
         gameplays_data = request.data.get('gameplays', None)
+        self_service_enabled = request.data.get('self_service_enabled', instance.self_service_enabled)
+
+        if self_service_enabled and gameplays_data is not None and len(gameplays_data) == 0:
+            raise serializers.ValidationError({'gameplays': '启用自助下单时必须至少添加一个玩法'})
+        if self_service_enabled and gameplays_data is None:
+            existing_count = instance.self_service_gameplays.count()
+            if existing_count == 0:
+                raise serializers.ValidationError({'gameplays': '启用自助下单时必须至少添加一个玩法'})
+
         serializer = self.get_serializer(instance, data=request.data, partial=partial)
         serializer.is_valid(raise_exception=True)
         skill = serializer.save()
