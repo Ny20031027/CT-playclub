@@ -7,7 +7,7 @@ from django.utils import timezone
 from django.conf import settings
 from django.db import connection
 from django.db import transaction
-from django.db.models import Q
+from django.db.models import Q, Sum, Count
 from rest_framework import viewsets, status
 from rest_framework.decorators import api_view, permission_classes, action
 from rest_framework.permissions import AllowAny, IsAuthenticated
@@ -4515,3 +4515,106 @@ def toggle_work_status(request):
         'work_status': new_status,
         'work_status_display': '上班中' if new_status == 'on_duty' else '下班中',
     })
+
+
+@api_view(['GET'])
+@permission_classes([AllowAny])
+def game_ranking(request):
+    """游戏分类排行榜 - 接单榜和豪气榜"""
+    from apps.customer.models import Customer
+
+    game_id = request.GET.get('game_id')
+    rank_type = request.GET.get('type', 'order')  # order=接单榜, spending=豪气榜
+    limit = int(request.GET.get('limit', 50))
+
+    if not game_id:
+        return error_response(msg='缺少游戏分类参数')
+
+    # 获取游戏分类对应的技能ID列表
+    skill_ids = EmployeeSkill.objects.filter(
+        game_category_id=game_id,
+        status=True,
+        is_deleted=False
+    ).values_list('id', flat=True)
+
+    if not skill_ids:
+        return success_response({'order_list': [], 'spending_list': [], 'game_id': game_id})
+
+    result = {'game_id': game_id}
+
+    # 接单榜: 接单数最多的打手
+    order_members = OrderMember.objects.filter(
+        is_deleted=False,
+        skill_id__in=skill_ids,
+        status__in=['completed'],
+    ).values('employee_id').annotate(
+        order_count=Count('id')
+    ).order_by('-order_count')[:limit]
+
+    employee_ids = [m['employee_id'] for m in order_members if m['employee_id']]
+    employees_map = {}
+    if employee_ids:
+        emps = Employee.objects.filter(id__in=employee_ids, is_deleted=False)
+        for emp in emps:
+            employees_map[emp.id] = emp
+
+    order_list = []
+    for idx, member in enumerate(order_members, 1):
+        emp_id = member['employee_id']
+        emp = employees_map.get(emp_id)
+        if emp:
+            order_list.append({
+                'rank': idx,
+                'employee_id': emp.id,
+                'name': emp.nickname or '未知',
+                'avatar': employee_avatar_url(emp) if emp.avatar else '',
+                'order_count': member['order_count'],
+                'level': emp.level or '',
+                'level_num': emp.level_num or 0,
+            })
+    result['order_list'] = order_list
+
+    # 豪气榜: 消费累计金额最多的客户
+    orders = Order.objects.filter(
+        is_deleted=False,
+        skill_id__in=skill_ids,
+        status__in=['completed', 'reviewed'],
+    ).values('customer_id').annotate(
+        total_amount=Sum('pay_amount')
+    ).order_by('-total_amount')[:limit]
+
+    customer_ids = [o['customer_id'] for o in orders if o['customer_id']]
+    customers_map = {}
+    if customer_ids:
+        customers = Customer.objects.filter(id__in=customer_ids, is_deleted=False)
+        for cust in customers:
+            customers_map[cust.id] = cust
+
+    spending_list = []
+    for idx, order_data in enumerate(orders, 1):
+        cust_id = order_data['customer_id']
+        cust = customers_map.get(cust_id)
+        if cust:
+            # Customer.avatar 是 CharField，直接取 URL，若为空再尝试从关联 user 获取
+            cust_avatar = cust.avatar or ''
+            if not cust_avatar and cust.user:
+                try:
+                    cust_avatar = field_file_url(cust.user.avatar) or ''
+                except Exception:
+                    cust_avatar = ''
+            spending_list.append({
+                'rank': idx,
+                'customer_id': cust.id,
+                'name': cust.nickname or (cust.user.nickname if cust.user else '') or '匿名用户',
+                'avatar': cust_avatar,
+                'total_amount': float(order_data['total_amount'] or 0),
+            })
+    result['spending_list'] = spending_list
+
+    # 根据请求类型返回对应榜单
+    if rank_type == 'order':
+        return success_response({'list': order_list, 'game_id': game_id, 'rank_type': 'order'})
+    elif rank_type == 'spending':
+        return success_response({'list': spending_list, 'game_id': game_id, 'rank_type': 'spending'})
+    else:
+        return success_response(result)

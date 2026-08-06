@@ -92,4 +92,7 @@ urlpatterns = [
     # 打手数据看板
     path('dasher/dashboard/', views.dasher_dashboard, name='wx-dasher-dashboard'),
     path('work-status/toggle/', views.toggle_work_status, name='wx-toggle-work-status'),
+
+    # 排行榜
+    path('game-ranking/', views.game_ranking, name='wx-game-ranking'),
 ]
