@@ -1,5 +1,6 @@
 from rest_framework import serializers
 from apps.common.media import build_media_url
+from apps.wx.models import GameCategory
 from .models import (
     Employee, EmployeeSkill, EmployeeTag, EmployeeWallet,
     EmployeeContract, EmployeeStatus, EmployeeSkillRelation, SkillLevel,
@@ -78,6 +79,9 @@ class SkillGameplaySerializer(serializers.ModelSerializer):
 
 
 class EmployeeSkillSerializer(serializers.ModelSerializer):
+    game_category = serializers.PrimaryKeyRelatedField(
+        queryset=GameCategory.objects.all(), required=False, allow_null=True
+    )
     game_category_id = serializers.IntegerField(source='game_category.id', read_only=True)
     game_category_name = serializers.CharField(source='game_category.name', read_only=True, default='')
     levels = SkillLevelSerializer(many=True, read_only=True)
@@ -90,6 +94,26 @@ class EmployeeSkillSerializer(serializers.ModelSerializer):
                   'description', 'trial_mode', 'order_notice', 'remark_placeholder',
                   'self_service_enabled', 'levels', 'gameplays', 'created_at']
         read_only_fields = ['id', 'created_at']
+
+    def create(self, validated_data):
+        # Sync category field from game_category name for backwards compatibility
+        game_category = validated_data.get('game_category')
+        if game_category:
+            validated_data['category'] = game_category.name
+        elif not validated_data.get('category'):
+            validated_data['category'] = ''
+        return super().create(validated_data)
+
+    def update(self, instance, validated_data):
+        # Sync category field from game_category name for backwards compatibility
+        if 'game_category' in validated_data:
+            game_category = validated_data['game_category']
+            if game_category:
+                validated_data['category'] = game_category.name
+            elif validated_data['game_category'] is None:
+                # Allow clearing the game_category association; keep existing category or empty it
+                pass
+        return super().update(instance, validated_data)
 
 
 class EmployeeTagSerializer(serializers.ModelSerializer):

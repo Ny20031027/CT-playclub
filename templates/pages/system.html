@@ -2425,6 +2425,7 @@
 
             selfServiceGameplays = (s.gameplays || []).map(function (gp) {
                 return {
+                    id: gp.id || null,
                     name: gp.name || '',
                     description: gp.description || '',
                     difficulty_enabled: !!gp.difficulty_enabled,
@@ -2794,6 +2795,7 @@
             status: document.getElementById('selfServiceSkillStatus').checked,
             gameplays: selfServiceGameplays.map(function (gp) {
                 return {
+                    id: gp.id || null,
                     name: (gp.name || '').trim(),
                     description: gp.description || '',
                     difficulty_enabled: !!gp.difficulty_enabled,
