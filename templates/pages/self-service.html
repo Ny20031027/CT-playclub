@@ -99,7 +99,9 @@
                     </div>
                     <div class="form-group">
                         <label>分类</label>
-                        <input type="text" id="skillCategory" placeholder="如：FPS">
+                        <select id="skillCategory">
+                            <option value="">-- 选择品类分类 --</option>
+                        </select>
                     </div>
                     <div class="form-group">
                         <label>排序</label>
@@ -165,7 +167,9 @@
 <script>
 (function () {
     var API = '/employee/skills/';
+    var GAME_CATEGORY_API = '/system/game-categories/';
     var skillListCache = [];
+    var gameCategoryCache = [];
     var editingSkillId = null;
     var gameplays = [];
 
@@ -181,6 +185,26 @@
         return values.map(function (v, i) {
             return '<option value="' + v + '"' + (v === current ? ' selected' : '') + '>' + labels[i] + '</option>';
         }).join('');
+    }
+
+    function loadGameCategories() {
+        return get(GAME_CATEGORY_API).then(function (result) {
+            if (result.code === 200) {
+                gameCategoryCache = (result.data && result.data.results) || result.data || [];
+            }
+        }).catch(function () {
+            gameCategoryCache = [];
+        });
+    }
+
+    function renderCategorySelect(selectedId) {
+        var sel = document.getElementById('skillCategory');
+        var html = '<option value="">-- 选择品类分类 --</option>';
+        for (var i = 0; i < gameCategoryCache.length; i++) {
+            var c = gameCategoryCache[i];
+            html += '<option value="' + c.id + '"' + (String(c.id) === String(selectedId) ? ' selected' : '') + '>' + escHtml(c.name) + '</option>';
+        }
+        sel.innerHTML = html;
     }
 
     function loadSkills() {
@@ -202,7 +226,7 @@
         var tbody = document.getElementById('skillList');
         var kw = (document.getElementById('skillSearchInput').value || '').trim().toLowerCase();
         var list = kw ? skillListCache.filter(function (s) {
-            return (s.name || '').toLowerCase().indexOf(kw) >= 0 || (s.category || '').toLowerCase().indexOf(kw) >= 0;
+            return (s.name || '').toLowerCase().indexOf(kw) >= 0 || (s.game_category_name || s.category || '').toLowerCase().indexOf(kw) >= 0;
         }) : skillListCache;
         if (list.length === 0) {
             tbody.innerHTML = '<tr><td colspan="8" class="empty-state"><i class="fa-solid fa-inbox"></i><br>' + (kw ? '未找到匹配的技能' : '暂无技能，请点击"添加技能"') + '</td></tr>';
@@ -219,7 +243,7 @@
             return '<tr style="cursor:pointer;" onclick="editSkill(' + s.id + ')">' +
                 '<td>' + s.id + '</td>' +
                 '<td>' + escHtml(s.name) + '</td>' +
-                '<td>' + escHtml(s.category || '-') + '</td>' +
+                '<td>' + escHtml(s.game_category_name || s.category || '-') + '</td>' +
                 '<td>' + ssBadge + '</td>' +
                 '<td>' + gpCount + '</td>' +
                 '<td>' + (s.sort || 0) + '</td>' +
@@ -237,7 +261,7 @@
         document.getElementById('skillModalTitle').textContent = '添加技能';
         document.getElementById('skillId').value = '';
         document.getElementById('skillName').value = '';
-        document.getElementById('skillCategory').value = '';
+        renderCategorySelect('');
         document.getElementById('skillSort').value = '0';
         document.getElementById('skillDescription').value = '';
         document.getElementById('skillTrialMode').value = 'disabled';
@@ -263,7 +287,7 @@
             document.getElementById('skillModalTitle').textContent = '编辑技能：' + (s.name || '');
             document.getElementById('skillId').value = s.id;
             document.getElementById('skillName').value = s.name || '';
-            document.getElementById('skillCategory').value = s.category || '';
+            renderCategorySelect(s.game_category || s.game_category_id || '');
             document.getElementById('skillSort').value = (s.sort === undefined || s.sort === null) ? 0 : s.sort;
             document.getElementById('skillDescription').value = s.description || '';
             document.getElementById('skillTrialMode').value = s.trial_mode || 'disabled';
@@ -275,6 +299,7 @@
 
             gameplays = (s.gameplays || []).map(function (gp) {
                 return {
+                    id: gp.id || null,
                     name: gp.name || '',
                     description: gp.description || '',
                     difficulty_enabled: !!gp.difficulty_enabled,
@@ -547,9 +572,20 @@
     }
 
     function collectFormData() {
+        var gameCategoryId = parseInt(document.getElementById('skillCategory').value) || null;
+        var categoryName = '';
+        if (gameCategoryId) {
+            for (var i = 0; i < gameCategoryCache.length; i++) {
+                if (Number(gameCategoryCache[i].id) === gameCategoryId) {
+                    categoryName = gameCategoryCache[i].name;
+                    break;
+                }
+            }
+        }
         return {
             name: document.getElementById('skillName').value.trim(),
-            category: document.getElementById('skillCategory').value.trim(),
+            category: categoryName,
+            game_category: gameCategoryId,
             sort: parseInt(document.getElementById('skillSort').value) || 0,
             description: document.getElementById('skillDescription').value,
             trial_mode: document.getElementById('skillTrialMode').value,
@@ -560,6 +596,7 @@
             status: document.getElementById('skillStatus').checked,
             gameplays: gameplays.map(function (gp) {
                 return {
+                    id: gp.id || null,
                     name: (gp.name || '').trim(),
                     description: gp.description || '',
                     difficulty_enabled: !!gp.difficulty_enabled,
@@ -662,7 +699,10 @@
 
     function init() {
         document.getElementById('skillSearchInput').addEventListener('input', debounce(renderSkillTable, 200));
-        loadSkills();
+        loadGameCategories().then(function () {
+            renderCategorySelect('');
+            loadSkills();
+        });
     }
 
     // 暴露给 onclick 调用的函数
