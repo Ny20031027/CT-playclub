@@ -33,6 +33,17 @@ class Order(BaseModel):
         ('self_service', '自助单'),
     ], verbose_name='订单类型')
     quantity = models.IntegerField(default=1, verbose_name='人数')
+    purchase_quantity = models.DecimalField(
+        max_digits=8, decimal_places=2, default=1,
+        verbose_name='购买数量'
+    )
+    settlement_unit = models.CharField(max_length=20, blank=True, choices=[
+        ('round', '局'),
+        ('hour', '小时'),
+    ], verbose_name='结算单位')
+    self_service_snapshot = models.JSONField(
+        default=dict, blank=True, verbose_name='自助下单快照'
+    )
     locked_slots = models.IntegerField(default=0, verbose_name='已锁定席位')
     leader = models.ForeignKey('employee.Employee', on_delete=models.SET_NULL, null=True, blank=True,
                                related_name='led_orders', verbose_name='队长')

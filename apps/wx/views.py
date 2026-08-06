@@ -2,6 +2,7 @@ import json
 import re
 import datetime
 import requests
+from decimal import Decimal, InvalidOperation, ROUND_HALF_UP
 from django.utils import timezone
 from django.conf import settings
 from django.db import connection
@@ -14,7 +15,10 @@ from rest_framework_simplejwt.tokens import RefreshToken
 from apps.common.response import success_response, error_response
 from apps.common.viewsets import BaseModelViewSet
 from apps.account.models import User
-from apps.employee.models import Employee, EmployeeSkill, EmployeeSkillRelation, EmployeeTag, SkillLevel
+from apps.employee.models import (
+    Employee, EmployeeSkill, EmployeeSkillRelation, EmployeeTag, SkillLevel,
+    SkillGameplay, GameplayDifficulty, GameplayLevelOption, GameplayService,
+)
 from apps.order.models import Order, OrderMember, OrderComment, OrderPrice, OrderStatus, SupportTicket, OrderCandidate
 from apps.order.comment_utils import create_order_comment_with_retry
 from apps.notice.models import Notice, UserNotice
@@ -1066,7 +1070,7 @@ def create_order(request):
 
 @api_view(['POST'])
 @permission_classes([IsAuthenticated])
-def create_self_service_order(request):
+def create_self_service_order_legacy(request):
     """客户自助下单（支持多技能项）"""
     user = request.user
     try:
@@ -1193,6 +1197,183 @@ def create_self_service_order(request):
         'order_id': order.id,
         'order_no': order.order_no,
         'total_amount': float(order.total_amount),
+    })
+
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+@transaction.atomic
+def create_self_service_order(request):
+    """Create an order from a server-owned sellable specification."""
+    user = request.user
+    try:
+        customer = user.customer
+    except Exception:
+        from apps.customer.models import Customer
+        customer = Customer.objects.create(
+            user=user, nickname=user.nickname or f'用户{user.id}'
+        )
+
+    gameplay = SkillGameplay.objects.select_for_update().select_related(
+        'skill', 'skill__game_category'
+    ).filter(
+        id=request.data.get('gameplay_id'), status=True,
+        skill__status=True, skill__self_service_enabled=True,
+    ).first()
+    if gameplay is None:
+        return error_response(msg='该玩法不存在或已下架')
+
+    skill = gameplay.skill
+    difficulty = None
+    if gameplay.difficulty_enabled:
+        difficulty = GameplayDifficulty.objects.filter(
+            id=request.data.get('difficulty_id'), gameplay=gameplay, status=True
+        ).first()
+        if difficulty is None:
+            return error_response(msg='请选择有效的难度')
+
+    level = GameplayLevelOption.objects.filter(
+        id=request.data.get('level_id'), gameplay=gameplay, status=True
+    ).first()
+    service = GameplayService.objects.filter(
+        id=request.data.get('service_id'), gameplay=gameplay, status=True
+    ).first()
+    if level is None:
+        return error_response(msg='请选择有效的等级')
+    if service is None:
+        return error_response(msg='请选择有效的服务')
+
+    companion_type = request.data.get('companion_type', 'single')
+    allowed_companions = {
+        'single': {'single'}, 'double': {'double'}, 'both': {'single', 'double'}
+    }[gameplay.companion_mode]
+    if companion_type not in allowed_companions:
+        return error_response(msg='该玩法不支持所选陪玩类型')
+
+    try:
+        purchase_quantity = Decimal(str(request.data.get('quantity', gameplay.min_quantity)))
+    except (InvalidOperation, TypeError, ValueError):
+        return error_response(msg='请输入有效的购买数量')
+    if purchase_quantity < gameplay.min_quantity:
+        return error_response(msg=f'最低购买数量为{gameplay.min_quantity}')
+    if (purchase_quantity - gameplay.min_quantity) % gameplay.quantity_step != 0:
+        return error_response(msg=f'购买数量必须按{gameplay.quantity_step}递增')
+    if gameplay.settlement_unit == 'hour' and purchase_quantity < Decimal('0.5'):
+        return error_response(msg='按小时结算最低为0.5小时')
+    if gameplay.settlement_unit == 'round' and purchase_quantity % 1 != 0:
+        return error_response(msg='按局结算必须填写整数局数')
+
+    remark = str(request.data.get('remark', request.data.get('content', ''))).strip()
+    if gameplay.remark_required and not remark:
+        return error_response(msg='该玩法必须填写备注')
+    if len(remark) > 500:
+        return error_response(msg='备注不能超过500个字')
+
+    trial_requested = bool(request.data.get('trial_requested', False))
+    if skill.trial_mode == 'required' and not trial_requested:
+        return error_response(msg='该技能下单前必须选择试音')
+    if skill.trial_mode == 'disabled':
+        trial_requested = False
+
+    selected_names = {
+        'difficulty_name': difficulty.name if difficulty else '',
+        'level_name': level.name,
+        'service_name': service.name,
+    }
+    matching_rules = []
+    for rule in gameplay.price_rules.filter(status=True, companion_type=companion_type):
+        if all(
+            not getattr(rule, field) or getattr(rule, field) == value
+            for field, value in selected_names.items()
+        ):
+            specificity = sum(bool(getattr(rule, field)) for field in selected_names)
+            matching_rules.append((specificity, rule.id, rule))
+    matching_rules.sort(key=lambda item: (item[0], item[1]), reverse=True)
+
+    if matching_rules:
+        unit_price = matching_rules[0][2].unit_price
+        price_source = 'sku'
+    else:
+        if companion_type == 'double':
+            return error_response(msg='该双陪组合尚未配置价格，请选择其他规格')
+        unit_price = gameplay.base_price + level.price_delta + service.price_delta
+        if difficulty:
+            unit_price += difficulty.price_delta
+        price_source = 'formula'
+
+    unit_price = Decimal(unit_price).quantize(Decimal('0.01'), rounding=ROUND_HALF_UP)
+    if unit_price < 0:
+        return error_response(msg='该规格价格配置无效')
+    total_amount = (unit_price * purchase_quantity).quantize(
+        Decimal('0.01'), rounding=ROUND_HALF_UP
+    )
+    people_count = 2 if companion_type == 'double' else 1
+    duration = int(purchase_quantity * 60) if gameplay.settlement_unit == 'hour' else 0
+    game_name = skill.game_category.name if skill.game_category else skill.name
+
+    snapshot = {
+        'version': 1,
+        'skill_id': skill.id,
+        'skill_name': skill.name,
+        'gameplay_id': gameplay.id,
+        'gameplay_name': gameplay.name,
+        'difficulty_id': difficulty.id if difficulty else None,
+        'difficulty': difficulty.name if difficulty else '',
+        'level_id': level.id,
+        'level': level.name,
+        'service_id': service.id,
+        'service': service.name,
+        'gender_requirement': gameplay.gender_limit,
+        'companion_type': companion_type,
+        'people_count': people_count,
+        'settlement_type': gameplay.settlement_unit,
+        'quantity': float(purchase_quantity),
+        'unit_price': float(unit_price),
+        'total_amount': float(total_amount),
+        'price_source': price_source,
+        'trial_requested': trial_requested,
+        'remark': remark,
+    }
+
+    import random
+    order_no = (
+        f'SV{timezone.now().strftime("%Y%m%d%H%M%S")}'
+        f'{str(user.id).zfill(4)}{random.randint(1000, 9999)}'
+    )
+    order = Order.objects.create(
+        order_no=order_no,
+        customer=customer,
+        skill=skill,
+        status=OrderStatus.PUBLISHED,
+        title=f'{skill.name} · {gameplay.name}',
+        order_type='self_service',
+        duration=duration,
+        quantity=people_count,
+        purchase_quantity=purchase_quantity,
+        settlement_unit=gameplay.settlement_unit,
+        self_service_snapshot=snapshot,
+        unit_price=unit_price,
+        total_amount=total_amount,
+        pay_amount=total_amount,
+        game_id=str(skill.game_category_id or ''),
+        game_name=game_name,
+        remark=remark,
+        platform='mini_program',
+    )
+    OrderMember.objects.create(
+        order=order,
+        skill=skill,
+        unit_price=unit_price,
+        duration=duration,
+        amount=total_amount,
+        status='assigned',
+        remark=f'{gameplay.name} / {level.name} / {service.name}',
+    )
+    return success_response({
+        'order_id': order.id,
+        'order_no': order.order_no,
+        'total_amount': float(order.total_amount),
+        'snapshot': snapshot,
     })
 
 
@@ -1574,6 +1755,9 @@ def order_detail(request, order_id):
         'order_type': order.order_type,
         'duration': order.duration,
         'quantity': order.quantity,
+        'purchase_quantity': float(order.purchase_quantity),
+        'settlement_unit': order.settlement_unit,
+        'self_service_snapshot': order.self_service_snapshot,
         'locked_slots': order.locked_slots,
         'remaining_slots': remaining_slots,
         'leader_id': leader_id,
@@ -3134,6 +3318,98 @@ def get_my_skills(request):
         })
 
     return success_response(data=my_skills)
+
+
+@api_view(['GET'])
+@permission_classes([AllowAny])
+def get_self_service_catalog(request):
+    """Return only published, complete self-service projects."""
+    skills = EmployeeSkill.objects.filter(
+        status=True, self_service_enabled=True
+    ).select_related('game_category').prefetch_related(
+        'self_service_gameplays__difficulties',
+        'self_service_gameplays__level_options',
+        'self_service_gameplays__services',
+        'self_service_gameplays__price_rules',
+    ).order_by('sort', 'id')
+
+    data = []
+    for skill in skills:
+        gameplays = []
+        for gameplay in skill.self_service_gameplays.filter(status=True):
+            difficulties = [
+                {
+                    'id': item.id,
+                    'name': item.name,
+                    'price_delta': float(item.price_delta),
+                }
+                for item in gameplay.difficulties.filter(status=True)
+            ]
+            levels = [
+                {
+                    'id': item.id,
+                    'name': item.name,
+                    'description': item.description,
+                    'price_delta': float(item.price_delta),
+                }
+                for item in gameplay.level_options.filter(status=True)
+            ]
+            services = [
+                {
+                    'id': item.id,
+                    'name': item.name,
+                    'description': item.description,
+                    'price_delta': float(item.price_delta),
+                }
+                for item in gameplay.services.filter(status=True)
+            ]
+            if gameplay.difficulty_enabled and not difficulties:
+                continue
+            if not levels or not services:
+                continue
+            price_rules = [
+                {
+                    'difficulty_name': rule.difficulty_name,
+                    'level_name': rule.level_name,
+                    'service_name': rule.service_name,
+                    'companion_type': rule.companion_type,
+                    'unit_price': float(rule.unit_price),
+                }
+                for rule in gameplay.price_rules.filter(status=True)
+            ]
+            gameplays.append({
+                'id': gameplay.id,
+                'name': gameplay.name,
+                'description': gameplay.description,
+                'difficulty_enabled': gameplay.difficulty_enabled,
+                'gender_limit': gameplay.gender_limit,
+                'companion_mode': gameplay.companion_mode,
+                'settlement_unit': gameplay.settlement_unit,
+                'min_quantity': float(gameplay.min_quantity),
+                'quantity_step': float(gameplay.quantity_step),
+                'base_price': float(gameplay.base_price),
+                'remark_required': gameplay.remark_required,
+                'difficulties': difficulties,
+                'levels': levels,
+                'services': services,
+                'price_rules': price_rules,
+            })
+        if not gameplays:
+            continue
+        data.append({
+            'id': skill.id,
+            'name': skill.name,
+            'icon': str(skill.icon or ''),
+            'description': skill.description,
+            'category': skill.category,
+            'game_name': skill.game_category.name if skill.game_category else '',
+            'game_id': skill.game_category_id or 0,
+            'trial_mode': skill.trial_mode,
+            'order_notice': skill.order_notice,
+            'remark_placeholder': skill.remark_placeholder,
+            'gameplays': gameplays,
+        })
+    return success_response(data=data)
 
 
 @api_view(['GET'])

@@ -38,7 +38,8 @@ class OrderSerializer(serializers.ModelSerializer):
         model = Order
         fields = ['id', 'order_no', 'customer', 'customer_name', 'customer_avatar',
                   'skill', 'skill_name', 'status', 'status_text', 'order_type',
-                  'quantity', 'duration', 'unit_price', 'total_amount',
+                  'quantity', 'purchase_quantity', 'settlement_unit',
+                  'self_service_snapshot', 'duration', 'unit_price', 'total_amount',
                   'discount_amount', 'pay_amount', 'pay_method', 'pay_time',
                   'start_time', 'end_time', 'assign_time', 'complete_time',
                   'cancel_time', 'cancel_reason', 'assigner', 'assigner_name',
@@ -46,7 +47,7 @@ class OrderSerializer(serializers.ModelSerializer):
                   'platform', 'source', 'members', 'created_at', 'updated_at']
         read_only_fields = ['id', 'order_no', 'pay_time', 'start_time', 'end_time',
                             'assign_time', 'complete_time', 'cancel_time',
-                            'created_at', 'updated_at']
+                            'self_service_snapshot', 'created_at', 'updated_at']
 
 
 class OrderCreateSerializer(serializers.ModelSerializer):
@@ -55,7 +56,8 @@ class OrderCreateSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = Order
-        fields = ['id', 'order_no', 'customer', 'skill', 'order_type', 'quantity', 'duration',
+        fields = ['id', 'order_no', 'customer', 'skill', 'order_type', 'quantity',
+                  'purchase_quantity', 'settlement_unit', 'duration',
                   'unit_price', 'total_amount', 'discount_amount', 'pay_amount',
                   'pay_method', 'game_id', 'game_name', 'server', 'remark',
                   'customer_contact', 'platform', 'source', 'employee_ids']
