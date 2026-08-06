@@ -84,18 +84,19 @@ class CustomerViewSet(BaseModelViewSet):
 
     @action(detail=True, methods=['post'], url_path='recharge')
     def recharge(self, request, pk=None):
+        from decimal import Decimal
         customer = self.get_object()
-        amount = float(request.data.get('amount', 0) or 0)
+        amount = Decimal(str(request.data.get('amount', 0) or 0))
         if amount <= 0:
             return success_response(code=400, msg='充值金额必须大于0')
         
         # 优先使用前端传递的 coins，如果没有则根据比例计算
         coins = int(request.data.get('coins', 0) or 0)
         if coins <= 0:
-            ratio = float(request.data.get('ratio', 10) or 10)
+            ratio = Decimal(str(request.data.get('ratio', 10) or 10))
             coins = int(amount * ratio)
         else:
-            ratio = float(request.data.get('ratio', 10) or 10)
+            ratio = Decimal(str(request.data.get('ratio', 10) or 10))
         
         customer.balance += amount
         customer.coins += coins
