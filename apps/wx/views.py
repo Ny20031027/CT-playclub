@@ -1,5 +1,6 @@
 import json
 import re
+import datetime
 import requests
 from django.utils import timezone
 from django.conf import settings
@@ -3994,4 +3995,190 @@ def attendance_records(request):
         'page': page,
         'page_size': page_size,
         'pages': (total + page_size - 1) // page_size,
+    })
+
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def dasher_dashboard(request):
+    """打手首页数据统计"""
+    from django.db.models import Count, Sum
+    from apps.employee.models import Employee
+
+    user = request.user
+    related = get_related_profile_objects(user)
+    employee_obj = related['employee']
+    if not employee_obj:
+        return error_response(msg='您不是打手')
+
+    # 今日时间范围
+    today = timezone.now().date()
+    today_start = timezone.datetime.combine(today, datetime.time.min).replace(tzinfo=timezone.utc)
+    today_end = timezone.datetime.combine(today, datetime.time.max).replace(tzinfo=timezone.utc)
+
+    # ========== 全店今日订单数据 ==========
+    shop_today_orders = Order.objects.filter(
+        created_at__gte=today_start,
+        created_at__lte=today_end,
+        is_deleted=False
+    )
+    shop_order_count = shop_today_orders.count()
+    shop_pending_count = shop_today_orders.filter(status='confirming').count()
+    shop_in_progress_count = shop_today_orders.filter(status='in_progress').count()
+    shop_completed_count = shop_today_orders.filter(status__in=['completed', 'reviewed']).count()
+    shop_cancelled_count = shop_today_orders.filter(status='cancelled').count()
+    shop_total_amount = shop_today_orders.aggregate(
+        total=Sum('pay_amount')
+    )['total'] or 0
+
+    # ========== 打手接单排行 ==========
+    dasher_ranking_query = OrderMember.objects.filter(
+        is_deleted=False,
+        status__in=['confirmed', 'in_progress', 'completed', 'reviewed'],
+        created_at__gte=today_start,
+        created_at__lte=today_end,
+        employee__is_deleted=False,
+    ).values(
+        'employee_id',
+        'employee__nickname',
+        'employee__avatar',
+        'employee__level',
+        'employee__level_num',
+    ).annotate(
+        order_count=Count('id', distinct=True),
+    ).order_by('-order_count')[:10]
+
+    dasher_ranking = []
+    for idx, row in enumerate(dasher_ranking_query):
+        dasher_ranking.append({
+            'rank': idx + 1,
+            'employee_id': row['employee_id'],
+            'nickname': row['employee__nickname'] or '未命名',
+            'avatar': row['employee__avatar'] or '',
+            'level': row['employee__level'] or '',
+            'level_num': row['employee__level_num'] or 0,
+            'order_count': row['order_count'],
+            'is_me': row['employee_id'] == employee_obj.id,
+        })
+
+    # 如果当前打手不在排行中，手动计算并追加
+    if not any(row['is_me'] for row in dasher_ranking):
+        my_count = OrderMember.objects.filter(
+            is_deleted=False,
+            status__in=['confirmed', 'in_progress', 'completed', 'reviewed'],
+            created_at__gte=today_start,
+            created_at__lte=today_end,
+            employee=employee_obj,
+        ).count()
+        my_rank = dasher_ranking_query.filter(order_count__gt=my_count).count() + 1 if my_count > 0 else None
+        dasher_ranking.append({
+            'rank': my_rank or len(dasher_ranking) + 1,
+            'employee_id': employee_obj.id,
+            'nickname': employee_obj.nickname or '我',
+            'avatar': employee_obj.avatar or '',
+            'level': employee_obj.level or '',
+            'level_num': employee_obj.level_num or 0,
+            'order_count': my_count,
+            'is_me': True,
+        })
+
+    # ========== 我自己的今日接单 ==========
+    my_today_members = OrderMember.objects.filter(
+        employee=employee_obj,
+        is_deleted=False,
+        created_at__gte=today_start,
+        created_at__lte=today_end,
+    )
+    my_taken = my_today_members.count()
+    my_pending = my_today_members.filter(status='confirmed').count()
+    my_in_progress = my_today_members.filter(status='in_progress').count()
+    my_completed = my_today_members.filter(status__in=['completed', 'reviewed']).count()
+    my_total_amount = my_today_members.aggregate(
+        total=Sum('settle_amount')
+    )['total'] or 0
+
+    return success_response({
+        'shop': {
+            'order_count': shop_order_count,
+            'pending_count': shop_pending_count,
+            'in_progress_count': shop_in_progress_count,
+            'completed_count': shop_completed_count,
+            'cancelled_count': shop_cancelled_count,
+            'total_amount': float(shop_total_amount),
+        },
+        'ranking': dasher_ranking,
+        'me': {
+            'taken': my_taken,
+            'pending': my_pending,
+            'in_progress': my_in_progress,
+            'completed': my_completed,
+            'total_amount': float(my_total_amount),
+            'work_status': employee_obj.work_status,
+            'work_status_display': '上班中' if employee_obj.work_status == 'on_duty' else '下班中',
+        }
+    })
+
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def toggle_work_status(request):
+    """切换打手/客服的上下班状态"""
+    from apps.customer.models import CustomerService
+
+    user = request.user
+    related = get_related_profile_objects(user)
+    employee_obj = related['employee']
+    customer_obj = related['customer']
+
+    target_status = request.data.get('status')
+    if target_status and target_status in ('on_duty', 'off_duty'):
+        new_status = target_status
+    else:
+        # 如果没传则自动切换
+        if employee_obj and employee_obj.work_status == 'on_duty':
+            new_status = 'off_duty'
+        elif customer_obj and customer_obj.cs_profile and customer_obj.cs_profile.work_status == 'on_duty':
+            new_status = 'off_duty'
+        else:
+            new_status = 'on_duty'
+
+    if employee_obj:
+        employee_obj.work_status = new_status
+        if new_status == 'on_duty':
+            employee_obj.online_status = True
+        else:
+            employee_obj.online_status = False
+        employee_obj.save(update_fields=['work_status', 'online_status', 'updated_at'])
+
+        # 记录打卡
+        from apps.employee.models import EmployeeAttendance
+        punch_type = 'clock_in' if new_status == 'on_duty' else 'clock_out'
+        EmployeeAttendance.objects.create(
+            employee=employee_obj,
+            punch_type=punch_type,
+            punch_time=timezone.now(),
+            location=request.data.get('location') or '',
+            remark='快捷切换',
+        )
+    elif customer_obj and customer_obj.cs_profile and not customer_obj.cs_profile.is_deleted:
+        cs = customer_obj.cs_profile
+        cs.work_status = new_status
+        cs.save(update_fields=['work_status', 'updated_at'])
+
+        # 记录客服打卡
+        from apps.customer.models import CSAttendance
+        punch_type = 'clock_in' if new_status == 'on_duty' else 'clock_out'
+        CSAttendance.objects.create(
+            cs_profile=cs,
+            punch_type=punch_type,
+            punch_time=timezone.now(),
+            location=request.data.get('location') or '',
+            remark='快捷切换',
+        )
+    else:
+        return error_response(msg='您没有上下班权限')
+
+    return success_response({
+        'work_status': new_status,
+        'work_status_display': '上班中' if new_status == 'on_duty' else '下班中',
     })

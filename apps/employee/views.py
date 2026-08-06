@@ -1,13 +1,16 @@
 from django.db import transaction
 from django.db.models import Q
-from rest_framework import viewsets
+from decimal import Decimal, InvalidOperation
+from rest_framework import serializers, viewsets
 from rest_framework.decorators import action
 
 from apps.common.response import success_response
 from apps.common.viewsets import BaseModelViewSet
 from .models import (
     Employee, EmployeeSkill, EmployeeTag, EmployeeWallet,
-    EmployeeContract, EmployeeStatus, EmployeeSkillRelation, SkillLevel
+    EmployeeContract, EmployeeStatus, EmployeeSkillRelation, SkillLevel,
+    SkillGameplay, GameplayDifficulty, GameplayLevelOption,
+    GameplayService, GameplayPriceRule
 )
 from .serializers import (
     EmployeeSerializer, EmployeeSkillSerializer, EmployeeTagSerializer,
@@ -220,8 +223,137 @@ class EmployeeSkillViewSet(BaseModelViewSet):
         serializer = self.get_serializer(instance)
         return success_response(serializer.data)
 
+    @staticmethod
+    def _decimal(value, field_name):
+        try:
+            return Decimal(str(value or 0))
+        except (InvalidOperation, TypeError, ValueError):
+            raise serializers.ValidationError({field_name: '请输入有效数字'})
+
+    def _sync_gameplays(self, skill, gameplays_data):
+        if gameplays_data is None:
+            return
+        if not isinstance(gameplays_data, list):
+            raise serializers.ValidationError({'gameplays': '玩法配置必须是数组'})
+
+        names = [str(item.get('name', '')).strip() for item in gameplays_data]
+        if any(not name for name in names):
+            raise serializers.ValidationError({'gameplays': '玩法名称不能为空'})
+        if len(names) != len(set(names)):
+            raise serializers.ValidationError({'gameplays': '同一技能下玩法名称不能重复'})
+
+        kept_ids = []
+        gameplay_fields = [
+            'name', 'description', 'difficulty_enabled', 'gender_limit',
+            'companion_mode', 'settlement_unit', 'remark_required', 'sort', 'status'
+        ]
+        for index, item in enumerate(gameplays_data):
+            settlement_unit = item.get('settlement_unit', 'hour')
+            min_quantity = self._decimal(item.get('min_quantity', 1), 'min_quantity')
+            quantity_step = self._decimal(item.get('quantity_step', 1), 'quantity_step')
+            base_price = self._decimal(item.get('base_price', 0), 'base_price')
+
+            if settlement_unit == 'hour':
+                if min_quantity < Decimal('0.5'):
+                    raise serializers.ValidationError({'min_quantity': '按小时结算最低为0.5小时'})
+                if quantity_step < Decimal('0.5') or quantity_step % Decimal('0.5') != 0:
+                    raise serializers.ValidationError({'quantity_step': '小时购买步长必须是0.5的倍数'})
+            elif settlement_unit == 'round':
+                if min_quantity < 1 or min_quantity % 1 != 0 or quantity_step < 1 or quantity_step % 1 != 0:
+                    raise serializers.ValidationError({'min_quantity': '按局结算最低1局，且必须使用整数'})
+            else:
+                raise serializers.ValidationError({'settlement_unit': '不支持的结算单位'})
+
+            gameplay_id = item.get('id')
+            if gameplay_id:
+                gameplay = SkillGameplay.objects.filter(id=gameplay_id, skill=skill).first()
+                if gameplay is None:
+                    raise serializers.ValidationError({'gameplays': f'玩法ID {gameplay_id} 不属于当前技能'})
+            else:
+                gameplay = SkillGameplay(skill=skill)
+
+            for field in gameplay_fields:
+                if field in item:
+                    setattr(gameplay, field, item[field])
+            gameplay.name = names[index]
+            gameplay.description = str(item.get('description', '')).strip()
+            gameplay.min_quantity = min_quantity
+            gameplay.quantity_step = quantity_step
+            gameplay.base_price = base_price
+            gameplay.sort = item.get('sort', index)
+            gameplay.save()
+            kept_ids.append(gameplay.id)
+
+            difficulties = item.get('difficulties', []) if gameplay.difficulty_enabled else []
+            levels = item.get('levels', [])
+            services = item.get('services', [])
+            if gameplay.difficulty_enabled and not difficulties:
+                raise serializers.ValidationError({'difficulties': f'玩法“{gameplay.name}”已启用难度，请至少添加一个难度'})
+            if not levels:
+                raise serializers.ValidationError({'levels': f'玩法“{gameplay.name}”请至少添加一个等级'})
+            if not services:
+                raise serializers.ValidationError({'services': f'玩法“{gameplay.name}”请至少添加一个服务'})
+
+            option_specs = [
+                (GameplayDifficulty, difficulties, False),
+                (GameplayLevelOption, levels, True),
+                (GameplayService, services, True),
+            ]
+            for model, rows, has_description in option_specs:
+                option_names = [str(row.get('name', '')).strip() for row in rows]
+                if any(not name for name in option_names) or len(option_names) != len(set(option_names)):
+                    raise serializers.ValidationError({'gameplays': f'玩法“{gameplay.name}”的选项名称为空或重复'})
+                model.objects.filter(gameplay=gameplay).delete()
+                for option_index, row in enumerate(rows):
+                    values = {
+                        'gameplay': gameplay,
+                        'name': option_names[option_index],
+                        'price_delta': self._decimal(row.get('price_delta', 0), 'price_delta'),
+                        'sort': row.get('sort', option_index),
+                        'status': row.get('status', True),
+                    }
+                    if has_description:
+                        values['description'] = str(row.get('description', '')).strip()
+                    model.objects.create(**values)
+
+            difficulty_names = set(str(row.get('name', '')).strip() for row in difficulties)
+            level_names = set(str(row.get('name', '')).strip() for row in levels)
+            service_names = set(str(row.get('name', '')).strip() for row in services)
+            GameplayPriceRule.objects.filter(gameplay=gameplay).delete()
+            seen_rules = set()
+            for row in item.get('price_rules', []):
+                difficulty_name = str(row.get('difficulty_name', '')).strip() if gameplay.difficulty_enabled else ''
+                level_name = str(row.get('level_name', '')).strip()
+                service_name = str(row.get('service_name', '')).strip()
+                companion_type = row.get('companion_type', 'single')
+                if difficulty_name and difficulty_name not in difficulty_names:
+                    raise serializers.ValidationError({'price_rules': f'价格规则引用了不存在的难度：{difficulty_name}'})
+                if level_name and level_name not in level_names:
+                    raise serializers.ValidationError({'price_rules': f'价格规则引用了不存在的等级：{level_name}'})
+                if service_name and service_name not in service_names:
+                    raise serializers.ValidationError({'price_rules': f'价格规则引用了不存在的服务：{service_name}'})
+                if gameplay.companion_mode != 'both' and companion_type != gameplay.companion_mode:
+                    raise serializers.ValidationError({'price_rules': '价格规则陪玩类型与玩法配置不一致'})
+                key = (difficulty_name, level_name, service_name, companion_type)
+                if key in seen_rules:
+                    raise serializers.ValidationError({'price_rules': '存在重复的组合价格规则'})
+                seen_rules.add(key)
+                GameplayPriceRule.objects.create(
+                    gameplay=gameplay,
+                    difficulty_name=difficulty_name,
+                    level_name=level_name,
+                    service_name=service_name,
+                    companion_type=companion_type,
+                    unit_price=self._decimal(row.get('unit_price', 0), 'unit_price'),
+                    status=row.get('status', True),
+                )
+
+        SkillGameplay.objects.filter(skill=skill).exclude(id__in=kept_ids).delete()
+
+    @transaction.atomic
     def create(self, request, *args, **kwargs):
         levels_data = request.data.get('levels', [])
+        gameplays_data = request.data.get('gameplays', [])
         name = request.data.get('name', '')
         if name:
             EmployeeSkill.objects.filter(name=name, is_deleted=True).delete()
@@ -238,12 +370,16 @@ class EmployeeSkillViewSet(BaseModelViewSet):
                 sort=lv.get('sort', i),
             )
 
-        return success_response(serializer.data)
+        self._sync_gameplays(skill, gameplays_data)
 
+        return success_response(self.get_serializer(skill).data)
+
+    @transaction.atomic
     def update(self, request, *args, **kwargs):
         partial = kwargs.pop('partial', False)
         instance = self.get_object()
         levels_data = request.data.get('levels', None)
+        gameplays_data = request.data.get('gameplays', None)
         serializer = self.get_serializer(instance, data=request.data, partial=partial)
         serializer.is_valid(raise_exception=True)
         skill = serializer.save()
@@ -258,7 +394,9 @@ class EmployeeSkillViewSet(BaseModelViewSet):
                     sort=lv.get('sort', i),
                 )
 
-        return success_response(serializer.data)
+        self._sync_gameplays(skill, gameplays_data)
+
+        return success_response(self.get_serializer(skill).data)
 
 
 class EmployeeTagViewSet(BaseModelViewSet):

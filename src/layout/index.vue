@@ -94,6 +94,14 @@ const menuList = computed(() => {
   if (!base.find(m => m.path === '/tickets')) {
     base.splice(4, 0, { path: '/tickets', title: '售后工单', icon: 'el-icon-s-order' })
   }
+  if (userStore.userInfo.is_superuser && !base.find(m => m.path === '/self-service')) {
+    const orderIndex = base.findIndex(m => m.path === '/orders')
+    base.splice(orderIndex >= 0 ? orderIndex + 1 : 4, 0, {
+      path: '/self-service',
+      title: '自助下单配置',
+      icon: 'el-icon-setting'
+    })
+  }
   return base
 })
 

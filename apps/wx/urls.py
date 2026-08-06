@@ -87,4 +87,8 @@ urlpatterns = [
     path('attendance/records/', views.attendance_records, name='wx-attendance-records'),
     path('attendance/clock-in/', views.clock_in, name='wx-clock-in'),
     path('attendance/clock-out/', views.clock_out, name='wx-clock-out'),
+
+    # 打手数据看板
+    path('dasher/dashboard/', views.dasher_dashboard, name='wx-dasher-dashboard'),
+    path('work-status/toggle/', views.toggle_work_status, name='wx-toggle-work-status'),
 ]

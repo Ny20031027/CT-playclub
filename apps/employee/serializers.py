@@ -2,7 +2,9 @@ from rest_framework import serializers
 from apps.common.media import build_media_url
 from .models import (
     Employee, EmployeeSkill, EmployeeTag, EmployeeWallet,
-    EmployeeContract, EmployeeStatus, EmployeeSkillRelation, SkillLevel
+    EmployeeContract, EmployeeStatus, EmployeeSkillRelation, SkillLevel,
+    SkillGameplay, GameplayDifficulty, GameplayLevelOption,
+    GameplayService, GameplayPriceRule
 )
 
 
@@ -13,15 +15,77 @@ class SkillLevelSerializer(serializers.ModelSerializer):
         read_only_fields = ['id']
 
 
+class GameplayOptionSerializer(serializers.Serializer):
+    id = serializers.IntegerField(read_only=True)
+    name = serializers.CharField(max_length=80)
+    description = serializers.CharField(max_length=200, required=False, allow_blank=True)
+    price_delta = serializers.DecimalField(max_digits=10, decimal_places=2, default=0)
+    sort = serializers.IntegerField(default=0)
+    status = serializers.BooleanField(default=True)
+
+
+class GameplayPriceRuleSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = GameplayPriceRule
+        fields = [
+            'id', 'difficulty_name', 'level_name', 'service_name',
+            'companion_type', 'unit_price', 'status'
+        ]
+
+
+class SkillGameplaySerializer(serializers.ModelSerializer):
+    difficulties = serializers.SerializerMethodField()
+    levels = serializers.SerializerMethodField()
+    services = serializers.SerializerMethodField()
+    price_rules = GameplayPriceRuleSerializer(many=True, read_only=True)
+
+    class Meta:
+        model = SkillGameplay
+        fields = [
+            'id', 'name', 'description', 'difficulty_enabled', 'gender_limit',
+            'companion_mode', 'settlement_unit', 'min_quantity', 'quantity_step',
+            'base_price', 'remark_required', 'sort', 'status', 'difficulties',
+            'levels', 'services', 'price_rules'
+        ]
+
+    @staticmethod
+    def _options(queryset, include_description=False):
+        values = []
+        for item in queryset.filter(is_deleted=False).order_by('sort', 'id'):
+            row = {
+                'id': item.id,
+                'name': item.name,
+                'price_delta': item.price_delta,
+                'sort': item.sort,
+                'status': item.status,
+            }
+            if include_description:
+                row['description'] = item.description
+            values.append(row)
+        return values
+
+    def get_difficulties(self, obj):
+        return self._options(obj.difficulties)
+
+    def get_levels(self, obj):
+        return self._options(obj.level_options, include_description=True)
+
+    def get_services(self, obj):
+        return self._options(obj.services, include_description=True)
+
+
 class EmployeeSkillSerializer(serializers.ModelSerializer):
     game_category_id = serializers.IntegerField(source='game_category.id', read_only=True)
     game_category_name = serializers.CharField(source='game_category.name', read_only=True, default='')
     levels = SkillLevelSerializer(many=True, read_only=True)
+    gameplays = SkillGameplaySerializer(source='self_service_gameplays', many=True, read_only=True)
 
     class Meta:
         model = EmployeeSkill
         fields = ['id', 'name', 'category', 'game_category', 'game_category_id', 'game_category_name',
-                  'unit_price', 'icon', 'sort', 'status', 'skill_type', 'min_people', 'levels', 'created_at']
+                  'unit_price', 'icon', 'sort', 'status', 'skill_type', 'min_people',
+                  'description', 'trial_mode', 'order_notice', 'remark_placeholder',
+                  'self_service_enabled', 'levels', 'gameplays', 'created_at']
         read_only_fields = ['id', 'created_at']
 
 

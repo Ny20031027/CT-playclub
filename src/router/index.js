@@ -39,6 +39,12 @@ const routes = [
         meta: { title: '订单管理', icon: 'el-icon-s-order' }
       },
       {
+        path: 'self-service',
+        name: 'SelfServiceConfig',
+        component: () => import('@/views/self-service/index.vue'),
+        meta: { title: '自助下单配置', icon: 'el-icon-setting' }
+      },
+      {
         path: 'tickets',
         name: 'Tickets',
         component: () => import('@/views/ticket/index.vue'),
