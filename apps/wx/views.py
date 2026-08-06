@@ -3415,7 +3415,12 @@ def get_self_service_catalog(request):
                 'name': gameplay.name,
                 'description': gameplay.description,
                 'difficulty_enabled': gameplay.difficulty_enabled,
-                'gender_limit': gameplay.gender_limit,
+                # Older website builds stored male/female. Keep existing rows usable
+                # by exposing the canonical values expected by the mini program.
+                'gender_limit': {
+                    'male': 'male_only',
+                    'female': 'female_only',
+                }.get(gameplay.gender_limit, gameplay.gender_limit),
                 'male_price_delta': float(gameplay.male_price_delta),
                 'female_price_delta': float(gameplay.female_price_delta),
                 'companion_mode': gameplay.companion_mode,

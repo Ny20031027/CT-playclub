@@ -154,7 +154,10 @@
                 <el-form-item label="玩法名称" required><el-input v-model="activeGameplay.name" placeholder="如：航天" /></el-form-item>
                 <el-form-item label="服务者性别">
                   <el-select v-model="activeGameplay.gender_limit">
-                    <el-option label="不限" value="unlimited" /><el-option label="只男" value="male" /><el-option label="只女" value="female" />
+                    <el-option label="不限（不加价）" value="unlimited" />
+                    <el-option label="只男（固定）" value="male_only" />
+                    <el-option label="只女（固定）" value="female_only" />
+                    <el-option label="性别可选（可加价）" value="optional" />
                   </el-select>
                 </el-form-item>
                 <el-form-item label="陪玩类型">
@@ -162,6 +165,10 @@
                     <el-option label="只允许单陪" value="single" /><el-option label="只允许双陪" value="double" /><el-option label="单陪和双陪" value="both" />
                   </el-select>
                 </el-form-item>
+              </div>
+              <div v-if="activeGameplay.gender_limit === 'optional'" class="form-grid two">
+                <el-form-item label="选男加价"><el-input-number v-model="activeGameplay.male_price_delta" :min="0" :precision="2" /></el-form-item>
+                <el-form-item label="选女加价"><el-input-number v-model="activeGameplay.female_price_delta" :min="0" :precision="2" /></el-form-item>
               </div>
               <el-form-item label="玩法说明"><el-input v-model="activeGameplay.description" maxlength="500" show-word-limit /></el-form-item>
 
@@ -222,6 +229,9 @@
                 </el-table-column>
                 <el-table-column label="服务" min-width="150">
                   <template #default="{ row }"><el-select v-model="row.service_name" clearable placeholder="全部"><el-option v-for="item in activeGameplay.services" :key="item.name" :label="item.name" :value="item.name" /></el-select></template>
+                </el-table-column>
+                <el-table-column label="性别" width="120">
+                  <template #default="{ row }"><el-select v-model="row.gender_requirement"><el-option label="不限" value="any" /><el-option label="男" value="male" /><el-option label="女" value="female" /></el-select></template>
                 </el-table-column>
                 <el-table-column label="类型" width="120">
                   <template #default="{ row }"><el-select v-model="row.companion_type"><el-option v-for="type in companionOptions(activeGameplay)" :key="type.value" :label="type.label" :value="type.value" /></el-select></template>
@@ -292,7 +302,8 @@ const makeKey = () => `${Date.now()}-${Math.random().toString(16).slice(2)}`
 const optionRow = (description = false) => ({ _key: makeKey(), name: '', description: description ? '' : undefined, price_delta: 0, sort: 0, status: true })
 const newGameplay = () => ({
   _key: makeKey(), name: '', description: '', difficulty_enabled: false,
-  gender_limit: 'unlimited', companion_mode: 'single', settlement_unit: 'hour',
+  gender_limit: 'unlimited', male_price_delta: 0, female_price_delta: 0,
+  companion_mode: 'single', settlement_unit: 'hour',
   min_quantity: 0.5, quantity_step: 0.5, base_price: 0, remark_required: false,
   sort: 0, status: true, difficulties: [], levels: [optionRow(true)],
   services: [optionRow(true)], price_rules: []
@@ -306,12 +317,15 @@ const emptyForm = () => ({
 const clean = (value) => JSON.parse(JSON.stringify(value, (key, item) => key === '_key' ? undefined : item))
 const normalizeRow = (row, description = false) => ({ ...row, _key: makeKey(), description: description ? (row.description || '') : undefined, price_delta: Number(row.price_delta || 0) })
 const normalizeGameplay = (row) => ({
-  ...newGameplay(), ...row, _key: makeKey(), min_quantity: Number(row.min_quantity || 0),
+  ...newGameplay(), ...row,
+  gender_limit: ({ male: 'male_only', female: 'female_only' })[row.gender_limit] || row.gender_limit || 'unlimited',
+  male_price_delta: Number(row.male_price_delta || 0), female_price_delta: Number(row.female_price_delta || 0),
+  _key: makeKey(), min_quantity: Number(row.min_quantity || 0),
   quantity_step: Number(row.quantity_step || 0), base_price: Number(row.base_price || 0),
   difficulties: (row.difficulties || []).map(item => normalizeRow(item)),
   levels: (row.levels || []).map(item => normalizeRow(item, true)),
   services: (row.services || []).map(item => normalizeRow(item, true)),
-  price_rules: (row.price_rules || []).map(item => ({ ...item, _key: makeKey(), unit_price: Number(item.unit_price || 0) }))
+  price_rules: (row.price_rules || []).map(item => ({ ...item, gender_requirement: item.gender_requirement || 'any', _key: makeKey(), unit_price: Number(item.unit_price || 0) }))
 })
 
 const OptionEditor = defineComponent({
@@ -341,7 +355,7 @@ const drawerVisible = ref(false), activeStep = ref(0), activeGameplayIndex = ref
 const form = reactive(emptyForm())
 const statusOptions = [{ label: '全部', value: 'all' }, { label: '已启用', value: 'enabled' }, { label: '未启用', value: 'disabled' }]
 const trialText = { disabled: '不试音', optional: '可选试音', required: '必须试音' }
-const genderText = { unlimited: '不限', male: '只男', female: '只女' }
+const genderText = { unlimited: '不限', male_only: '只男', female_only: '只女', optional: '性别可选' }
 const filteredRows = computed(() => rows.value.filter(row => {
   const matchesKeyword = !keyword.value || `${row.name}${row.category || ''}`.toLowerCase().includes(keyword.value.toLowerCase())
   const matchesStatus = statusFilter.value === 'all' || (statusFilter.value === 'enabled' ? row.self_service_enabled : !row.self_service_enabled)
@@ -407,7 +421,7 @@ const removeOption = (rows, index) => rows.splice(index, 1)
 const toggleDifficulty = gameplay => { if (!gameplay.difficulty_enabled) { gameplay.difficulties = []; gameplay.price_rules.forEach(item => item.difficulty_name = '') } else if (!gameplay.difficulties.length) gameplay.difficulties.push(optionRow()) }
 const normalizeSettlement = gameplay => { if (gameplay.settlement_unit === 'hour') { gameplay.min_quantity = Math.max(0.5, Number(gameplay.min_quantity || 0.5)); gameplay.quantity_step = 0.5 } else { gameplay.min_quantity = Math.max(1, Math.ceil(Number(gameplay.min_quantity || 1))); gameplay.quantity_step = 1 } }
 const normalizePriceRules = gameplay => { if (gameplay.companion_mode !== 'both') gameplay.price_rules.forEach(item => item.companion_type = gameplay.companion_mode) }
-const addPriceRule = gameplay => gameplay.price_rules.push({ _key: makeKey(), difficulty_name: '', level_name: '', service_name: '', companion_type: companionOptions(gameplay)[0].value, unit_price: Number(gameplay.base_price || 0), status: true })
+const addPriceRule = gameplay => gameplay.price_rules.push({ _key: makeKey(), difficulty_name: '', level_name: '', service_name: '', gender_requirement: 'any', companion_type: companionOptions(gameplay)[0].value, unit_price: Number(gameplay.base_price || 0), status: true })
 const nextStep = () => { if (activeStep.value === 0 && !form.name.trim()) return ElMessage.warning('请先填写技能名称'); activeStep.value++ }
 const saveProject = async () => {
   if (!allValid.value) return ElMessage.warning('请先处理发布检查中的未通过项')

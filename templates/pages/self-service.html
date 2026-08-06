@@ -278,7 +278,9 @@
                     name: gp.name || '',
                     description: gp.description || '',
                     difficulty_enabled: !!gp.difficulty_enabled,
-                    gender_limit: gp.gender_limit || 'unlimited',
+                    gender_limit: gp.gender_limit === 'male' ? 'male_only' : (gp.gender_limit === 'female' ? 'female_only' : (gp.gender_limit || 'unlimited')),
+                    male_price_delta: Number(gp.male_price_delta) || 0,
+                    female_price_delta: Number(gp.female_price_delta) || 0,
                     companion_mode: gp.companion_mode || 'both',
                     settlement_unit: gp.settlement_unit || 'hour',
                     min_quantity: gp.min_quantity || 0,
@@ -359,7 +361,9 @@
             '<div class="form-group"><label>排序</label><input type="number" value="' + escAttr(gp.sort) + '" onchange="updateGp(' + idx + ',\'sort\',parseInt(this.value)||0)"></div>' +
         '</div>' +
         '<div class="form-row">' +
-            '<div class="form-group"><label>性别限制</label><select onchange="updateGp(' + idx + ',\'gender_limit\',this.value)">' + selectOpts(['unlimited', 'male', 'female'], ['不限', '仅男', '仅女'], gp.gender_limit) + '</select></div>' +
+            '<div class="form-group"><label>性别限制</label><select onchange="updateGp(' + idx + ',\'gender_limit\',this.value);renderGameplays()">' + selectOpts(['unlimited', 'male_only', 'female_only', 'optional'], ['不限（不加价）', '仅男', '仅女', '性别可选（加价）'], gp.gender_limit) + '</select></div>' +
+            (gp.gender_limit === 'optional' ? '<div class="form-group"><label>选男加价</label><input type="number" step="0.01" min="0" value="' + escAttr(gp.male_price_delta || 0) + '" onchange="updateGp(' + idx + ',\'male_price_delta\',parseFloat(this.value)||0)"></div>' +
+            '<div class="form-group"><label>选女加价</label><input type="number" step="0.01" min="0" value="' + escAttr(gp.female_price_delta || 0) + '" onchange="updateGp(' + idx + ',\'female_price_delta\',parseFloat(this.value)||0)"></div>' : '') +
             '<div class="form-group"><label>陪玩模式</label><select onchange="updateGp(' + idx + ',\'companion_mode\',this.value)">' + selectOpts(['single', 'double', 'both'], ['单人', '双人', '均可'], gp.companion_mode) + '</select></div>' +
             '<div class="form-group"><label>结算单位</label><select onchange="updateGp(' + idx + ',\'settlement_unit\',this.value)">' + selectOpts(['round', 'hour'], ['按局', '按小时'], gp.settlement_unit) + '</select></div>' +
         '</div>' +
@@ -416,13 +420,14 @@
         var ctMap = { single: '单人', double: '双人' };
         var body;
         if (rules.length === 0) {
-            body = '<tr><td colspan="6" style="text-align:center;color:#999;">暂无价格规则，请先配置难度/等级/服务后点击"重新生成"</td></tr>';
+            body = '<tr><td colspan="7" style="text-align:center;color:#999;">暂无价格规则，请先配置难度/等级/服务后点击"重新生成"</td></tr>';
         } else {
             body = rules.map(function (r, ri) {
                 return '<tr>' +
                     '<td>' + escHtml(r.difficulty_name || '-') + '</td>' +
                     '<td>' + escHtml(r.level_name || '-') + '</td>' +
                     '<td>' + escHtml(r.service_name || '-') + '</td>' +
+                    '<td>' + ({ any: '不限', male: '男', female: '女' }[r.gender_requirement || 'any']) + '</td>' +
                     '<td>' + (ctMap[r.companion_type] || r.companion_type) + '</td>' +
                     '<td><input type="number" step="0.01" min="0" value="' + escAttr(r.unit_price) + '" onchange="updatePriceRule(' + idx + ',' + ri + ',\'unit_price\',parseFloat(this.value)||0)"></td>' +
                     '<td style="text-align:center;"><input type="checkbox" ' + (r.status !== false ? 'checked' : '') + ' onchange="updatePriceRule(' + idx + ',' + ri + ',\'status\',this.checked)"></td>' +
@@ -432,8 +437,8 @@
         return '<div class="sub-section">' +
             '<div class="sub-section-title"><span>价格规则</span>' +
             '<button class="btn btn-default btn-sm" onclick="regeneratePriceRules(' + idx + ')"><i class="fa-solid fa-rotate"></i> 重新生成</button></div>' +
-            '<p class="hint">根据已配置的难度/等级/服务/陪玩类型组合生成价格行，填写每行单价。</p>' +
-            '<table class="sub-table"><thead><tr><th>难度</th><th>等级</th><th>服务</th><th style="width:90px;">陪玩类型</th><th style="width:100px;">单价</th><th style="width:60px;">启用</th></tr></thead><tbody>' + body + '</tbody></table>' +
+            '<p class="hint">根据难度/等级/服务/性别/陪玩类型生成价格行，规则价会覆盖基础价和选项加价。</p>' +
+            '<table class="sub-table"><thead><tr><th>难度</th><th>等级</th><th>服务</th><th style="width:70px;">性别</th><th style="width:90px;">陪玩类型</th><th style="width:100px;">单价</th><th style="width:60px;">启用</th></tr></thead><tbody>' + body + '</tbody></table>' +
         '</div>';
     }
 
@@ -444,7 +449,8 @@
     function addGameplay() {
         gameplays.push({
             name: '', description: '', difficulty_enabled: false,
-            gender_limit: 'unlimited', companion_mode: 'both', settlement_unit: 'hour',
+            gender_limit: 'unlimited', male_price_delta: 0, female_price_delta: 0,
+            companion_mode: 'both', settlement_unit: 'hour',
             min_quantity: 1, quantity_step: 1, base_price: 0, remark_required: false,
             sort: gameplays.length, status: true, _collapsed: false,
             difficulties: [], levels: [], services: [], price_rules: []
@@ -495,6 +501,10 @@
         if (gp.companion_mode === 'single') ctList = ['single'];
         else if (gp.companion_mode === 'double') ctList = ['double'];
         else ctList = ['single', 'double'];
+        var genderList = ['any'];
+        if (gp.gender_limit === 'unlimited' || gp.gender_limit === 'optional') genderList = ['any', 'male', 'female'];
+        else if (gp.gender_limit === 'male_only') genderList = ['male'];
+        else if (gp.gender_limit === 'female_only') genderList = ['female'];
 
         if (levels.length === 0 || services.length === 0) {
             showToast('请先配置等级和服务后再生成价格规则', 'error');
@@ -502,23 +512,30 @@
         }
         var existing = {};
         (gp.price_rules || []).forEach(function (r) {
-            existing[(r.difficulty_name || '') + '|' + (r.level_name || '') + '|' + (r.service_name || '') + '|' + r.companion_type] = r.unit_price;
+            existing[(r.difficulty_name || '') + '|' + (r.level_name || '') + '|' + (r.service_name || '') + '|' + (r.gender_requirement || 'any') + '|' + r.companion_type] = r.unit_price;
         });
         var rules = [];
         var sort = 0;
         diffs.forEach(function (d) {
             levels.forEach(function (l) {
                 services.forEach(function (s) {
-                    ctList.forEach(function (ct) {
-                        var key = (d.name || '') + '|' + l.name + '|' + s.name + '|' + ct;
-                        rules.push({
-                            difficulty_name: d.name || '',
-                            level_name: l.name,
-                            service_name: s.name,
-                            companion_type: ct,
-                            unit_price: existing[key] !== undefined ? existing[key] : (Number(gp.base_price) || 0),
-                            status: true,
-                            sort: sort++
+                    genderList.forEach(function (gender) {
+                        ctList.forEach(function (ct) {
+                            var key = (d.name || '') + '|' + l.name + '|' + s.name + '|' + gender + '|' + ct;
+                            var defaultPrice = Number(gp.base_price || 0) + Number(d.price_delta || 0) + Number(l.price_delta || 0) + Number(s.price_delta || 0);
+                            if (gender === 'male') defaultPrice += Number(gp.male_price_delta || 0);
+                            if (gender === 'female') defaultPrice += Number(gp.female_price_delta || 0);
+                            if (ct === 'double') defaultPrice *= 2;
+                            rules.push({
+                                difficulty_name: d.name || '',
+                                level_name: l.name,
+                                service_name: s.name,
+                                gender_requirement: gender,
+                                companion_type: ct,
+                                unit_price: existing[key] !== undefined ? existing[key] : Number(defaultPrice.toFixed(2)),
+                                status: true,
+                                sort: sort++
+                            });
                         });
                     });
                 });
@@ -547,6 +564,8 @@
                     description: gp.description || '',
                     difficulty_enabled: !!gp.difficulty_enabled,
                     gender_limit: gp.gender_limit || 'unlimited',
+                    male_price_delta: Number(gp.male_price_delta) || 0,
+                    female_price_delta: Number(gp.female_price_delta) || 0,
                     companion_mode: gp.companion_mode || 'both',
                     settlement_unit: gp.settlement_unit || 'hour',
                     min_quantity: Number(gp.min_quantity) || 0,
@@ -569,6 +588,7 @@
                             difficulty_name: r.difficulty_name || '',
                             level_name: r.level_name || '',
                             service_name: r.service_name || '',
+                            gender_requirement: r.gender_requirement || 'any',
                             companion_type: r.companion_type || 'single',
                             unit_price: Number(r.unit_price) || 0,
                             status: r.status !== false

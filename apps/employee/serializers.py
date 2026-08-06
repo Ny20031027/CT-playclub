@@ -29,7 +29,7 @@ class GameplayPriceRuleSerializer(serializers.ModelSerializer):
         model = GameplayPriceRule
         fields = [
             'id', 'difficulty_name', 'level_name', 'service_name',
-            'companion_type', 'unit_price', 'status'
+            'gender_requirement', 'companion_type', 'unit_price', 'status'
         ]
 
 
@@ -43,6 +43,7 @@ class SkillGameplaySerializer(serializers.ModelSerializer):
         model = SkillGameplay
         fields = [
             'id', 'name', 'description', 'difficulty_enabled', 'gender_limit',
+            'male_price_delta', 'female_price_delta',
             'companion_mode', 'settlement_unit', 'min_quantity', 'quantity_step',
             'base_price', 'remark_required', 'sort', 'status', 'difficulties',
             'levels', 'services', 'price_rules'
@@ -62,6 +63,7 @@ class SkillGameplaySerializer(serializers.ModelSerializer):
             }
             if include_description:
                 row['description'] = item.description
+                row['allowed_services'] = list(getattr(item, 'allowed_services', None) or [])
             values.append(row)
         return values
 

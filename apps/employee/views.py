@@ -249,6 +249,12 @@ class EmployeeSkillViewSet(BaseModelViewSet):
         ]
         for index, item in enumerate(gameplays_data):
             settlement_unit = item.get('settlement_unit', 'hour')
+            gender_limit = {
+                'male': 'male_only',
+                'female': 'female_only',
+            }.get(item.get('gender_limit', 'unlimited'), item.get('gender_limit', 'unlimited'))
+            if gender_limit not in ('unlimited', 'male_only', 'female_only', 'optional'):
+                raise serializers.ValidationError({'gender_limit': '不支持的服务者性别配置'})
             min_quantity = self._decimal(item.get('min_quantity', 1), 'min_quantity')
             quantity_step = self._decimal(item.get('quantity_step', 1), 'quantity_step')
             base_price = self._decimal(item.get('base_price', 0), 'base_price')
@@ -277,6 +283,7 @@ class EmployeeSkillViewSet(BaseModelViewSet):
             for field in gameplay_fields:
                 if field in item:
                     setattr(gameplay, field, item[field])
+            gameplay.gender_limit = gender_limit
             gameplay.name = names[index]
             gameplay.description = str(item.get('description', '')).strip()
             gameplay.min_quantity = min_quantity
