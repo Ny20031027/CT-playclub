@@ -1,10 +1,10 @@
 from django.contrib import admin
+from django.shortcuts import render, redirect
 from django.urls import path, include, re_path
 from django.conf import settings
 from django.conf.urls.static import static
 from django.views.static import serve
 from django.views.generic import TemplateView
-from django.shortcuts import render
 from datetime import date
 
 def login_view(request):
@@ -38,10 +38,10 @@ def cs_manage_view(request):
     return render(request, 'pages/cs-manage.html')
 
 def game_banners_view(request):
-    return render(request, 'pages/game-banners.html')
+    return redirect('/system/#gameBanner')
 
 def self_service_view(request):
-    return render(request, 'pages/self-service.html')
+    return redirect('/system/#selfService')
 
 urlpatterns = [
     path('admin/', admin.site.urls),
