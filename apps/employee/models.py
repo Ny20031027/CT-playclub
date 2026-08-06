@@ -134,6 +134,7 @@ class GameplayLevelOption(BaseModel):
     name = models.CharField(max_length=50, verbose_name='等级名称')
     description = models.CharField(max_length=200, blank=True, verbose_name='等级说明')
     price_delta = models.DecimalField(max_digits=10, decimal_places=2, default=0, verbose_name='加价')
+    is_recommended = models.BooleanField(default=False, verbose_name='推荐')
     sort = models.IntegerField(default=0, verbose_name='排序')
     status = models.BooleanField(default=True, verbose_name='状态')
 
@@ -150,6 +151,7 @@ class GameplayService(BaseModel):
     name = models.CharField(max_length=80, verbose_name='服务名称')
     description = models.CharField(max_length=200, blank=True, verbose_name='服务说明')
     price_delta = models.DecimalField(max_digits=10, decimal_places=2, default=0, verbose_name='加价')
+    is_recommended = models.BooleanField(default=False, verbose_name='推荐')
     sort = models.IntegerField(default=0, verbose_name='排序')
     status = models.BooleanField(default=True, verbose_name='状态')
 

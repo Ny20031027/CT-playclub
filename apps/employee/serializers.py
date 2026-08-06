@@ -56,6 +56,7 @@ class SkillGameplaySerializer(serializers.ModelSerializer):
                 'id': item.id,
                 'name': item.name,
                 'price_delta': item.price_delta,
+                'is_recommended': getattr(item, 'is_recommended', False),
                 'sort': item.sort,
                 'status': item.status,
             }

@@ -302,13 +302,14 @@ class EmployeeSkillViewSet(BaseModelViewSet):
             for model, rows, has_description in option_specs:
                 option_names = [str(row.get('name', '')).strip() for row in rows]
                 if any(not name for name in option_names) or len(option_names) != len(set(option_names)):
-                    raise serializers.ValidationError({'gameplays': f'玩法“{gameplay.name}”的选项名称为空或重复'})
+                    raise serializers.ValidationError({'gameplays': f'玩法"{gameplay.name}"的选项名称为空或重复'})
                 model.objects.filter(gameplay=gameplay).delete()
                 for option_index, row in enumerate(rows):
                     values = {
                         'gameplay': gameplay,
                         'name': option_names[option_index],
                         'price_delta': self._decimal(row.get('price_delta', 0), 'price_delta'),
+                        'is_recommended': row.get('is_recommended', False),
                         'sort': row.get('sort', option_index),
                         'status': row.get('status', True),
                     }

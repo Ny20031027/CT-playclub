@@ -3351,8 +3351,10 @@ def get_self_service_catalog(request):
                     'name': item.name,
                     'description': item.description,
                     'price_delta': float(item.price_delta),
+                    'is_recommended': item.is_recommended,
+                    'sort': item.sort,
                 }
-                for item in gameplay.level_options.filter(status=True)
+                for item in gameplay.level_options.filter(status=True).order_by('sort', 'id')
             ]
             services = [
                 {
@@ -3360,8 +3362,10 @@ def get_self_service_catalog(request):
                     'name': item.name,
                     'description': item.description,
                     'price_delta': float(item.price_delta),
+                    'is_recommended': item.is_recommended,
+                    'sort': item.sort,
                 }
-                for item in gameplay.services.filter(status=True)
+                for item in gameplay.services.filter(status=True).order_by('sort', 'id')
             ]
             if gameplay.difficulty_enabled and not difficulties:
                 continue

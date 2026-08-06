@@ -1,0 +1,670 @@
+{% extends 'layout.html' %}
+
+{% block content %}
+<script>
+    document.getElementById('pageTitle').textContent = '自助下单项目';
+</script>
+
+<style>
+    .modal-large { width: 900px; max-width: 95%; }
+    .modal-large .modal-body { max-height: 68vh; overflow-y: auto; }
+    .card-actions .btn-primary,
+    .modal-footer .btn-primary,
+    .btn-sm.btn-primary { width: auto; height: auto; padding: 8px 16px; font-size: 14px; }
+    .btn-sm { padding: 4px 10px; font-size: 12px; height: auto; }
+    .form-row { display: flex; gap: 15px; flex-wrap: wrap; }
+    .form-row .form-group { flex: 1; min-width: 180px; }
+    .form-group textarea,
+    .form-group select { width: 100%; padding: 8px 12px; border: 1px solid #dcdfe6; border-radius: 6px; font-size: 14px; font-family: inherit; box-sizing: border-box; }
+    .form-group textarea:focus,
+    .form-group select:focus { outline: none; border-color: #409eff; }
+    .form-group input[type="checkbox"] { width: auto; height: auto; margin-right: 6px; }
+    .checkbox-label { display: inline-flex; align-items: center; cursor: pointer; }
+    .edit-tab { padding-top: 10px; }
+
+    .gameplay-card { border: 1px solid #e4e7ed; border-radius: 8px; margin-bottom: 12px; overflow: hidden; }
+    .gameplay-card-header { display: flex; align-items: center; gap: 10px; padding: 10px 14px; background: #f5f7fa; cursor: pointer; }
+    .gameplay-card-header .gp-name-input { flex: 1; padding: 6px 10px; border: 1px solid #dcdfe6; border-radius: 4px; font-size: 14px; }
+    .gameplay-card-body { padding: 14px; }
+    .gameplay-card.collapsed .gameplay-card-body { display: none; }
+
+    .sub-section { margin-top: 16px; }
+    .sub-section-title { font-weight: 600; margin-bottom: 8px; color: #303133; display: flex; justify-content: space-between; align-items: center; }
+    .sub-table { width: 100%; border-collapse: collapse; font-size: 13px; }
+    .sub-table th, .sub-table td { padding: 6px 8px; border: 1px solid #ebeef5; }
+    .sub-table th { background: #f5f7fa; font-weight: 600; text-align: left; }
+    .sub-table input, .sub-table select { width: 100%; padding: 4px 6px; border: 1px solid #dcdfe6; border-radius: 4px; font-size: 13px; box-sizing: border-box; }
+    .sub-table input[type="checkbox"] { width: auto; }
+    .row-del { color: #f56c6c; cursor: pointer; background: none; border: none; font-size: 18px; line-height: 1; }
+    .hint { color: #909399; font-size: 12px; margin: 4px 0 8px 0; }
+    .gp-empty { text-align: center; padding: 24px; color: #909399; border: 1px dashed #dcdfe6; border-radius: 8px; }
+
+    .preview-box { padding: 14px; background: #f5f7fa; border-radius: 6px; }
+    .preview-box dl { margin: 0; }
+    .preview-box dt { font-weight: 600; color: #606266; margin-top: 10px; }
+    .preview-box dt:first-child { margin-top: 0; }
+    .preview-box dd { margin: 4px 0 0 0; color: #303133; line-height: 1.7; }
+</style>
+
+<div class="card">
+    <div class="card-header">
+        <div class="card-title">自助下单项目</div>
+        <div class="card-actions">
+            <input type="text" class="search-input" id="skillSearchInput" placeholder="搜索技能名称/分类">
+            <button class="btn btn-primary" onclick="showAddSkillModal()">
+                <i class="fa-solid fa-plus"></i> 添加技能
+            </button>
+        </div>
+    </div>
+    <div class="table-container">
+        <table>
+            <thead>
+                <tr>
+                    <th>ID</th>
+                    <th>技能名称</th>
+                    <th>分类</th>
+                    <th>自助下单</th>
+                    <th>玩法数量</th>
+                    <th>排序</th>
+                    <th>状态</th>
+                    <th>操作</th>
+                </tr>
+            </thead>
+            <tbody id="skillList">
+                <tr><td colspan="8" class="empty-state"><i class="fa-solid fa-spinner fa-spin"></i><br>加载中...</td></tr>
+            </tbody>
+        </table>
+    </div>
+</div>
+
+<div class="modal-overlay" id="skillModal">
+    <div class="modal modal-large">
+        <div class="modal-header">
+            <div class="modal-title" id="skillModalTitle">添加技能</div>
+            <div class="modal-close" onclick="hideModal('skillModal')">&times;</div>
+        </div>
+        <div class="modal-body">
+            <input type="hidden" id="skillId">
+            <div class="tabs" id="editTabs">
+                <div class="tab-item active" onclick="switchEditTab('basic', this)">基础信息</div>
+                <div class="tab-item" onclick="switchEditTab('gameplay', this)">玩法配置</div>
+                <div class="tab-item" onclick="switchEditTab('preview', this)">预览</div>
+            </div>
+
+            <div id="tab-basic" class="edit-tab">
+                <div class="form-row">
+                    <div class="form-group">
+                        <label>技能名称 *</label>
+                        <input type="text" id="skillName" placeholder="如：三角洲行动">
+                    </div>
+                    <div class="form-group">
+                        <label>分类</label>
+                        <input type="text" id="skillCategory" placeholder="如：FPS">
+                    </div>
+                    <div class="form-group">
+                        <label>排序</label>
+                        <input type="number" id="skillSort" value="0" min="0">
+                    </div>
+                </div>
+                <div class="form-group">
+                    <label>技能介绍</label>
+                    <textarea id="skillDescription" rows="3" placeholder="技能详细介绍"></textarea>
+                </div>
+                <div class="form-row">
+                    <div class="form-group">
+                        <label>试音模式</label>
+                        <select id="skillTrialMode">
+                            <option value="disabled">不支持</option>
+                            <option value="optional">可选</option>
+                            <option value="required">必须</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label>最低下单人数</label>
+                        <input type="number" id="skillMinPeople" value="1" min="1">
+                    </div>
+                </div>
+                <div class="form-group">
+                    <label>下单须知</label>
+                    <textarea id="skillOrderNotice" rows="3" placeholder="下单时显示的须知内容"></textarea>
+                </div>
+                <div class="form-group">
+                    <label>备注提示</label>
+                    <input type="text" id="skillRemarkPlaceholder" placeholder="客户下单备注框的提示文字">
+                </div>
+                <div class="form-row">
+                    <div class="form-group">
+                        <label class="checkbox-label"><input type="checkbox" id="skillSelfService" checked> 启用自助下单</label>
+                    </div>
+                    <div class="form-group">
+                        <label class="checkbox-label"><input type="checkbox" id="skillStatus" checked> 启用状态</label>
+                    </div>
+                </div>
+            </div>
+
+            <div id="tab-gameplay" class="edit-tab" style="display:none;">
+                <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;">
+                    <strong>玩法列表</strong>
+                    <button class="btn btn-primary btn-sm" onclick="addGameplay()"><i class="fa-solid fa-plus"></i> 添加玩法</button>
+                </div>
+                <p class="hint">每个玩法下可配置难度/等级/服务三类选项，并基于组合生成价格规则。点击卡片头部可折叠展开。</p>
+                <div id="gameplayList"></div>
+            </div>
+
+            <div id="tab-preview" class="edit-tab" style="display:none;">
+                <div id="previewContent" class="preview-box"></div>
+            </div>
+        </div>
+        <div class="modal-footer">
+            <button class="btn btn-default" onclick="hideModal('skillModal')">取消</button>
+            <button class="btn btn-primary" onclick="saveSkill()">保存</button>
+        </div>
+    </div>
+</div>
+
+<script>
+(function () {
+    var API = '/employee/skills/';
+    var skillListCache = [];
+    var editingSkillId = null;
+    var gameplays = [];
+
+    function escAttr(v) {
+        if (v === null || v === undefined) return '';
+        return String(v).replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+    }
+    function escHtml(v) {
+        if (v === null || v === undefined) return '';
+        return String(v).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+    }
+    function selectOpts(values, labels, current) {
+        return values.map(function (v, i) {
+            return '<option value="' + v + '"' + (v === current ? ' selected' : '') + '>' + labels[i] + '</option>';
+        }).join('');
+    }
+
+    function loadSkills() {
+        var tbody = document.getElementById('skillList');
+        tbody.innerHTML = '<tr><td colspan="8" class="empty-state"><i class="fa-solid fa-spinner fa-spin"></i><br>加载中...</td></tr>';
+        get(API).then(function (result) {
+            if (result.code === 200) {
+                skillListCache = (result.data && result.data.results) || [];
+                renderSkillTable();
+            } else {
+                tbody.innerHTML = '<tr><td colspan="8" class="empty-state" style="color:#f56c6c;">' + escHtml(result.msg || '加载失败') + '</td></tr>';
+            }
+        }).catch(function (e) {
+            tbody.innerHTML = '<tr><td colspan="8" class="empty-state" style="color:#f56c6c;">加载失败：' + escHtml(e.message) + '</td></tr>';
+        });
+    }
+
+    function renderSkillTable() {
+        var tbody = document.getElementById('skillList');
+        var kw = (document.getElementById('skillSearchInput').value || '').trim().toLowerCase();
+        var list = kw ? skillListCache.filter(function (s) {
+            return (s.name || '').toLowerCase().indexOf(kw) >= 0 || (s.category || '').toLowerCase().indexOf(kw) >= 0;
+        }) : skillListCache;
+        if (list.length === 0) {
+            tbody.innerHTML = '<tr><td colspan="8" class="empty-state"><i class="fa-solid fa-inbox"></i><br>' + (kw ? '未找到匹配的技能' : '暂无技能，请点击"添加技能"') + '</td></tr>';
+            return;
+        }
+        tbody.innerHTML = list.map(function (s) {
+            var gpCount = (s.gameplays || []).length;
+            var ssBadge = s.self_service_enabled
+                ? '<span class="badge badge-success">已开启</span>'
+                : '<span class="badge badge-secondary">未开启</span>';
+            var stBadge = s.status
+                ? '<span class="badge badge-success">启用</span>'
+                : '<span class="badge badge-danger">禁用</span>';
+            return '<tr style="cursor:pointer;" onclick="editSkill(' + s.id + ')">' +
+                '<td>' + s.id + '</td>' +
+                '<td>' + escHtml(s.name) + '</td>' +
+                '<td>' + escHtml(s.category || '-') + '</td>' +
+                '<td>' + ssBadge + '</td>' +
+                '<td>' + gpCount + '</td>' +
+                '<td>' + (s.sort || 0) + '</td>' +
+                '<td>' + stBadge + '</td>' +
+                '<td onclick="event.stopPropagation()">' +
+                    '<button class="btn btn-default btn-sm" onclick="editSkill(' + s.id + ')"><i class="fa-solid fa-pen"></i> 编辑</button> ' +
+                    '<button class="btn btn-danger btn-sm" onclick="deleteSkill(' + s.id + ')"><i class="fa-solid fa-trash"></i> 删除</button>' +
+                '</td>' +
+            '</tr>';
+        }).join('');
+    }
+
+    function showAddSkillModal() {
+        editingSkillId = null;
+        document.getElementById('skillModalTitle').textContent = '添加技能';
+        document.getElementById('skillId').value = '';
+        document.getElementById('skillName').value = '';
+        document.getElementById('skillCategory').value = '';
+        document.getElementById('skillSort').value = '0';
+        document.getElementById('skillDescription').value = '';
+        document.getElementById('skillTrialMode').value = 'disabled';
+        document.getElementById('skillOrderNotice').value = '';
+        document.getElementById('skillRemarkPlaceholder').value = '';
+        document.getElementById('skillMinPeople').value = '1';
+        document.getElementById('skillSelfService').checked = true;
+        document.getElementById('skillStatus').checked = true;
+        gameplays = [];
+        renderGameplays();
+        switchEditTab('basic', document.querySelector('#editTabs .tab-item'));
+        showModal('skillModal');
+    }
+
+    function editSkill(id) {
+        get(API + id + '/').then(function (result) {
+            if (result.code !== 200) {
+                showToast(result.msg || '获取失败', 'error');
+                return;
+            }
+            var s = result.data;
+            editingSkillId = s.id;
+            document.getElementById('skillModalTitle').textContent = '编辑技能：' + (s.name || '');
+            document.getElementById('skillId').value = s.id;
+            document.getElementById('skillName').value = s.name || '';
+            document.getElementById('skillCategory').value = s.category || '';
+            document.getElementById('skillSort').value = (s.sort === undefined || s.sort === null) ? 0 : s.sort;
+            document.getElementById('skillDescription').value = s.description || '';
+            document.getElementById('skillTrialMode').value = s.trial_mode || 'disabled';
+            document.getElementById('skillOrderNotice').value = s.order_notice || '';
+            document.getElementById('skillRemarkPlaceholder').value = s.remark_placeholder || '';
+            document.getElementById('skillMinPeople').value = s.min_people || 1;
+            document.getElementById('skillSelfService').checked = !!s.self_service_enabled;
+            document.getElementById('skillStatus').checked = !!s.status;
+
+            gameplays = (s.gameplays || []).map(function (gp) {
+                return {
+                    name: gp.name || '',
+                    description: gp.description || '',
+                    difficulty_enabled: !!gp.difficulty_enabled,
+                    gender_limit: gp.gender_limit || 'unlimited',
+                    companion_mode: gp.companion_mode || 'both',
+                    settlement_unit: gp.settlement_unit || 'hour',
+                    min_quantity: gp.min_quantity || 0,
+                    quantity_step: gp.quantity_step || 0,
+                    base_price: gp.base_price || 0,
+                    remark_required: !!gp.remark_required,
+                    sort: gp.sort || 0,
+                    status: gp.status !== false,
+                    _collapsed: false,
+                    difficulties: gp.difficulties || [],
+                    levels: gp.levels || [],
+                    services: gp.services || [],
+                    price_rules: gp.price_rules || []
+                };
+            });
+            renderGameplays();
+            switchEditTab('basic', document.querySelector('#editTabs .tab-item'));
+            showModal('skillModal');
+        }).catch(function (e) {
+            showToast(e.message || '获取技能信息失败', 'error');
+        });
+    }
+
+    function deleteSkill(id) {
+        if (!confirm('确定要删除该技能吗？相关玩法和价格规则将一并删除。')) return;
+        del(API + id + '/').then(function (result) {
+            if (result.code === 200) {
+                showToast('删除成功', 'success');
+                loadSkills();
+            } else {
+                showToast(result.msg || '删除失败', 'error');
+            }
+        }).catch(function (e) {
+            showToast(e.message || '删除失败', 'error');
+        });
+    }
+
+    function switchEditTab(tab, el) {
+        document.querySelectorAll('#editTabs .tab-item').forEach(function (t) { t.classList.remove('active'); });
+        if (el) el.classList.add('active');
+        document.getElementById('tab-basic').style.display = tab === 'basic' ? 'block' : 'none';
+        document.getElementById('tab-gameplay').style.display = tab === 'gameplay' ? 'block' : 'none';
+        document.getElementById('tab-preview').style.display = tab === 'preview' ? 'block' : 'none';
+        if (tab === 'preview') renderPreview();
+    }
+
+    function renderGameplays() {
+        var container = document.getElementById('gameplayList');
+        if (gameplays.length === 0) {
+            container.innerHTML = '<div class="gp-empty"><i class="fa-solid fa-inbox"></i><br>暂无玩法，点击"添加玩法"按钮创建</div>';
+            return;
+        }
+        container.innerHTML = gameplays.map(function (gp, idx) {
+            return '<div class="gameplay-card' + (gp._collapsed ? ' collapsed' : '') + '" id="gp-card-' + idx + '">' +
+                '<div class="gameplay-card-header" onclick="toggleGameplay(' + idx + ')">' +
+                    '<i class="fa-solid fa-chevron-' + (gp._collapsed ? 'right' : 'down') + '" style="color:#909399;width:14px;"></i>' +
+                    '<span style="color:#909399;font-size:12px;">#' + (idx + 1) + '</span>' +
+                    '<input type="text" class="gp-name-input" value="' + escAttr(gp.name) + '" placeholder="玩法名称（必填）" onclick="event.stopPropagation()" onchange="updateGp(' + idx + ',\'name\',this.value)">' +
+                    '<button class="btn btn-danger btn-sm" onclick="event.stopPropagation();removeGameplay(' + idx + ')"><i class="fa-solid fa-trash"></i></button>' +
+                '</div>' +
+                '<div class="gameplay-card-body">' +
+                    buildGameplayFields(idx, gp) +
+                    buildSubSection('难度设置', idx, 'difficulties', gp) +
+                    buildSubSection('等级设置', idx, 'levels', gp) +
+                    buildSubSection('服务设置', idx, 'services', gp) +
+                    buildPriceRulesSection(idx, gp) +
+                '</div>' +
+            '</div>';
+        }).join('');
+    }
+
+    function buildGameplayFields(idx, gp) {
+        return '<div class="form-row">' +
+            '<div class="form-group"><label>描述</label><input type="text" value="' + escAttr(gp.description) + '" onchange="updateGp(' + idx + ',\'description\',this.value)"></div>' +
+            '<div class="form-group"><label>基础价格</label><input type="number" step="0.01" min="0" value="' + escAttr(gp.base_price) + '" onchange="updateGp(' + idx + ',\'base_price\',parseFloat(this.value)||0)"></div>' +
+            '<div class="form-group"><label>最低数量</label><input type="number" step="0.5" min="0" value="' + escAttr(gp.min_quantity) + '" onchange="updateGp(' + idx + ',\'min_quantity\',parseFloat(this.value)||0)"></div>' +
+            '<div class="form-group"><label>数量步进</label><input type="number" step="0.5" min="0" value="' + escAttr(gp.quantity_step) + '" onchange="updateGp(' + idx + ',\'quantity_step\',parseFloat(this.value)||0)"></div>' +
+            '<div class="form-group"><label>排序</label><input type="number" value="' + escAttr(gp.sort) + '" onchange="updateGp(' + idx + ',\'sort\',parseInt(this.value)||0)"></div>' +
+        '</div>' +
+        '<div class="form-row">' +
+            '<div class="form-group"><label>性别限制</label><select onchange="updateGp(' + idx + ',\'gender_limit\',this.value)">' + selectOpts(['unlimited', 'male', 'female'], ['不限', '仅男', '仅女'], gp.gender_limit) + '</select></div>' +
+            '<div class="form-group"><label>陪玩模式</label><select onchange="updateGp(' + idx + ',\'companion_mode\',this.value)">' + selectOpts(['single', 'double', 'both'], ['单人', '双人', '均可'], gp.companion_mode) + '</select></div>' +
+            '<div class="form-group"><label>结算单位</label><select onchange="updateGp(' + idx + ',\'settlement_unit\',this.value)">' + selectOpts(['round', 'hour'], ['按局', '按小时'], gp.settlement_unit) + '</select></div>' +
+        '</div>' +
+        '<div class="form-row">' +
+            '<div class="form-group"><label class="checkbox-label"><input type="checkbox" ' + (gp.difficulty_enabled ? 'checked' : '') + ' onchange="updateGp(' + idx + ',\'difficulty_enabled\',this.checked)"> 启用难度</label></div>' +
+            '<div class="form-group"><label class="checkbox-label"><input type="checkbox" ' + (gp.remark_required ? 'checked' : '') + ' onchange="updateGp(' + idx + ',\'remark_required\',this.checked)"> 需要备注</label></div>' +
+            '<div class="form-group"><label class="checkbox-label"><input type="checkbox" ' + (gp.status !== false ? 'checked' : '') + ' onchange="updateGp(' + idx + ',\'status\',this.checked)"> 启用该玩法</label></div>' +
+        '</div>';
+    }
+
+    function buildSubSection(title, idx, type, gp) {
+        var items = gp[type] || [];
+        var colspan = type === 'difficulties' ? 5 : 7;
+        var head, body;
+        if (type === 'difficulties') {
+            head = '<tr><th>名称</th><th style="width:100px;">加价</th><th style="width:70px;">排序</th><th style="width:60px;">启用</th><th style="width:40px;"></th></tr>';
+        } else {
+            head = '<tr><th>名称</th><th>描述</th><th style="width:90px;">加价</th><th style="width:60px;">推荐</th><th style="width:70px;">排序</th><th style="width:60px;">启用</th><th style="width:40px;"></th></tr>';
+        }
+        if (items.length === 0) {
+            body = '<tr><td colspan="' + colspan + '" style="text-align:center;color:#999;">暂无数据，点击"添加"按钮新增</td></tr>';
+        } else {
+            body = items.map(function (item, oi) {
+                if (type === 'difficulties') {
+                    return '<tr>' +
+                        '<td><input type="text" value="' + escAttr(item.name) + '" onchange="updateOption(' + idx + ',\'difficulties\',' + oi + ',\'name\',this.value)"></td>' +
+                        '<td><input type="number" step="0.01" value="' + escAttr(item.price_delta) + '" onchange="updateOption(' + idx + ',\'difficulties\',' + oi + ',\'price_delta\',parseFloat(this.value)||0)"></td>' +
+                        '<td><input type="number" value="' + escAttr(item.sort) + '" onchange="updateOption(' + idx + ',\'difficulties\',' + oi + ',\'sort\',parseInt(this.value)||0)"></td>' +
+                        '<td style="text-align:center;"><input type="checkbox" ' + (item.status !== false ? 'checked' : '') + ' onchange="updateOption(' + idx + ',\'difficulties\',' + oi + ',\'status\',this.checked)"></td>' +
+                        '<td style="text-align:center;"><button class="row-del" onclick="removeOption(' + idx + ',\'difficulties\',' + oi + ')">&times;</button></td>' +
+                    '</tr>';
+                } else {
+                    return '<tr>' +
+                        '<td><input type="text" value="' + escAttr(item.name) + '" onchange="updateOption(' + idx + ',\'' + type + '\',' + oi + ',\'name\',this.value)"></td>' +
+                        '<td><input type="text" value="' + escAttr(item.description) + '" onchange="updateOption(' + idx + ',\'' + type + '\',' + oi + ',\'description\',this.value)"></td>' +
+                        '<td><input type="number" step="0.01" value="' + escAttr(item.price_delta) + '" onchange="updateOption(' + idx + ',\'' + type + '\',' + oi + ',\'price_delta\',parseFloat(this.value)||0)"></td>' +
+                        '<td style="text-align:center;"><input type="checkbox" ' + (item.is_recommended ? 'checked' : '') + ' onchange="updateOption(' + idx + ',\'' + type + '\',' + oi + ',\'is_recommended\',this.checked)"></td>' +
+                        '<td><input type="number" value="' + escAttr(item.sort) + '" onchange="updateOption(' + idx + ',\'' + type + '\',' + oi + ',\'sort\',parseInt(this.value)||0)"></td>' +
+                        '<td style="text-align:center;"><input type="checkbox" ' + (item.status !== false ? 'checked' : '') + ' onchange="updateOption(' + idx + ',\'' + type + '\',' + oi + ',\'status\',this.checked)"></td>' +
+                        '<td style="text-align:center;"><button class="row-del" onclick="removeOption(' + idx + ',\'' + type + '\',' + oi + ')">&times;</button></td>' +
+                    '</tr>';
+                }
+            }).join('');
+        }
+        return '<div class="sub-section">' +
+            '<div class="sub-section-title"><span>' + title + '</span>' +
+            '<button class="btn btn-default btn-sm" onclick="addOption(' + idx + ',\'' + type + '\')">+ 添加</button></div>' +
+            '<table class="sub-table"><thead>' + head + '</thead><tbody>' + body + '</tbody></table>' +
+        '</div>';
+    }
+
+    function buildPriceRulesSection(idx, gp) {
+        var rules = gp.price_rules || [];
+        var ctMap = { single: '单人', double: '双人' };
+        var body;
+        if (rules.length === 0) {
+            body = '<tr><td colspan="6" style="text-align:center;color:#999;">暂无价格规则，请先配置难度/等级/服务后点击"重新生成"</td></tr>';
+        } else {
+            body = rules.map(function (r, ri) {
+                return '<tr>' +
+                    '<td>' + escHtml(r.difficulty_name || '-') + '</td>' +
+                    '<td>' + escHtml(r.level_name || '-') + '</td>' +
+                    '<td>' + escHtml(r.service_name || '-') + '</td>' +
+                    '<td>' + (ctMap[r.companion_type] || r.companion_type) + '</td>' +
+                    '<td><input type="number" step="0.01" min="0" value="' + escAttr(r.unit_price) + '" onchange="updatePriceRule(' + idx + ',' + ri + ',\'unit_price\',parseFloat(this.value)||0)"></td>' +
+                    '<td style="text-align:center;"><input type="checkbox" ' + (r.status !== false ? 'checked' : '') + ' onchange="updatePriceRule(' + idx + ',' + ri + ',\'status\',this.checked)"></td>' +
+                '</tr>';
+            }).join('');
+        }
+        return '<div class="sub-section">' +
+            '<div class="sub-section-title"><span>价格规则</span>' +
+            '<button class="btn btn-default btn-sm" onclick="regeneratePriceRules(' + idx + ')"><i class="fa-solid fa-rotate"></i> 重新生成</button></div>' +
+            '<p class="hint">根据已配置的难度/等级/服务/陪玩类型组合生成价格行，填写每行单价。</p>' +
+            '<table class="sub-table"><thead><tr><th>难度</th><th>等级</th><th>服务</th><th style="width:90px;">陪玩类型</th><th style="width:100px;">单价</th><th style="width:60px;">启用</th></tr></thead><tbody>' + body + '</tbody></table>' +
+        '</div>';
+    }
+
+    function updateGp(idx, field, value) { gameplays[idx][field] = value; }
+    function updateOption(gpIdx, type, oi, field, value) { gameplays[gpIdx][type][oi][field] = value; }
+    function updatePriceRule(gpIdx, ri, field, value) { gameplays[gpIdx].price_rules[ri][field] = value; }
+
+    function addGameplay() {
+        gameplays.push({
+            name: '', description: '', difficulty_enabled: false,
+            gender_limit: 'unlimited', companion_mode: 'both', settlement_unit: 'hour',
+            min_quantity: 1, quantity_step: 1, base_price: 0, remark_required: false,
+            sort: gameplays.length, status: true, _collapsed: false,
+            difficulties: [], levels: [], services: [], price_rules: []
+        });
+        renderGameplays();
+    }
+
+    function removeGameplay(idx) {
+        if (!confirm('确定删除该玩法及其所有选项和价格规则吗？')) return;
+        gameplays.splice(idx, 1);
+        renderGameplays();
+    }
+
+    function toggleGameplay(idx) {
+        gameplays[idx]._collapsed = !gameplays[idx]._collapsed;
+        renderGameplays();
+    }
+
+    function addOption(gpIdx, type) {
+        var nextSort = gameplays[gpIdx][type].length;
+        if (type === 'difficulties') {
+            gameplays[gpIdx].difficulties.push({ name: '', price_delta: 0, sort: nextSort, status: true });
+        } else if (type === 'levels') {
+            gameplays[gpIdx].levels.push({ name: '', description: '', price_delta: 0, is_recommended: false, sort: nextSort, status: true });
+        } else if (type === 'services') {
+            gameplays[gpIdx].services.push({ name: '', description: '', price_delta: 0, is_recommended: false, sort: nextSort, status: true });
+        }
+        renderGameplays();
+    }
+
+    function removeOption(gpIdx, type, oi) {
+        gameplays[gpIdx][type].splice(oi, 1);
+        renderGameplays();
+    }
+
+    function regeneratePriceRules(idx) {
+        var gp = gameplays[idx];
+        var diffs;
+        if (gp.difficulty_enabled) {
+            diffs = (gp.difficulties || []).filter(function (d) { return d.name && d.name.trim() && d.status !== false; });
+            if (diffs.length === 0) diffs = [{ name: '' }];
+        } else {
+            diffs = [{ name: '' }];
+        }
+        var levels = (gp.levels || []).filter(function (l) { return l.name && l.name.trim() && l.status !== false; });
+        var services = (gp.services || []).filter(function (s) { return s.name && s.name.trim() && s.status !== false; });
+        var ctList = [];
+        if (gp.companion_mode === 'single') ctList = ['single'];
+        else if (gp.companion_mode === 'double') ctList = ['double'];
+        else ctList = ['single', 'double'];
+
+        if (levels.length === 0 || services.length === 0) {
+            showToast('请先配置等级和服务后再生成价格规则', 'error');
+            return;
+        }
+        var existing = {};
+        (gp.price_rules || []).forEach(function (r) {
+            existing[(r.difficulty_name || '') + '|' + (r.level_name || '') + '|' + (r.service_name || '') + '|' + r.companion_type] = r.unit_price;
+        });
+        var rules = [];
+        var sort = 0;
+        diffs.forEach(function (d) {
+            levels.forEach(function (l) {
+                services.forEach(function (s) {
+                    ctList.forEach(function (ct) {
+                        var key = (d.name || '') + '|' + l.name + '|' + s.name + '|' + ct;
+                        rules.push({
+                            difficulty_name: d.name || '',
+                            level_name: l.name,
+                            service_name: s.name,
+                            companion_type: ct,
+                            unit_price: existing[key] !== undefined ? existing[key] : (Number(gp.base_price) || 0),
+                            status: true,
+                            sort: sort++
+                        });
+                    });
+                });
+            });
+        });
+        gp.price_rules = rules;
+        renderGameplays();
+        showToast('已生成 ' + rules.length + ' 条价格规则', 'success');
+    }
+
+    function collectFormData() {
+        return {
+            name: document.getElementById('skillName').value.trim(),
+            category: document.getElementById('skillCategory').value.trim(),
+            sort: parseInt(document.getElementById('skillSort').value) || 0,
+            description: document.getElementById('skillDescription').value,
+            trial_mode: document.getElementById('skillTrialMode').value,
+            order_notice: document.getElementById('skillOrderNotice').value,
+            remark_placeholder: document.getElementById('skillRemarkPlaceholder').value,
+            min_people: parseInt(document.getElementById('skillMinPeople').value) || 1,
+            self_service_enabled: document.getElementById('skillSelfService').checked,
+            status: document.getElementById('skillStatus').checked,
+            gameplays: gameplays.map(function (gp) {
+                return {
+                    name: (gp.name || '').trim(),
+                    description: gp.description || '',
+                    difficulty_enabled: !!gp.difficulty_enabled,
+                    gender_limit: gp.gender_limit || 'unlimited',
+                    companion_mode: gp.companion_mode || 'both',
+                    settlement_unit: gp.settlement_unit || 'hour',
+                    min_quantity: Number(gp.min_quantity) || 0,
+                    quantity_step: Number(gp.quantity_step) || 0,
+                    base_price: Number(gp.base_price) || 0,
+                    remark_required: !!gp.remark_required,
+                    sort: parseInt(gp.sort) || 0,
+                    status: gp.status !== false,
+                    difficulties: (gp.difficulties || []).filter(function (d) { return d.name && d.name.trim(); }).map(function (d) {
+                        return { name: d.name.trim(), price_delta: Number(d.price_delta) || 0, sort: parseInt(d.sort) || 0, status: d.status !== false };
+                    }),
+                    levels: (gp.levels || []).filter(function (l) { return l.name && l.name.trim(); }).map(function (l) {
+                        return { name: l.name.trim(), description: l.description || '', price_delta: Number(l.price_delta) || 0, is_recommended: !!l.is_recommended, sort: parseInt(l.sort) || 0, status: l.status !== false };
+                    }),
+                    services: (gp.services || []).filter(function (s) { return s.name && s.name.trim(); }).map(function (s) {
+                        return { name: s.name.trim(), description: s.description || '', price_delta: Number(s.price_delta) || 0, is_recommended: !!s.is_recommended, sort: parseInt(s.sort) || 0, status: s.status !== false };
+                    }),
+                    price_rules: (gp.price_rules || []).map(function (r) {
+                        return {
+                            difficulty_name: r.difficulty_name || '',
+                            level_name: r.level_name || '',
+                            service_name: r.service_name || '',
+                            companion_type: r.companion_type || 'single',
+                            unit_price: Number(r.unit_price) || 0,
+                            status: r.status !== false
+                        };
+                    })
+                };
+            }),
+            levels: []
+        };
+    }
+
+    function renderPreview() {
+        var data = collectFormData();
+        var trialMap = { disabled: '不支持', optional: '可选', required: '必须' };
+        var unitMap = { hour: '按小时', round: '按局' };
+        var gpHtml = data.gameplays.map(function (gp, i) {
+            var diffs = gp.difficulties.map(function (d) { return escHtml(d.name); }).join('、') || '-';
+            var levels = gp.levels.map(function (l) { return escHtml(l.name) + (l.is_recommended ? ' ★' : ''); }).join('、') || '-';
+            var services = gp.services.map(function (s) { return escHtml(s.name) + (s.is_recommended ? ' ★' : ''); }).join('、') || '-';
+            return '<dt>玩法 ' + (i + 1) + '：' + escHtml(gp.name || '(未命名)') + '</dt>' +
+                '<dd>基础价 ' + formatMoney(gp.base_price) + ' 元 / 结算：' + (unitMap[gp.settlement_unit] || gp.settlement_unit) +
+                ' / 难度：' + (gp.difficulty_enabled ? '启用' : '未启用') + '<br>' +
+                '难度：' + diffs + '<br>' +
+                '等级：' + levels + '<br>' +
+                '服务：' + services + '<br>' +
+                '价格规则：' + gp.price_rules.length + ' 条</dd>';
+        }).join('');
+        var ssBadge = data.self_service_enabled
+            ? '<span class="badge badge-success">已启用</span>'
+            : '<span class="badge badge-danger">未启用</span>';
+        var stBadge = data.status
+            ? '<span class="badge badge-success">启用</span>'
+            : '<span class="badge badge-danger">禁用</span>';
+        document.getElementById('previewContent').innerHTML =
+            '<dl>' +
+            '<dt>技能名称</dt><dd>' + escHtml(data.name || '(未填写)') + '</dd>' +
+            '<dt>分类</dt><dd>' + escHtml(data.category || '-') + '</dd>' +
+            '<dt>试音模式</dt><dd>' + (trialMap[data.trial_mode] || data.trial_mode) + '</dd>' +
+            '<dt>最低下单人数</dt><dd>' + data.min_people + '</dd>' +
+            '<dt>自助下单</dt><dd>' + ssBadge + '</dd>' +
+            '<dt>状态</dt><dd>' + stBadge + '</dd>' +
+            '<dt>排序</dt><dd>' + data.sort + '</dd>' +
+            '<dt>玩法数量</dt><dd>' + data.gameplays.length + '</dd>' +
+            gpHtml +
+            '</dl>';
+    }
+
+    function saveSkill() {
+        var data = collectFormData();
+        if (!data.name) { showToast('请输入技能名称', 'error'); return; }
+        for (var i = 0; i < data.gameplays.length; i++) {
+            if (!data.gameplays[i].name) {
+                showToast('第 ' + (i + 1) + ' 个玩法名称不能为空', 'error');
+                return;
+            }
+        }
+        var url = editingSkillId ? (API + editingSkillId + '/') : API;
+        var fn = editingSkillId ? put : post;
+        fn(url, data).then(function (result) {
+            if (result.code === 200) {
+                showToast(editingSkillId ? '更新成功' : '添加成功', 'success');
+                hideModal('skillModal');
+                loadSkills();
+            } else {
+                showToast(result.msg || '保存失败', 'error');
+            }
+        }).catch(function (e) {
+            showToast(e.message || '保存失败', 'error');
+        });
+    }
+
+    function init() {
+        document.getElementById('skillSearchInput').addEventListener('input', debounce(renderSkillTable, 200));
+        loadSkills();
+    }
+
+    // 暴露给 onclick 调用的函数
+    var exposed = {
+        showAddSkillModal: showAddSkillModal,
+        editSkill: editSkill,
+        deleteSkill: deleteSkill,
+        switchEditTab: switchEditTab,
+        saveSkill: saveSkill,
+        addGameplay: addGameplay,
+        toggleGameplay: toggleGameplay,
+        removeGameplay: removeGameplay,
+        updateGp: updateGp,
+        addOption: addOption,
+        removeOption: removeOption,
+        updateOption: updateOption,
+        regeneratePriceRules: regeneratePriceRules,
+        updatePriceRule: updatePriceRule
+    };
+    Object.keys(exposed).forEach(function (k) { window[k] = exposed[k]; });
+
+    init();
+})();
+</script>
+{% endblock %}
