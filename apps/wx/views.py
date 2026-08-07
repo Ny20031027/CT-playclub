@@ -1249,10 +1249,11 @@ def create_self_service_order_legacy(request):
 def create_self_service_order(request):
     """Create an order from a server-owned sellable specification."""
     user = request.user
+    from apps.customer.models import Customer
     try:
-        customer = user.customer
-    except Exception:
-        from apps.customer.models import Customer
+        # 余额校验与扣款必须锁定同一客户行，防止并发下单重复通过余额校验。
+        customer = Customer.objects.select_for_update().get(user=user)
+    except Customer.DoesNotExist:
         customer = Customer.objects.create(
             user=user, nickname=user.nickname or f'用户{user.id}'
         )
@@ -1314,6 +1315,8 @@ def create_self_service_order(request):
     try:
         purchase_quantity = Decimal(str(request.data.get('quantity', gameplay.min_quantity)))
     except (InvalidOperation, TypeError, ValueError):
+        return error_response(msg='请输入有效的购买数量')
+    if not purchase_quantity.is_finite() or gameplay.quantity_step <= 0:
         return error_response(msg='请输入有效的购买数量')
     if purchase_quantity < gameplay.min_quantity:
         return error_response(msg=f'最低购买数量为{gameplay.min_quantity}')
@@ -1455,23 +1458,12 @@ def create_self_service_order(request):
     matching_rules.sort(key=lambda item: (item[0], item[1]), reverse=True)
 
     if matching_rules:
-        sku_unit_price = matching_rules[0][2].unit_price
-        # SKU 规则价若等于 base_price（视为未配置），走公式兜底
-        if Decimal(str(sku_unit_price)) > Decimal(str(gameplay.base_price)):
-            unit_price = Decimal(str(sku_unit_price))
-            if matching_rules[0][2].gender_requirement == 'any':
-                unit_price += gender_price_delta
-            # 双陪：规则未单独配置价格时仍需 ×2
-            if companion_type == 'double':
-                unit_price *= 2
-            price_source = 'sku'
-        else:
-            unit_price = gameplay.base_price + level.price_delta + service.price_delta + gender_price_delta
-            if difficulty:
-                unit_price += difficulty.price_delta
-            if companion_type == 'double':
-                unit_price *= 2
-            price_source = 'formula'
+        # SKU 是对应单陪/双陪组合的最终固定单价，不再按双陪二次翻倍。
+        matched_rule = matching_rules[0][2]
+        unit_price = Decimal(str(matched_rule.unit_price))
+        if matched_rule.gender_requirement == 'any':
+            unit_price += gender_price_delta
+        price_source = 'sku'
     else:
         unit_price = gameplay.base_price + level.price_delta + service.price_delta + gender_price_delta
         if difficulty:
@@ -1490,6 +1482,10 @@ def create_self_service_order(request):
     total_amount = (unit_price * purchase_quantity).quantize(
         Decimal('0.01'), rounding=ROUND_HALF_UP
     )
+    coin_cost = int(
+        (total_amount * Decimal('10')).quantize(Decimal('1'), rounding=ROUND_HALF_UP)
+    )
+    charged_amount = (Decimal(coin_cost) / Decimal('10')).quantize(Decimal('0.01'))
     people_count = 2 if companion_type == 'double' else 1
     duration = int(purchase_quantity * 60) if gameplay.settlement_unit == 'hour' else 0
     game_name = skill.game_category.name if skill.game_category else skill.name
@@ -1514,6 +1510,8 @@ def create_self_service_order(request):
         'quantity': float(purchase_quantity),
         'unit_price': float(unit_price),
         'total_amount': float(total_amount),
+        'pay_amount': float(charged_amount),
+        'total_coins': coin_cost,
         'price_source': price_source,
         'trial_requested': trial_requested,
         'remark': remark,
@@ -1527,7 +1525,6 @@ def create_self_service_order(request):
     }
 
     # === 扣费前置校验：黑钻是否充足 ===
-    coin_cost = int(total_amount * 10)  # 1元 = 10黑钻
     if coin_cost > 0 and (customer.coins or 0) < coin_cost:
         return error_response(msg=f'黑钻不足，需要{coin_cost}黑钻，当前仅有{customer.coins or 0}黑钻')
 
@@ -1550,7 +1547,7 @@ def create_self_service_order(request):
         self_service_snapshot=snapshot,
         unit_price=unit_price,
         total_amount=total_amount,
-        pay_amount=total_amount,
+        pay_amount=charged_amount,
         game_id=str(skill.game_category_id or ''),
         game_name=game_name,
         remark=remark,
@@ -1561,28 +1558,29 @@ def create_self_service_order(request):
         skill=skill,
         unit_price=unit_price,
         duration=duration,
-        amount=total_amount,
+        amount=charged_amount,
         status='assigned',
         remark=f'{gameplay.name} / {level.name} / {service.name}',
     )
 
     # === 扣费逻辑：黑钻扣减 + 消费流水 + 财务 Transaction ===
+    # 所有订单（包括 0 黑钻订单）都应记录客户订单统计。
+    customer.coins = (customer.coins or 0) - coin_cost
+    customer.total_amount = (customer.total_amount or Decimal('0')) + charged_amount
+    customer.total_orders = (customer.total_orders or 0) + 1
+    customer.last_order_date = timezone.now()
+    if not customer.first_order_date:
+        customer.first_order_date = timezone.now()
+    customer.save(update_fields=['coins', 'total_amount', 'total_orders', 'last_order_date', 'first_order_date'])
+
     if coin_cost > 0:
-        # 扣减黑钻
-        customer.coins = (customer.coins or 0) - coin_cost
-        customer.total_amount = (customer.total_amount or Decimal('0')) + total_amount
-        customer.total_orders = (customer.total_orders or 0) + 1
-        customer.last_order_date = timezone.now()
-        if not customer.first_order_date:
-            customer.first_order_date = timezone.now()
-        customer.save(update_fields=['coins', 'total_amount', 'total_orders', 'last_order_date', 'first_order_date'])
 
         # 消费记录
         from apps.customer.models import CustomerConsumeRecord
         CustomerConsumeRecord.objects.create(
             customer=customer,
             order_no=order_no,
-            amount=total_amount,
+            amount=charged_amount,
             type='order',
             remark=f'自助下单 {skill.name}·{gameplay.name}',
         )
@@ -1590,8 +1588,8 @@ def create_self_service_order(request):
         # 财务流水
         from apps.finance.models import Wallet, Transaction
         wallet, _ = Wallet.objects.get_or_create(user=user, type='user')
-        wallet.balance = (wallet.balance or Decimal('0')) - total_amount
-        wallet.total_expense = (wallet.total_expense or Decimal('0')) + total_amount
+        wallet.balance = (wallet.balance or Decimal('0')) - charged_amount
+        wallet.total_expense = (wallet.total_expense or Decimal('0')) + charged_amount
         wallet.save(update_fields=['balance', 'total_expense'])
         Transaction.objects.create(
             wallet=wallet,
@@ -1599,7 +1597,7 @@ def create_self_service_order(request):
             transaction_no=f'TXN{timezone.now().strftime("%Y%m%d%H%M%S")}{user.id:04d}{order.id:04d}',
             type='expense',
             category='self_service_order',
-            amount=total_amount,
+            amount=charged_amount,
             balance_after=wallet.balance,
             remark=f'自助下单扣减 {coin_cost}黑钻',
             operator=request.user if hasattr(request, 'user') else None,
@@ -1609,6 +1607,8 @@ def create_self_service_order(request):
         'order_id': order.id,
         'order_no': order.order_no,
         'total_amount': float(order.total_amount),
+        'pay_amount': float(order.pay_amount),
+        'total_coins': coin_cost,
         'snapshot': snapshot,
     })
 
@@ -3639,6 +3639,13 @@ def get_my_skills(request):
 @permission_classes([AllowAny])
 def get_self_service_catalog(request):
     """Return only published, complete self-service projects."""
+    def price_to_coins(price):
+        return int(
+            (Decimal(str(price)) * Decimal('10')).quantize(
+                Decimal('1'), rounding=ROUND_HALF_UP
+            )
+        )
+
     skills = EmployeeSkill.objects.filter(
         status=True, self_service_enabled=True
     ).select_related('game_category').prefetch_related(
@@ -3689,7 +3696,7 @@ def get_self_service_catalog(request):
                             'name': value.name,
                             'description': value.description or '',
                             'price': float(value.price),
-                            'coin_price': round(float(value.price) * 10),
+                            'coin_price': price_to_coins(value.price),
                             'sort': value.sort,
                         }
                         for value in item.value_added_services.all()
@@ -3704,6 +3711,7 @@ def get_self_service_catalog(request):
                 continue
             price_rules = [
                 {
+                    'id': rule.id,
                     'difficulty_name': rule.difficulty_name,
                     'level_name': rule.level_name,
                     'service_name': rule.service_name,
@@ -3719,7 +3727,7 @@ def get_self_service_catalog(request):
                     'name': addon.name,
                     'description': addon.description or '',
                     'price': float(addon.price),
-                    'coin_price': round(float(addon.price) * 10),
+                    'coin_price': price_to_coins(addon.price),
                     'sort': addon.sort,
                     'value_added_services': [
                         {
@@ -3727,7 +3735,7 @@ def get_self_service_catalog(request):
                             'name': value.name,
                             'description': value.description or '',
                             'price': float(value.price),
-                            'coin_price': round(float(value.price) * 10),
+                            'coin_price': price_to_coins(value.price),
                             'sort': value.sort,
                         }
                         for value in addon.value_added_services.all()

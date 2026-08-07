@@ -8,7 +8,7 @@ from apps.customer.models import Customer
 from apps.wx.models import GameCategory
 from .models import (
     AddonValueAddedService, Employee, EmployeeGameRank, EmployeeSkill,
-    EmployeeSkillRelation, GameRank, GameplayLevelOption, GameplayService,
+    EmployeeSkillRelation, GameRank, GameplayLevelOption, GameplayPriceRule, GameplayService,
     ServiceValueAdded, ValueAddedService
 )
 from .serializers import EmployeeSkillSerializer
@@ -236,5 +236,111 @@ class SkillSystemTests(TestCase):
         self.assertEqual(snapshot['service_value_ids'], [service_value.id])
         self.assertEqual(snapshot['extra_price_delta'], 24.0)
         self.assertEqual(order_payload['data']['total_amount'], 74.0)
+        self.assertEqual(order_payload['data']['pay_amount'], 74.0)
+        self.assertEqual(order_payload['data']['total_coins'], 740)
         customer.refresh_from_db()
         self.assertEqual(customer.coins, 260)
+
+    def test_self_service_fixed_formula_double_and_coin_rounding(self):
+        EmployeeSkillViewSet()._sync_gameplays(self.manual_skill, [{
+            'name': '结算测试玩法',
+            'settlement_unit': 'hour',
+            'min_quantity': Decimal('0.5'),
+            'quantity_step': Decimal('0.5'),
+            'base_price': 80,
+            'companion_mode': 'both',
+            'levels': [{'name': '高阶', 'price_delta': 10}],
+            'services': [{'name': '陪练', 'price_delta': 20}],
+            'price_rules': [
+                {
+                    'level_name': '高阶', 'service_name': '陪练',
+                    'gender_requirement': 'any', 'companion_type': 'single',
+                    'unit_price': 70, 'status': True,
+                },
+                {
+                    'level_name': '高阶', 'service_name': '陪练',
+                    'gender_requirement': 'any', 'companion_type': 'double',
+                    'unit_price': 150, 'status': True,
+                },
+            ],
+        }])
+        self.manual_skill.self_service_enabled = True
+        self.manual_skill.save(update_fields=['self_service_enabled'])
+        customer = Customer.objects.create(
+            user=self.user, nickname='结算测试客户', coins=10000
+        )
+        gameplay = self.manual_skill.self_service_gameplays.get(name='结算测试玩法')
+        level = GameplayLevelOption.objects.get(gameplay=gameplay, name='高阶')
+        service = GameplayService.objects.get(gameplay=gameplay, name='陪练')
+
+        def create_order(companion_type, quantity=1):
+            return self.client.post('/api/wx/orders/create-self-service/', {
+                'gameplay_id': gameplay.id,
+                'level_id': level.id,
+                'service_id': service.id,
+                'companion_type': companion_type,
+                'gender_requirement': 'any',
+                'quantity': quantity,
+            }, format='json').json()
+
+        # 固定价可低于基础价，仍必须覆盖公式价。
+        single = create_order('single')
+        self.assertEqual(single['code'], 200)
+        self.assertEqual(single['data']['snapshot']['price_source'], 'sku')
+        self.assertEqual(single['data']['snapshot']['unit_price'], 70.0)
+        self.assertEqual(single['data']['total_coins'], 700)
+
+        # 双陪 SKU 已是最终单价，不应再乘 2。
+        double = create_order('double')
+        self.assertEqual(double['code'], 200)
+        self.assertEqual(double['data']['snapshot']['price_source'], 'sku')
+        self.assertEqual(double['data']['snapshot']['unit_price'], 150.0)
+        self.assertEqual(double['data']['total_coins'], 1500)
+
+        # 没有双陪 SKU 时，公式价才按双陪翻倍：(80 + 10 + 20) * 2。
+        GameplayPriceRule.objects.filter(
+            gameplay=gameplay, companion_type='double'
+        ).delete()
+        formula_double = create_order('double')
+        self.assertEqual(formula_double['code'], 200)
+        self.assertEqual(formula_double['data']['snapshot']['price_source'], 'formula')
+        self.assertEqual(formula_double['data']['snapshot']['unit_price'], 220.0)
+        self.assertEqual(formula_double['data']['total_coins'], 2200)
+
+        # 1.25元 * 1.5小时 = 1.88元，统一四舍五入为19黑钻，实付1.90元。
+        single_rule = GameplayPriceRule.objects.get(
+            gameplay=gameplay, companion_type='single'
+        )
+        single_rule.unit_price = Decimal('1.25')
+        single_rule.save(update_fields=['unit_price'])
+        rounded = create_order('single', Decimal('1.5'))
+        self.assertEqual(rounded['code'], 200)
+        self.assertEqual(rounded['data']['total_amount'], 1.88)
+        self.assertEqual(rounded['data']['pay_amount'], 1.9)
+        self.assertEqual(rounded['data']['total_coins'], 19)
+
+        # 0 元固定价也是有效 SKU；免费订单不扣黑钻，但仍计入订单数。
+        single_rule.unit_price = Decimal('0.00')
+        single_rule.save(update_fields=['unit_price'])
+        free_order = create_order('single')
+        self.assertEqual(free_order['code'], 200)
+        self.assertEqual(free_order['data']['snapshot']['price_source'], 'sku')
+        self.assertEqual(free_order['data']['total_coins'], 0)
+
+        half_coin_addon = ValueAddedService.objects.create(
+            gameplay=gameplay, name='半黑钻舍入', price=Decimal('0.05')
+        )
+        catalog = self.client.get('/api/wx/skills/self-service/').json()['data']
+        catalog_gameplay = next(
+            item for item in catalog[0]['gameplays'] if item['id'] == gameplay.id
+        )
+        catalog_addon = next(
+            item for item in catalog_gameplay['value_added_services']
+            if item['id'] == half_coin_addon.id
+        )
+        self.assertEqual(catalog_addon['coin_price'], 1)
+
+        customer.refresh_from_db()
+        self.assertEqual(customer.coins, 5581)
+        self.assertEqual(customer.total_orders, 5)
+        self.assertEqual(customer.total_amount, Decimal('441.90'))
