@@ -86,7 +86,7 @@
 
 <!-- 编辑客户弹窗 -->
 <div class="modal-overlay" id="editCustomerModal">
-    <div class="modal" style="max-width: 420px;">
+    <div class="modal" style="max-width: 600px;">
         <div class="modal-header">
             <div class="modal-title">编辑客户</div>
             <div class="modal-close" onclick="hideModal('editCustomerModal')">&times;</div>
@@ -94,19 +94,60 @@
         <div class="modal-body">
             <input type="hidden" id="editCustId">
             <div style="display:flex;gap:20px;margin-bottom:20px;">
-                <div id="editCustAvatar" style="width:60px;height:60px;border-radius:50%;background:#f0f0f0;display:flex;align-items:center;justify-content:center;font-size:24px;color:#999;"></div>
+                <div id="editCustAvatar" style="width:80px;height:80px;border-radius:50%;background:#f0f0f0;display:flex;align-items:center;justify-content:center;font-size:32px;color:#999;"></div>
                 <div style="flex:1;">
-                    <div style="font-size:15px;font-weight:600;margin-bottom:4px;" id="editCustHeader"></div>
+                    <div style="font-size:16px;font-weight:600;margin-bottom:8px;" id="editCustHeader"></div>
                     <div style="color:#909399;font-size:12px;" id="editCustMeta"></div>
                 </div>
             </div>
-            <div class="form-group">
-                <label>黑钻</label>
-                <input type="number" id="editCoins" min="0">
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">
+                <div class="form-group">
+                    <label>昵称</label>
+                    <input type="text" id="editNickname">
+                </div>
+                <div class="form-group">
+                    <label>手机号</label>
+                    <input type="tel" id="editPhone">
+                </div>
+                <div class="form-group">
+                    <label>性别</label>
+                    <select id="editGender">
+                        <option value="unknown">未知</option>
+                        <option value="male">男</option>
+                        <option value="female">女</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label>年龄</label>
+                    <input type="number" id="editAge" min="0" max="120">
+                </div>
+                <div class="form-group">
+                    <label>等级</label>
+                    <select id="editLevel"></select>
+                </div>
+                <div class="form-group">
+                    <label>状态</label>
+                    <select id="editStatus">
+                        <option value="true">正常</option>
+                        <option value="false">禁用</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label>黑钻</label>
+                    <input type="number" id="editCoins" min="0">
+                </div>
+                <div class="form-group">
+                    <label>微信号</label>
+                    <input type="text" id="editWechat">
+                </div>
+                <div class="form-group">
+                    <label>QQ号</label>
+                    <input type="text" id="editQq">
+                </div>
             </div>
             <div class="form-group">
-                <label>账户余额</label>
-                <input type="number" id="editBalance" step="0.01" min="0">
+                <label>备注</label>
+                <textarea id="editRemark" rows="2"></textarea>
             </div>
         </div>
         <div class="modal-footer">
@@ -263,14 +304,23 @@
             if (result.code === 200) {
                 const c = result.data;
                 document.getElementById('editCustId').value = c.id;
+                document.getElementById('editNickname').value = c.nickname || '';
+                document.getElementById('editPhone').value = c.phone || '';
+                document.getElementById('editGender').value = c.gender || 'unknown';
+                document.getElementById('editAge').value = c.age || '';
+                document.getElementById('editLevel').value = c.level || '';
+                document.getElementById('editStatus').value = c.status !== false ? 'true' : 'false';
                 document.getElementById('editCoins').value = c.coins || 0;
-                document.getElementById('editBalance').value = c.balance || 0;
+                document.getElementById('editWechat').value = c.wechat || '';
+                document.getElementById('editQq').value = c.qq || '';
+                document.getElementById('editRemark').value = c.remark || '';
 
                 document.getElementById('editCustHeader').textContent = c.nickname || '-';
                 const metaParts = [];
                 if (c.level_name) metaParts.push(c.level_name);
                 if (c.phone) metaParts.push(c.phone);
                 metaParts.push(`累计消费 ¥${Number(c.total_amount || 0).toFixed(2)}`);
+                metaParts.push(`黑钻 ${c.coins || 0}`);
                 metaParts.push(`订单 ${c.total_orders || 0}`);
                 document.getElementById('editCustMeta').textContent = metaParts.join(' · ');
 
@@ -293,8 +343,16 @@
     async function saveCustomer() {
         const id = document.getElementById('editCustId').value;
         const payload = {
+            nickname: document.getElementById('editNickname').value.trim(),
+            phone: document.getElementById('editPhone').value.trim(),
+            gender: document.getElementById('editGender').value,
+            age: parseInt(document.getElementById('editAge').value) || null,
+            level: parseInt(document.getElementById('editLevel').value) || null,
+            status: document.getElementById('editStatus').value === 'true',
             coins: parseInt(document.getElementById('editCoins').value) || 0,
-            balance: parseFloat(document.getElementById('editBalance').value) || 0,
+            wechat: document.getElementById('editWechat').value.trim(),
+            qq: document.getElementById('editQq').value.trim(),
+            remark: document.getElementById('editRemark').value.trim(),
         };
 
         try {
