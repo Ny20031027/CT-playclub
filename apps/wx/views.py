@@ -19,6 +19,7 @@ from apps.account.models import User
 from apps.employee.models import (
     Employee, EmployeeSkill, EmployeeSkillRelation, EmployeeTag, SkillLevel,
     SkillGameplay, GameplayDifficulty, GameplayLevelOption, GameplayService,
+    ValueAddedService, AddonValueAddedService, ServiceValueAdded,
 )
 from apps.order.models import Order, OrderMember, OrderComment, OrderPrice, OrderStatus, SupportTicket, OrderCandidate
 from apps.order.comment_utils import create_order_comment_with_retry
@@ -1335,36 +1336,76 @@ def create_self_service_order(request):
     if skill.trial_mode == 'disabled':
         trial_requested = False
 
-    # 增值服务：附加项（可选非强制）
-    addon_ids_raw = request.data.get('addon_ids') or []
-    if isinstance(addon_ids_raw, str):
-        try:
-            import json as _json
-            addon_ids_raw = _json.loads(addon_ids_raw)
-        except Exception:
-            addon_ids_raw = []
-    if not isinstance(addon_ids_raw, (list, tuple)):
-        addon_ids_raw = []
-    addon_ids = [int(x) for x in addon_ids_raw if str(x).isdigit()]
+    def parse_selected_ids(field_name):
+        raw_ids = request.data.get(field_name) or []
+        if isinstance(raw_ids, str):
+            try:
+                import json as _json
+                raw_ids = _json.loads(raw_ids)
+            except Exception:
+                raw_ids = []
+        if not isinstance(raw_ids, (list, tuple)):
+            return []
+        return list(dict.fromkeys(int(value) for value in raw_ids if str(value).isdigit()))
+
+    # 玩法附加项目、附加项目下的附加增值、服务类型增值均为可选项。
+    addon_ids = parse_selected_ids('addon_ids')
+    addon_value_ids = parse_selected_ids('addon_value_ids')
+    service_value_ids = parse_selected_ids('service_value_ids')
     selected_addons = []
-    addon_price_delta = Decimal('0')
-    if addon_ids:
-        from apps.employee.models import ValueAddedService
-        addon_qs = ValueAddedService.objects.filter(
-            gameplay=gameplay, status=True, is_deleted=False, id__in=addon_ids
-        )
-        addon_ids_seen = set()
-        for ad in addon_qs:
-            if ad.id in addon_ids_seen:
-                continue
-            addon_ids_seen.add(ad.id)
-            selected_addons.append({
-                'id': ad.id,
-                'name': ad.name,
-                'description': ad.description or '',
-                'price': float(ad.price),
+    selected_addon_values = []
+    selected_service_values = []
+    extra_price_delta = Decimal('0')
+
+    addon_qs = ValueAddedService.objects.filter(
+        gameplay=gameplay, status=True, is_deleted=False, id__in=addon_ids
+    ).order_by('sort', 'id')
+    valid_addon_ids = []
+    for addon in addon_qs:
+        valid_addon_ids.append(addon.id)
+        selected_addons.append({
+            'id': addon.id,
+            'name': addon.name,
+            'description': addon.description or '',
+            'price': float(addon.price),
+        })
+        extra_price_delta += Decimal(str(addon.price))
+
+    if addon_value_ids:
+        addon_value_qs = AddonValueAddedService.objects.filter(
+            addon_id__in=valid_addon_ids, status=True, is_deleted=False,
+            id__in=addon_value_ids,
+        ).select_related('addon').order_by('sort', 'id')
+        for value in addon_value_qs:
+            selected_addon_values.append({
+                'id': value.id,
+                'addon_id': value.addon_id,
+                'addon_name': value.addon.name,
+                'name': value.name,
+                'description': value.description or '',
+                'price': float(value.price),
             })
-            addon_price_delta += Decimal(str(ad.price))
+            extra_price_delta += Decimal(str(value.price))
+
+    if service_value_ids:
+        service_value_qs = ServiceValueAdded.objects.filter(
+            service=service, status=True, is_deleted=False,
+            id__in=service_value_ids,
+        ).order_by('sort', 'id')
+        for value in service_value_qs:
+            selected_service_values.append({
+                'id': value.id,
+                'service_id': value.service_id,
+                'service_name': service.name,
+                'name': value.name,
+                'description': value.description or '',
+                'price': float(value.price),
+            })
+            extra_price_delta += Decimal(str(value.price))
+
+    addon_ids = valid_addon_ids
+    addon_value_ids = [value['id'] for value in selected_addon_values]
+    service_value_ids = [value['id'] for value in selected_service_values]
 
     selected_names = {
         'difficulty_name': difficulty.name if difficulty else '',
@@ -1436,8 +1477,8 @@ def create_self_service_order(request):
         price_source = 'formula'
 
     # 叠加增值服务单价（直接累加到单位价中，不影响前面的逻辑）
-    if addon_price_delta:
-        unit_price = Decimal(unit_price) + addon_price_delta
+    if extra_price_delta:
+        unit_price = Decimal(unit_price) + extra_price_delta
 
     unit_price = Decimal(unit_price).quantize(Decimal('0.01'), rounding=ROUND_HALF_UP)
     if unit_price < 0:
@@ -1473,8 +1514,12 @@ def create_self_service_order(request):
         'trial_requested': trial_requested,
         'remark': remark,
         'addon_ids': addon_ids,
+        'addon_value_ids': addon_value_ids,
+        'service_value_ids': service_value_ids,
         'value_added_services': selected_addons,
-        'addon_price_delta': float(addon_price_delta),
+        'addon_value_added_services': selected_addon_values,
+        'service_value_added_services': selected_service_values,
+        'extra_price_delta': float(extra_price_delta),
     }
 
     # === 扣费前置校验：黑钻是否充足 ===
@@ -3596,7 +3641,10 @@ def get_self_service_catalog(request):
         'self_service_gameplays__difficulties',
         'self_service_gameplays__level_options',
         'self_service_gameplays__services',
+        'self_service_gameplays__services__value_added_services',
         'self_service_gameplays__price_rules',
+        'self_service_gameplays__value_added_services',
+        'self_service_gameplays__value_added_services__value_added_services',
     ).order_by('sort', 'id')
 
     data = []
@@ -3631,6 +3679,18 @@ def get_self_service_catalog(request):
                     'price_delta': float(item.price_delta),
                     'is_recommended': item.is_recommended,
                     'sort': item.sort,
+                    'value_added_services': [
+                        {
+                            'id': value.id,
+                            'name': value.name,
+                            'description': value.description or '',
+                            'price': float(value.price),
+                            'coin_price': round(float(value.price) * 10),
+                            'sort': value.sort,
+                        }
+                        for value in item.value_added_services.all()
+                        if value.status and not value.is_deleted
+                    ],
                 }
                 for item in gameplay.services.filter(status=True).order_by('sort', 'id')
             ]
@@ -3648,6 +3708,30 @@ def get_self_service_catalog(request):
                     'unit_price': float(rule.unit_price),
                 }
                 for rule in gameplay.price_rules.filter(status=True)
+            ]
+            addons = [
+                {
+                    'id': addon.id,
+                    'name': addon.name,
+                    'description': addon.description or '',
+                    'price': float(addon.price),
+                    'coin_price': round(float(addon.price) * 10),
+                    'sort': addon.sort,
+                    'value_added_services': [
+                        {
+                            'id': value.id,
+                            'name': value.name,
+                            'description': value.description or '',
+                            'price': float(value.price),
+                            'coin_price': round(float(value.price) * 10),
+                            'sort': value.sort,
+                        }
+                        for value in addon.value_added_services.all()
+                        if value.status and not value.is_deleted
+                    ],
+                }
+                for addon in gameplay.value_added_services.all()
+                if addon.status and not addon.is_deleted
             ]
             gameplays.append({
                 'id': gameplay.id,
@@ -3671,6 +3755,7 @@ def get_self_service_catalog(request):
                 'difficulties': difficulties,
                 'levels': levels,
                 'services': services,
+                'value_added_services': addons,
                 'price_rules': price_rules,
             })
         if not gameplays:

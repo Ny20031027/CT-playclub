@@ -4,10 +4,12 @@ from django.test import TestCase
 from rest_framework.test import APIClient
 
 from apps.account.models import User
+from apps.customer.models import Customer
 from apps.wx.models import GameCategory
 from .models import (
     AddonValueAddedService, Employee, EmployeeGameRank, EmployeeSkill,
-    EmployeeSkillRelation, GameRank, ValueAddedService
+    EmployeeSkillRelation, GameRank, GameplayLevelOption, GameplayService,
+    ServiceValueAdded, ValueAddedService
 )
 from .serializers import EmployeeSkillSerializer
 from .views import EmployeeSkillViewSet
@@ -32,6 +34,7 @@ class SkillSystemTests(TestCase):
             assignment_mode='manual', pricing_unit='hour', unit_price=Decimal('80'),
         )
         user = User.objects.create_user(username='skill_tester')
+        self.user = user
         self.client = APIClient()
         self.client.force_authenticate(user=user)
         self.employee = Employee.objects.create(
@@ -149,7 +152,16 @@ class SkillSystemTests(TestCase):
             'quantity_step': 1,
             'base_price': 50,
             'levels': [{'name': '标准', 'price_delta': 0}],
-            'services': [{'name': '单排', 'price_delta': 0}],
+            'services': [{
+                'name': '单排',
+                'price_delta': 0,
+                'value_added_services': [{
+                    'name': '战术复盘',
+                    'description': '本局结束后复盘',
+                    'price': 7,
+                    'status': True,
+                }],
+            }],
             'value_added_services': [{
                 'name': '指定英雄',
                 'price': 5,
@@ -171,3 +183,43 @@ class SkillSystemTests(TestCase):
         payload = EmployeeSkillSerializer(self.manual_skill).data
         saved_addon = payload['gameplays'][0]['value_added_services'][0]
         self.assertEqual(saved_addon['value_added_services'][0]['name'], '高难英雄')
+
+        self.manual_skill.self_service_enabled = True
+        self.manual_skill.save(update_fields=['self_service_enabled'])
+        catalog = self.client.get('/api/wx/skills/self-service/').json()['data']
+        gameplay_payload = catalog[0]['gameplays'][0]
+        self.assertEqual(
+            gameplay_payload['value_added_services'][0]['value_added_services'][0]['name'],
+            '高难英雄',
+        )
+        self.assertEqual(
+            gameplay_payload['services'][0]['value_added_services'][0]['name'],
+            '战术复盘',
+        )
+
+        customer = Customer.objects.create(
+            user=self.user, nickname='自助下单客户', coins=1000
+        )
+        gameplay = self.manual_skill.self_service_gameplays.get(name='排位陪练')
+        level = GameplayLevelOption.objects.get(gameplay=gameplay, name='标准')
+        service = GameplayService.objects.get(gameplay=gameplay, name='单排')
+        service_value = ServiceValueAdded.objects.get(service=service, name='战术复盘')
+        order_payload = self.client.post('/api/wx/orders/create-self-service/', {
+            'gameplay_id': gameplay.id,
+            'level_id': level.id,
+            'service_id': service.id,
+            'companion_type': 'single',
+            'gender_requirement': 'any',
+            'quantity': 1,
+            'addon_ids': [addon.id],
+            'addon_value_ids': [addon_value.id],
+            'service_value_ids': [service_value.id],
+        }, format='json').json()
+        self.assertEqual(order_payload['code'], 200)
+        snapshot = order_payload['data']['snapshot']
+        self.assertEqual(snapshot['addon_value_ids'], [addon_value.id])
+        self.assertEqual(snapshot['service_value_ids'], [service_value.id])
+        self.assertEqual(snapshot['extra_price_delta'], 24.0)
+        self.assertEqual(order_payload['data']['total_amount'], 74.0)
+        customer.refresh_from_db()
+        self.assertEqual(customer.coins, 260)
