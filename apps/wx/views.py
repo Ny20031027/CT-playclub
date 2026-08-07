@@ -980,6 +980,8 @@ def employee_detail(request, emp_id):
         'total_duration': emp.total_duration,
         'fans_count': getattr(emp, 'fans_count', 0),
         'intro': emp.intro or '',
+        'voice_intro': field_file_url(emp.voice_intro) if emp.voice_intro else '',
+        'voice_duration': emp.voice_duration or 0,
         'skills': skills,
         'tags': tags,
         'game_categories': game_categories,
@@ -3389,6 +3391,8 @@ def user_profile(request):
         'work_status': work_status,
         'level_num': employee_obj.level_num if employee_obj else 0,
         'intro': employee_obj.intro if employee_obj else '',
+        'voice_intro': field_file_url(employee_obj.voice_intro) if employee_obj and employee_obj.voice_intro else '',
+        'voice_duration': employee_obj.voice_duration if employee_obj else 0,
         'commission_balance': float(employee_obj.commission_balance) if employee_obj else 0,
         'tags': tags,
     })
@@ -3406,20 +3410,34 @@ def update_profile(request):
     avatar = request.data.get('avatar')
     intro = request.data.get('intro')
     gender = request.data.get('gender')
+    voice_intro = request.data.get('voice_intro')
+    voice_duration = request.data.get('voice_duration')
     
-    logger.info(f'Update profile: user={user.id}, nickname={nickname}, gender={gender}, avatar={bool(avatar)}')
+    logger.info(f'Update profile: user={user.id}, nickname={nickname}, gender={gender}, avatar={bool(avatar)}, voice={bool(voice_intro)}')
 
     sync_profile_tables(user, nickname=nickname, avatar=avatar, gender=gender)
 
-    # 如果是打手，保存个人介绍
-    if intro is not None:
-        try:
-            employee = user.get_active_employee()
-            if employee:
+    # 如果是打手，保存个人介绍和语音
+    try:
+        employee = user.get_active_employee()
+        if employee:
+            update_fields = []
+            if intro is not None:
                 employee.intro = intro
-                employee.save(update_fields=['intro'])
-        except Exception:
-            pass
+                update_fields.append('intro')
+            if voice_intro is not None:
+                employee.voice_intro = voice_intro if voice_intro else None
+                update_fields.append('voice_intro')
+            if voice_duration is not None:
+                try:
+                    employee.voice_duration = int(voice_duration)
+                    update_fields.append('voice_duration')
+                except (TypeError, ValueError):
+                    pass
+            if update_fields:
+                employee.save(update_fields=update_fields)
+    except Exception:
+        pass
 
     # 如果是打手，保存标签
     tags = request.data.get('tags')

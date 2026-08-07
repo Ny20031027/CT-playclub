@@ -284,6 +284,9 @@ class Employee(BaseModel):
     tags = models.ManyToManyField(EmployeeTag, blank=True, related_name='employees',
                                   verbose_name='标签')
     intro = models.TextField(blank=True, verbose_name='个人简介')
+    voice_intro = models.FileField(upload_to='employee_voice/%Y/%m/',
+                                   null=True, blank=True, verbose_name='语音介绍')
+    voice_duration = models.IntegerField(default=0, verbose_name='语音时长(秒)')
     rating = models.DecimalField(max_digits=3, decimal_places=2, default=5.0,
                                  verbose_name='评分')
     order_count = models.IntegerField(default=0, verbose_name='接单总数')
