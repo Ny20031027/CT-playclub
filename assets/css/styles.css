@@ -126,6 +126,20 @@ body {
     background-color: #f5f7fa;
 }
 
+.btn-sm {
+    padding: 6px 12px;
+    font-size: 12px;
+    width: auto;
+    height: auto;
+    line-height: 1.4;
+}
+
+.btn-sm.btn-primary {
+    width: auto;
+    height: auto;
+    font-size: 12px;
+}
+
 .layout-container {
     display: flex;
     height: 100vh;
@@ -285,6 +299,10 @@ table th {
 
 table tr:hover {
     background: #f5f7fa;
+}
+
+table td:last-child, table th:last-child {
+    white-space: nowrap;
 }
 
 .table-pagination {
