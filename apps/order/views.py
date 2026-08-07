@@ -134,12 +134,17 @@ class OrderViewSet(BaseModelViewSet):
         content = request.data.get('content', '')
         tags = request.data.get('tags', '')
         member_id = request.data.get('member_id')
+        reviewable_members = order.order_members.filter(
+            is_deleted=False, employee__isnull=False
+        ).select_related('employee')
         if member_id:
-            member = order.order_members.filter(id=member_id, is_deleted=False).first()
+            member = reviewable_members.filter(id=member_id).first()
             if not member:
                 return error_response(msg='订单成员不存在')
         else:
-            member = order.order_members.filter(is_deleted=False).first()
+            if reviewable_members.count() > 1:
+                return error_response(msg='多人订单需要指定评价的打手')
+            member = reviewable_members.first()
         employee = member.employee if member else None
         if not employee:
             return error_response(msg='评价的打手不存在')

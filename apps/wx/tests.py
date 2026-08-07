@@ -7,7 +7,7 @@ from apps.account.models import User
 from apps.customer.models import Customer
 from apps.employee.models import Employee, EmployeeSkill
 from apps.notice.models import UserNotice
-from apps.order.models import Order, OrderMember
+from apps.order.models import Order, OrderComment, OrderMember
 
 
 class MultiPersonOrderFlowTests(TestCase):
@@ -181,3 +181,79 @@ class MultiPersonOrderFlowTests(TestCase):
         self.assertEqual(order.status, 'confirming')
         self.assertEqual(order.locked_slots, 1)
         self.assertEqual(order.leader_id, self.leader.id)
+
+    def test_single_order_comment_ignores_unassigned_placeholder_member(self):
+        order = self.create_multi_order()
+        order.quantity = 1
+        order.status = 'completed'
+        order.save(update_fields=['quantity', 'status'])
+
+        placeholder = OrderMember.objects.create(
+            order=order,
+            skill=self.skill,
+            unit_price=Decimal('50.00'),
+            duration=60,
+            amount=Decimal('50.00'),
+            status='assigned',
+        )
+        actual_member = OrderMember.objects.create(
+            order=order,
+            employee=self.leader,
+            skill=self.skill,
+            unit_price=Decimal('50.00'),
+            duration=60,
+            amount=Decimal('50.00'),
+            status='completed',
+        )
+
+        result = self.post_as(
+            self.customer_user,
+            f'/api/wx/orders/{order.id}/comment/',
+            {'rating': 5, 'content': '服务很好', 'member_id': 0},
+        )
+
+        self.assertEqual(result['code'], 200)
+        comment = OrderComment.objects.get(order=order)
+        self.assertEqual(comment.member_id, actual_member.id)
+        self.assertEqual(comment.employee_id, self.leader.id)
+        self.assertNotEqual(comment.member_id, placeholder.id)
+        order.refresh_from_db()
+        self.assertEqual(order.status, 'reviewed')
+
+    def test_multi_order_comment_requires_and_uses_member_id(self):
+        order = self.create_multi_order()
+        order.status = 'completed'
+        order.save(update_fields=['status'])
+        leader_member = OrderMember.objects.create(
+            order=order, employee=self.leader, skill=self.skill,
+            unit_price=Decimal('50.00'), duration=60,
+            amount=Decimal('50.00'), status='completed',
+        )
+        member_member = OrderMember.objects.create(
+            order=order, employee=self.member, skill=self.skill,
+            unit_price=Decimal('50.00'), duration=60,
+            amount=Decimal('50.00'), status='completed',
+        )
+
+        missing_member = self.post_as(
+            self.customer_user, f'/api/wx/orders/{order.id}/comment/',
+            {'rating': 5},
+        )
+        self.assertNotEqual(missing_member['code'], 200)
+
+        first = self.post_as(
+            self.customer_user, f'/api/wx/orders/{order.id}/comment/',
+            {'rating': 5, 'member_id': leader_member.id},
+        )
+        self.assertEqual(first['code'], 200)
+        order.refresh_from_db()
+        self.assertEqual(order.status, 'completed')
+
+        second = self.post_as(
+            self.customer_user, f'/api/wx/orders/{order.id}/comment/',
+            {'rating': 4, 'member_id': member_member.id},
+        )
+        self.assertEqual(second['code'], 200)
+        order.refresh_from_db()
+        self.assertEqual(order.status, 'reviewed')
+        self.assertEqual(OrderComment.objects.filter(order=order).count(), 2)

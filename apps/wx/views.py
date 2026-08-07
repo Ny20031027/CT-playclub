@@ -2796,18 +2796,21 @@ def comment_order(request, order_id):
     if isinstance(images, list):
         images = ','.join(images)
 
-    # 多人订单：需要指定评价哪个打手
-    if order.quantity > 1:
-        if not member_id:
-            return error_response(msg='多人订单需要指定评价的打手')
+    # 评价对象必须来自已绑定真实打手的成员记录。创建订单时可能存在一条
+    # employee 为空的占位记录，不能用 order_members.first() 直接取。
+    reviewable_members = order.order_members.filter(
+        is_deleted=False, employee__isnull=False
+    ).select_related('employee')
+    if member_id:
         try:
-            member = OrderMember.objects.get(id=member_id, order=order, is_deleted=False)
+            member = reviewable_members.get(id=member_id)
         except OrderMember.DoesNotExist:
             return error_response(msg='订单成员不存在')
-        employee = member.employee
     else:
-        member = order.order_members.first()
-        employee = member.employee if member else None
+        if reviewable_members.count() > 1:
+            return error_response(msg='多人订单需要指定评价的打手')
+        member = reviewable_members.first()
+    employee = member.employee if member else None
 
     # 检查是否已经评价过该打手
     if not employee:
