@@ -841,14 +841,16 @@ def employee_list(request):
     if skill_id:
         queryset = queryset.filter(skill_relations__skill_id=skill_id)
     if game_id:
-        # 优先使用直接绑定的 game_categories，同时兼容旧数据（通过技能间接关联分类）
-        queryset = queryset.filter(
-            Q(game_categories__id=game_id) |
-            Q(
-                skill_relations__skill__game_category_id=game_id,
-                skill_relations__skill__status=True
-            )
-        )
+        # 优先使用直接绑定的 game_categories；仅当打手未绑定任何分类时，才回退到技能关联
+        direct_ids = list(queryset.filter(game_categories__id=game_id)
+                          .values_list('id', flat=True))
+        indirect_ids = list(queryset.filter(
+            skill_relations__skill__game_category_id=game_id,
+            skill_relations__skill__status=True
+        ).exclude(game_categories__isnull=False)
+         .values_list('id', flat=True))
+        all_ids = set(direct_ids + indirect_ids)
+        queryset = queryset.filter(id__in=all_ids)
     if level:
         queryset = queryset.filter(level=level)
     if gender:
