@@ -102,6 +102,8 @@ class GameCategory(BaseModel):
     """游戏分类"""
     name = models.CharField(max_length=100, verbose_name='分类名称')
     icon = models.CharField(max_length=500, blank=True, verbose_name='图标URL')
+    banner = models.CharField(max_length=500, blank=True, verbose_name='横幅URL')
+    description = models.TextField(blank=True, verbose_name='分类介绍')
     sort = models.IntegerField(default=0, verbose_name='排序')
     status = models.BooleanField(default=True, verbose_name='状态')
 

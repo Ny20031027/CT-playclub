@@ -42,12 +42,25 @@ class SkillSystemTests(TestCase):
         )
 
     def test_game_category_detail_uses_standard_response(self):
+        updated = self.client.put(
+            f'/api/system/game-categories/{self.game.id}/',
+            {
+                'name': self.game.name,
+                'banner': '/media/category/banner.jpg',
+                'description': '测试游戏分类介绍',
+                'status': True,
+            },
+            format='json',
+        ).json()
+        self.assertEqual(updated['code'], 200)
         payload = self.client.get(
             f'/api/system/game-categories/{self.game.id}/'
         ).json()
         self.assertEqual(payload['code'], 200)
         self.assertEqual(payload['data']['id'], self.game.id)
         self.assertEqual(payload['data']['name'], self.game.name)
+        self.assertTrue(payload['data']['banner'].endswith('/media/category/banner.jpg'))
+        self.assertEqual(payload['data']['description'], '测试游戏分类介绍')
 
     def test_game_rank_can_be_created_for_selected_category(self):
         payload = self.client.post('/api/employee/game-ranks/', {

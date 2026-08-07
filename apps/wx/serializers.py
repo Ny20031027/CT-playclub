@@ -31,19 +31,21 @@ class AnnouncementSerializer(serializers.ModelSerializer):
 
 class GameCategorySerializer(serializers.ModelSerializer):
     icon = serializers.CharField(required=False, allow_blank=True)
+    banner = serializers.CharField(required=False, allow_blank=True)
+    description = serializers.CharField(required=False, allow_blank=True)
 
     class Meta:
         model = GameCategory
-        fields = ['id', 'name', 'icon', 'sort', 'status', 'created_at', 'updated_at']
+        fields = ['id', 'name', 'icon', 'banner', 'description', 'sort', 'status', 'created_at', 'updated_at']
         read_only_fields = ['id', 'created_at', 'updated_at']
 
     def to_representation(self, instance):
         ret = super().to_representation(instance)
-        icon = ret.get('icon', '')
-        if icon and not icon.startswith('http'):
-            request = self.context.get('request')
-            if request:
-                ret['icon'] = request.build_absolute_uri(icon)
+        request = self.context.get('request')
+        for field in ('icon', 'banner'):
+            image_url = ret.get(field, '')
+            if image_url and not image_url.startswith('http') and request:
+                ret[field] = request.build_absolute_uri(image_url)
         return ret
 
 

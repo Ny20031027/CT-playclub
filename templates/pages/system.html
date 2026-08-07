@@ -165,14 +165,16 @@
                 <thead>
                     <tr>
                         <th>图标</th>
+                        <th>横幅</th>
                         <th>名称</th>
+                        <th>介绍</th>
                         <th>排序</th>
                         <th>状态</th>
                         <th>操作</th>
                     </tr>
                 </thead>
                 <tbody id="gameCategoryList">
-                    <tr><td colspan="5" class="empty-state"><i class="fa-solid fa-spinner fa-spin"></i><br>加载中...</td></tr>
+                    <tr><td colspan="7" class="empty-state"><i class="fa-solid fa-spinner fa-spin"></i><br>加载中...</td></tr>
                 </tbody>
             </table>
         </div>
@@ -522,6 +524,21 @@
                         </div>
                     </div>
                     <input type="hidden" id="gameCategoryIcon">
+                </div>
+                <div class="form-group">
+                    <label>游戏横幅</label>
+                    <div class="upload-area" id="gameCategoryBannerUpload">
+                        <input type="file" id="gameCategoryBannerFile" accept="image/*" style="display: none;" onchange="handleGameCategoryBannerUpload(event)">
+                        <div class="upload-placeholder" id="gameCategoryBannerPreview" onclick="document.getElementById('gameCategoryBannerFile').click()">
+                            <i class="fa-solid fa-image"></i>
+                            <p>点击上传横幅（建议比例 2:1）</p>
+                        </div>
+                    </div>
+                    <input type="hidden" id="gameCategoryBanner">
+                </div>
+                <div class="form-group">
+                    <label>品类介绍</label>
+                    <textarea id="gameCategoryDescription" rows="3" maxlength="300" placeholder="展示在小程序首页分类列表和游戏分类页"></textarea>
                 </div>
                 <div class="form-group">
                     <label>排序</label>
@@ -1105,16 +1122,20 @@
                 const tbody = document.getElementById('gameCategoryList');
 
                 if (categories.length === 0) {
-                    tbody.innerHTML = '<tr><td colspan="5" class="empty-state"><i class="fa-solid fa-inbox"></i><br>暂无品类数据</td></tr>';
+                    tbody.innerHTML = '<tr><td colspan="7" class="empty-state"><i class="fa-solid fa-inbox"></i><br>暂无品类数据</td></tr>';
                     return;
                 }
 
                 tbody.innerHTML = categories.map(c => `
                     <tr>
                         <td>
-                            ${c.icon ? `<img src="${c.icon}" style="width: 40px; height: 40px; border-radius: 8px; object-fit: cover;">` : '<span style="color: #999;">无图标</span>'}
+                            ${c.icon ? `<img src="${escapeHtmlAttr(c.icon)}" style="width: 40px; height: 40px; border-radius: 8px; object-fit: cover;">` : '<span style="color: #999;">无图标</span>'}
                         </td>
-                        <td>${c.name}</td>
+                        <td>
+                            ${c.banner ? `<img src="${escapeHtmlAttr(c.banner)}" style="width: 96px; height: 48px; border-radius: 6px; object-fit: cover;">` : '<span style="color: #999;">未设置</span>'}
+                        </td>
+                        <td>${escapeHtmlAttr(c.name)}</td>
+                        <td style="max-width: 280px; white-space: normal; line-height: 1.5; color: #606266;">${c.description ? escapeHtmlAttr(c.description) : '<span style="color: #999;">未填写</span>'}</td>
                         <td>${c.sort || 0}</td>
                         <td>
                             <span class="badge ${c.status ? 'badge-success' : 'badge-danger'}">${c.status ? '启用' : '禁用'}</span>
@@ -1139,6 +1160,9 @@
         document.getElementById('gameCategoryId').value = '';
         document.getElementById('gameCategoryIcon').value = '';
         document.getElementById('gameCategoryIconPreview').innerHTML = '<i class="fa-solid fa-cloud-arrow-up"></i><p>点击上传图标</p>';
+        document.getElementById('gameCategoryBanner').value = '';
+        document.getElementById('gameCategoryDescription').value = '';
+        document.getElementById('gameCategoryBannerPreview').innerHTML = '<i class="fa-solid fa-image"></i><p>点击上传横幅（建议比例 2:1）</p>';
         showModal('gameCategoryModal');
     }
 
@@ -1154,13 +1178,20 @@
             document.getElementById('gameCategoryId').value = category.id;
             document.getElementById('gameCategoryName').value = category.name;
             document.getElementById('gameCategoryIcon').value = category.icon || '';
+            document.getElementById('gameCategoryBanner').value = category.banner || '';
+            document.getElementById('gameCategoryDescription').value = category.description || '';
             document.getElementById('gameCategorySort').value = category.sort || 0;
             document.getElementById('gameCategoryStatus').value = category.status ? 'true' : 'false';
 
             if (category.icon) {
-                document.getElementById('gameCategoryIconPreview').innerHTML = `<img src="${category.icon}" style="max-width: 100%; max-height: 150px; border-radius: 8px;">`;
+                document.getElementById('gameCategoryIconPreview').innerHTML = `<img src="${escapeHtmlAttr(category.icon)}" style="max-width: 100%; max-height: 150px; border-radius: 8px;">`;
             } else {
                 document.getElementById('gameCategoryIconPreview').innerHTML = '<i class="fa-solid fa-cloud-arrow-up"></i><p>点击上传图标</p>';
+            }
+            if (category.banner) {
+                document.getElementById('gameCategoryBannerPreview').innerHTML = `<img src="${escapeHtmlAttr(category.banner)}" style="width: 100%; max-height: 220px; object-fit: cover; border-radius: 8px;">`;
+            } else {
+                document.getElementById('gameCategoryBannerPreview').innerHTML = '<i class="fa-solid fa-image"></i><p>点击上传横幅（建议比例 2:1）</p>';
             }
 
             showModal('gameCategoryModal');
@@ -1180,7 +1211,7 @@
             const result = await upload('/upload/files/image/', formData);
             if (result.code === 200) {
                 document.getElementById('gameCategoryIcon').value = result.data.url;
-                document.getElementById('gameCategoryIconPreview').innerHTML = `<img src="${result.data.url}" style="max-width: 100%; max-height: 150px; border-radius: 8px;">`;
+                document.getElementById('gameCategoryIconPreview').innerHTML = `<img src="${escapeHtmlAttr(result.data.url)}" style="max-width: 100%; max-height: 150px; border-radius: 8px;">`;
                 showToast('上传成功', 'success');
             } else {
                 showToast('上传失败', 'error');
@@ -1190,10 +1221,34 @@
         }
     }
 
+    async function handleGameCategoryBannerUpload(event) {
+        const file = event.target.files[0];
+        if (!file) return;
+
+        const formData = new FormData();
+        formData.append('file', file);
+        try {
+            const result = await upload('/upload/files/image/', formData);
+            if (result.code === 200) {
+                document.getElementById('gameCategoryBanner').value = result.data.url;
+                document.getElementById('gameCategoryBannerPreview').innerHTML = `<img src="${escapeHtmlAttr(result.data.url)}" style="width: 100%; max-height: 220px; object-fit: cover; border-radius: 8px;">`;
+                showToast('横幅上传成功', 'success');
+            } else {
+                showToast(result.msg || '横幅上传失败', 'error');
+            }
+        } catch (error) {
+            showToast('横幅上传失败: ' + error.message, 'error');
+        } finally {
+            event.target.value = '';
+        }
+    }
+
     async function saveGameCategory() {
         const id = document.getElementById('gameCategoryId').value;
         const name = document.getElementById('gameCategoryName').value;
         const icon = document.getElementById('gameCategoryIcon').value;
+        const banner = document.getElementById('gameCategoryBanner').value;
+        const description = document.getElementById('gameCategoryDescription').value.trim();
         const sort = document.getElementById('gameCategorySort').value;
         const status = document.getElementById('gameCategoryStatus').value === 'true';
 
@@ -1202,7 +1257,7 @@
             return;
         }
 
-        const data = { name, icon, sort: parseInt(sort) || 0, status };
+        const data = { name, icon, banner, description, sort: parseInt(sort) || 0, status };
 
         try {
             let result;
