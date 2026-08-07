@@ -270,6 +270,9 @@ class SkillSystemTests(TestCase):
             user=self.user, nickname='结算测试客户', coins=10000
         )
         gameplay = self.manual_skill.self_service_gameplays.get(name='结算测试玩法')
+        gameplay.male_price_delta = Decimal('0.05')
+        gameplay.female_price_delta = Decimal('20.00')
+        gameplay.save(update_fields=['male_price_delta', 'female_price_delta'])
         level = GameplayLevelOption.objects.get(gameplay=gameplay, name='高阶')
         service = GameplayService.objects.get(gameplay=gameplay, name='陪练')
 
@@ -334,6 +337,8 @@ class SkillSystemTests(TestCase):
         catalog_gameplay = next(
             item for item in catalog[0]['gameplays'] if item['id'] == gameplay.id
         )
+        self.assertEqual(catalog_gameplay['male_coin_delta'], 1)
+        self.assertEqual(catalog_gameplay['female_coin_delta'], 200)
         catalog_addon = next(
             item for item in catalog_gameplay['value_added_services']
             if item['id'] == half_coin_addon.id

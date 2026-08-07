@@ -3758,6 +3758,8 @@ def get_self_service_catalog(request):
                 }.get(gameplay.gender_limit, gameplay.gender_limit),
                 'male_price_delta': float(gameplay.male_price_delta),
                 'female_price_delta': float(gameplay.female_price_delta),
+                'male_coin_delta': price_to_coins(gameplay.male_price_delta),
+                'female_coin_delta': price_to_coins(gameplay.female_price_delta),
                 'companion_mode': gameplay.companion_mode,
                 'settlement_unit': gameplay.settlement_unit,
                 'min_quantity': float(gameplay.min_quantity),
