@@ -87,6 +87,7 @@ class EmployeeViewSet(BaseModelViewSet):
 
         customer_id = request.data.get('customer_id')
         level_num = request.data.get('level_num', 0)
+        game_category_ids = request.data.get('game_category_ids') or []
 
         if not customer_id:
             return success_response(code=400, msg='请选择客户')
@@ -114,6 +115,9 @@ class EmployeeViewSet(BaseModelViewSet):
             online_status=False,
         )
         if restored:
+            restored_emp = Employee.objects.filter(user=user, is_deleted=False).first()
+            if restored_emp and game_category_ids:
+                restored_emp.game_categories.set(game_category_ids)
             CustomerService.objects.filter(customer=customer, is_deleted=False).update(is_deleted=True)
             customer.delete()
             user.roles.remove(*user.roles.filter(code='customer'))
@@ -124,7 +128,7 @@ class EmployeeViewSet(BaseModelViewSet):
 
         import time
         employee_no = f'DS{int(time.time())}'
-        Employee.objects.create(
+        employee = Employee.objects.create(
             user=user,
             employee_no=employee_no,
             real_name=customer.nickname or user.nickname or f'用户{user.id}',
@@ -135,6 +139,8 @@ class EmployeeViewSet(BaseModelViewSet):
             level_num=level_num,
             status='idle',
         )
+        if game_category_ids:
+            employee.game_categories.set(game_category_ids)
         CustomerService.objects.filter(customer=customer, is_deleted=False).update(is_deleted=True)
         customer.delete()
         user.roles.remove(*user.roles.filter(code='customer'))

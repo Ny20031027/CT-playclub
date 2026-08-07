@@ -23,6 +23,7 @@
                     <th>头像</th>
                     <th>昵称</th>
                     <th>真实姓名</th>
+                    <th>游戏分类</th>
                     <th>等级</th>
                     <th>接单状态</th>
                     <th>上下班</th>
@@ -32,7 +33,7 @@
                 </tr>
             </thead>
             <tbody id="employeeList">
-                <tr><td colspan="10" class="empty-state"><i class="fa-solid fa-spinner fa-spin"></i><br>加载中...</td></tr>
+                <tr><td colspan="11" class="empty-state"><i class="fa-solid fa-spinner fa-spin"></i><br>加载中...</td></tr>
             </tbody>
         </table>
     </div>
@@ -88,6 +89,12 @@
                 <label>佣金余额(元)</label>
                 <input type="number" id="editEmpCommission" min="0" step="0.01" value="0" placeholder="打手可提现的佣金余额">
             </div>
+            <div class="form-group">
+                <label>游戏分类（可多选）</label>
+                <div id="editEmpGameCategories" class="game-category-checkboxes">
+                    <div class="empty-hint">加载游戏分类中...</div>
+                </div>
+            </div>
         </div>
         <div class="modal-footer">
             <button class="btn btn-default" onclick="hideModal('editEmployeeModal')">取消</button>
@@ -134,6 +141,12 @@
                     <option value="10">10</option>
                 </select>
             </div>
+            <div class="form-group">
+                <label>游戏分类（可多选，打手将显示在对应小程序分类下）</label>
+                <div id="addEmpGameCategories" class="game-category-checkboxes">
+                    <div class="empty-hint">加载游戏分类中...</div>
+                </div>
+            </div>
         </div>
         <div class="modal-footer">
             <button class="btn btn-default" onclick="hideModal('addEmployeeModal')">取消</button>
@@ -175,6 +188,63 @@
         text-align: center;
         color: #999;
     }
+    .game-category-checkboxes {
+        max-height: 240px;
+        overflow-y: auto;
+        border: 1px solid #e8e8e8;
+        border-radius: 6px;
+        padding: 10px;
+        background: #fafafa;
+    }
+    .game-category-checkboxes .empty-hint {
+        padding: 8px;
+    }
+    .game-category-checkboxes label {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        padding: 6px 10px;
+        margin: 4px;
+        background: #fff;
+        border: 1px solid #e0e0e0;
+        border-radius: 6px;
+        cursor: pointer;
+        font-size: 13px;
+        transition: all 0.2s;
+        user-select: none;
+    }
+    .game-category-checkboxes label:hover {
+        border-color: #667eea;
+        background: #f0f4ff;
+    }
+    .game-category-checkboxes input[type="checkbox"] {
+        accent-color: #667eea;
+        cursor: pointer;
+    }
+    .game-category-checkboxes label.checked {
+        border-color: #667eea;
+        background: linear-gradient(135deg, #eef2ff, #f5f3ff);
+        color: #4c1d95;
+    }
+    .category-badges {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 4px;
+        max-width: 220px;
+    }
+    .category-badge {
+        display: inline-block;
+        padding: 2px 8px;
+        font-size: 12px;
+        background: linear-gradient(135deg, #e0e7ff, #ede9fe);
+        color: #5b21b6;
+        border-radius: 10px;
+        white-space: nowrap;
+    }
+    .category-badge.muted {
+        background: #f0f0f0;
+        color: #999;
+    }
 </style>
 
 <script>
@@ -182,15 +252,66 @@
     let totalPages = 1;
     let selectedCustomerId = null;
     let customerSearchTimer = null;
+    let gameCategories = [];
 
     document.addEventListener('DOMContentLoaded', async function() {
-        await loadEmployees();
+        await Promise.all([loadGameCategories(), loadEmployees()]);
         
         document.getElementById('searchInput').addEventListener('input', debounce(async function() {
             currentPage = 1;
             await loadEmployees();
         }, 300));
     });
+
+    async function loadGameCategories() {
+        try {
+            const result = await get('/system/game-categories/', { page_size: 500, status: true });
+            if (result.code === 200) {
+                gameCategories = (result.data?.results || []).filter(g => g.status !== false);
+                // Render to any containers that are already waiting
+                renderGameCategoryCheckboxes('addEmpGameCategories', []);
+                renderGameCategoryCheckboxes('editEmpGameCategories', []);
+            }
+        } catch (error) {
+            console.error('加载游戏分类失败:', error);
+        }
+    }
+
+    function renderGameCategoryCheckboxes(containerId, selectedIds = []) {
+        const container = document.getElementById(containerId);
+        if (!container) return;
+        if (!gameCategories || gameCategories.length === 0) {
+            container.innerHTML = '<div class="empty-hint">暂无游戏分类，请先在「系统设置 - 品类设置」中添加</div>';
+            return;
+        }
+        const selectedSet = new Set((selectedIds || []).map(Number));
+        container.innerHTML = gameCategories.map(gc => {
+            const checked = selectedSet.has(Number(gc.id));
+            return `
+                <label class="${checked ? 'checked' : ''}" data-id="${gc.id}">
+                    <input type="checkbox" value="${gc.id}" ${checked ? 'checked' : ''}
+                           onchange="toggleGameCategoryCheckbox(this)">
+                    <span>${escapeHtml(gc.name)}</span>
+                </label>
+            `;
+        }).join('');
+    }
+
+    function toggleGameCategoryCheckbox(inputEl) {
+        const label = inputEl.closest('label');
+        if (inputEl.checked) {
+            label.classList.add('checked');
+        } else {
+            label.classList.remove('checked');
+        }
+    }
+
+    function getCheckedGameCategories(containerId) {
+        const container = document.getElementById(containerId);
+        if (!container) return [];
+        const inputs = container.querySelectorAll('input[type="checkbox"]:checked');
+        return Array.from(inputs).map(i => parseInt(i.value, 10)).filter(v => !isNaN(v));
+    }
 
     async function loadEmployees() {
         const keyword = document.getElementById('searchInput').value;
@@ -201,7 +322,7 @@
                 const tbody = document.getElementById('employeeList');
                 
                 if (employees.length === 0) {
-                    tbody.innerHTML = '<tr><td colspan="10" class="empty-state"><i class="fa-solid fa-inbox"></i><br>暂无数据</td></tr>';
+                    tbody.innerHTML = '<tr><td colspan="11" class="empty-state"><i class="fa-solid fa-inbox"></i><br>暂无数据</td></tr>';
                     return;
                 }
 
@@ -213,27 +334,23 @@
                     'leave': { text: '请假', class: 'badge-danger' }
                 };
 
-                const levelMap = {
-                    'new': '新人',
-                    'normal': '普通',
-                    'silver': '白银',
-                    'gold': '黄金',
-                    'diamond': '钻石',
-                    'king': '王者'
-                };
-
                 tbody.innerHTML = employees.map(emp => {
                     const status = statusMap[emp.status] || { text: emp.status, class: 'badge-info' };
                     const levelText = emp.level_num || 0;
                     const avatar = avatarHtml(emp, 48);
                     const workStatusClass = emp.work_status === 'on_duty' ? 'badge-primary' : 'badge-gray';
                     const workStatusText = emp.work_status === 'on_duty' ? '上班中' : '已下班';
+                    const categoryList = emp.game_categories_list || [];
+                    const categoryBadges = categoryList.length > 0
+                        ? categoryList.map(c => `<span class="category-badge">${escapeHtml(c.name)}</span>`).join('')
+                        : `<span class="category-badge muted">未指定</span>`;
                     return `
                     <tr>
                         <td>${emp.id}</td>
                         <td>${avatar}</td>
                         <td>${emp.nickname || emp.user?.nickname || '-'}</td>
                         <td>${emp.real_name || '-'}</td>
+                        <td><div class="category-badges">${categoryBadges}</div></td>
                         <td>${levelText}</td>
                         <td><span class="badge ${status.class}">${status.text}</span></td>
                         <td><span class="badge ${workStatusClass}">${workStatusText}</span></td>
@@ -251,7 +368,7 @@
             }
         } catch (error) {
                 console.error('加载打手数据失败:', error);
-                document.getElementById('employeeList').innerHTML = '<tr><td colspan="10" class="empty-state"><i class="fa-solid fa-exclamation-triangle"></i><br>加载失败</td></tr>';
+                document.getElementById('employeeList').innerHTML = '<tr><td colspan="11" class="empty-state"><i class="fa-solid fa-exclamation-triangle"></i><br>加载失败</td></tr>';
             }
     }
 
@@ -262,6 +379,7 @@
         document.getElementById('customerSearchInput').value = '';
         document.getElementById('customerSelectList').innerHTML = '<div class="empty-hint">请先搜索客户</div>';
         document.getElementById('addEmployeeForm')?.reset();
+        renderGameCategoryCheckboxes('addEmpGameCategories', []);
         showModal('addEmployeeModal');
         loadCustomerList();
     }
@@ -326,11 +444,13 @@
         }
 
         const level_num = parseInt(document.getElementById('empLevel').value);
+        const game_category_ids = getCheckedGameCategories('addEmpGameCategories');
 
         try {
             const result = await post('/employee/employees/convert/', {
                 customer_id: selectedCustomerId,
-                level_num: level_num
+                level_num: level_num,
+                game_category_ids: game_category_ids,
             });
 
             if (result.code === 200) {
@@ -373,6 +493,8 @@
                 document.getElementById('editEmpPhone').value = emp.phone || '';
                 document.getElementById('editEmpIntro').value = emp.intro || '';
                 document.getElementById('editEmpCommission').value = emp.commission_balance || 0;
+                const categoryList = emp.game_categories_list || [];
+                renderGameCategoryCheckboxes('editEmpGameCategories', categoryList.map(c => c.id));
                 showModal('editEmployeeModal');
             } else {
                 showToast('获取打手信息失败', 'error');
@@ -384,6 +506,7 @@
 
     async function saveEmployee() {
         const id = document.getElementById('editEmpId').value;
+        const game_category_ids = getCheckedGameCategories('editEmpGameCategories');
         const data = {
             nickname: document.getElementById('editEmpNickname').value,
             real_name: document.getElementById('editEmpRealName').value,
@@ -391,6 +514,7 @@
             phone: document.getElementById('editEmpPhone').value,
             intro: document.getElementById('editEmpIntro').value,
             commission_balance: parseFloat(document.getElementById('editEmpCommission').value) || 0,
+            game_category_ids: game_category_ids,
         };
 
         try {
@@ -419,6 +543,19 @@
             currentPage++;
             loadEmployees();
         }
+    }
+
+    function escapeHtml(str) {
+        if (str == null) return '';
+        return String(str).replace(/[&<>"']/g, function(m) {
+            return {
+                '&': '&amp;',
+                '<': '&lt;',
+                '>': '&gt;',
+                '"': '&quot;',
+                "'": '&#39;'
+            }[m];
+        });
     }
 </script>
 {% endblock %}

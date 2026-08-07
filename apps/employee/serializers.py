@@ -186,18 +186,25 @@ class EmployeeSerializer(serializers.ModelSerializer):
     skill_list = serializers.SerializerMethodField()
     avatar_url = serializers.SerializerMethodField()
     wallet = EmployeeWalletSerializer(read_only=True)
+    game_category_ids = serializers.PrimaryKeyRelatedField(
+        source='game_categories', many=True, required=False, allow_null=True,
+        queryset=GameCategory.objects.all(), write_only=True
+    )
+    game_categories_list = serializers.SerializerMethodField(read_only=True)
 
     class Meta:
         model = Employee
         fields = ['id', 'user', 'username', 'password', 'employee_no', 'real_name', 'nickname',
                   'phone', 'avatar', 'avatar_url', 'gender', 'age', 'birthday', 'id_card',
                   'id_card_verified', 'department', 'department_name', 'level', 'level_num', 'status',
-                  'online_status', 'work_status', 'skills', 'tags', 'tag_names', 'skill_list',
-                  'intro', 'rating', 'order_count', 'total_duration', 'join_date',
+                  'online_status', 'work_status', 'skills', 'game_categories', 'game_category_ids',
+                  'game_categories_list', 'tags', 'tag_names', 'skill_list',
+                  'intro', 'rating', 'order_count', 'total_duration', 'fans_count', 'join_date',
                   'bank_name', 'bank_card', 'alipay', 'wechat', 'qq', 'sort', 'remark',
                   'wallet', 'created_at', 'updated_at']
         read_only_fields = ['id', 'rating', 'order_count', 'total_duration',
-                            'online_status', 'created_at', 'updated_at', 'user', 'username', 'avatar_url']
+                            'online_status', 'created_at', 'updated_at', 'user', 'username', 'avatar_url',
+                            'game_categories', 'game_categories_list']
         extra_kwargs = {
             'employee_no': {'required': False},
             'real_name': {'required': False},
@@ -209,6 +216,13 @@ class EmployeeSerializer(serializers.ModelSerializer):
     def get_tag_names(self, obj):
         return list(obj.tags.filter(status=True).values_list('name', flat=True))
 
+    def get_game_categories_list(self, obj):
+        return [{
+            'id': gc.id,
+            'name': gc.name,
+            'icon': gc.icon or '',
+        } for gc in obj.game_categories.filter(status=True).order_by('sort', 'id')]
+
     def get_skill_list(self, obj):
         relations = EmployeeSkillRelation.objects.filter(employee=obj, is_deleted=False)
         return EmployeeSkillRelationSerializer(relations, many=True).data
@@ -218,6 +232,7 @@ class EmployeeSerializer(serializers.ModelSerializer):
         password = validated_data.pop('password', None)
         skills = validated_data.pop('skills', [])
         tags = validated_data.pop('tags', [])
+        game_categories = validated_data.pop('game_categories', [])
 
         # If no user provided, create one from request data
         request = self.context.get('request')
@@ -243,6 +258,8 @@ class EmployeeSerializer(serializers.ModelSerializer):
         employee = Employee.objects.create(**validated_data)
         if tags:
             employee.tags.set(tags)
+        if game_categories:
+            employee.game_categories.set(game_categories)
         EmployeeWallet.objects.get_or_create(employee=employee)
         EmployeeStatus.objects.get_or_create(employee=employee)
         
@@ -256,11 +273,14 @@ class EmployeeSerializer(serializers.ModelSerializer):
     def update(self, instance, validated_data):
         tags = validated_data.pop('tags', None)
         skills = validated_data.pop('skills', None)
+        game_categories = validated_data.pop('game_categories', None)
         for attr, value in validated_data.items():
             setattr(instance, attr, value)
         instance.save()
         if tags is not None:
             instance.tags.set(tags)
+        if game_categories is not None:
+            instance.game_categories.set(game_categories)
         return instance
 
 

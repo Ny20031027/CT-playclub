@@ -255,6 +255,10 @@ class Employee(BaseModel):
     online_status = models.BooleanField(default=False, verbose_name='在线状态')
     skills = models.ManyToManyField(EmployeeSkill, through='EmployeeSkillRelation',
                                     related_name='employees', verbose_name='技能')
+    game_categories = models.ManyToManyField(
+        'wx.GameCategory', blank=True,
+        related_name='employees', verbose_name='游戏分类'
+    )
     tags = models.ManyToManyField(EmployeeTag, blank=True, related_name='employees',
                                   verbose_name='标签')
     intro = models.TextField(blank=True, verbose_name='个人简介')

@@ -836,14 +836,18 @@ def employee_list(request):
     queryset = Employee.objects.filter(
         status__in=['idle', 'busy'],
         is_deleted=False
-    ).select_related('user', 'user__wx_user').prefetch_related('skills', 'tags')
+    ).select_related('user', 'user__wx_user').prefetch_related('skills', 'tags', 'game_categories')
 
     if skill_id:
         queryset = queryset.filter(skill_relations__skill_id=skill_id)
     if game_id:
+        # 优先使用直接绑定的 game_categories，同时兼容旧数据（通过技能间接关联分类）
         queryset = queryset.filter(
-            skill_relations__skill__game_category_id=game_id,
-            skill_relations__skill__status=True
+            Q(game_categories__id=game_id) |
+            Q(
+                skill_relations__skill__game_category_id=game_id,
+                skill_relations__skill__status=True
+            )
         )
     if level:
         queryset = queryset.filter(level=level)
@@ -882,6 +886,10 @@ def employee_list(request):
                 'level': rel.skill_level.name if rel.skill_level else '',
             })
         tags = [{'name': t.name, 'color': t.color} for t in emp.tags.filter(status=True)[:5]]
+        game_categories = [
+            {'id': gc.id, 'name': gc.name}
+            for gc in emp.game_categories.filter(status=True).order_by('sort', 'id')
+        ]
         # 获取评价数量
         review_count = OrderComment.objects.filter(employee=emp, is_deleted=False).count()
 
@@ -896,9 +904,11 @@ def employee_list(request):
             'rating': float(emp.rating),
             'review_count': review_count,
             'order_count': emp.order_count,
+            'fans_count': getattr(emp, 'fans_count', 0),
             'intro': emp.intro[:80] if emp.intro else '',
             'skills': skills,
             'tags': tags,
+            'game_categories': game_categories,
             'is_online': emp.online_status,
         })
 
@@ -931,6 +941,10 @@ def employee_detail(request, emp_id):
         })
 
     tags = [{'name': t.name, 'color': t.color} for t in emp.tags.filter(status=True)]
+    game_categories = [
+        {'id': gc.id, 'name': gc.name, 'icon': gc.icon or ''}
+        for gc in emp.game_categories.filter(status=True).order_by('sort', 'id')
+    ]
 
     # 最近评价
     comments = OrderComment.objects.filter(
@@ -968,9 +982,11 @@ def employee_detail(request, emp_id):
         'rating': float(emp.rating),
         'order_count': emp.order_count,
         'total_duration': emp.total_duration,
+        'fans_count': getattr(emp, 'fans_count', 0),
         'intro': emp.intro or '',
         'skills': skills,
         'tags': tags,
+        'game_categories': game_categories,
         'comments': comment_list,
         'is_online': emp.online_status,
     })
