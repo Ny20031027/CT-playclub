@@ -318,7 +318,8 @@
                     difficulties: gp.difficulties || [],
                     levels: gp.levels || [],
                     services: gp.services || [],
-                    price_rules: gp.price_rules || []
+                    price_rules: gp.price_rules || [],
+                    value_added_services: gp.value_added_services || []
                 };
             });
             renderGameplays();
@@ -372,6 +373,7 @@
                     buildSubSection('等级设置', idx, 'levels', gp) +
                     buildSubSection('服务设置', idx, 'services', gp) +
                     buildPriceRulesSection(idx, gp) +
+                    buildAddonSection(idx, gp) +
                 '</div>' +
             '</div>';
         }).join('');
@@ -467,6 +469,32 @@
         '</div>';
     }
 
+    function buildAddonSection(idx, gp) {
+        var items = gp.value_added_services || [];
+        var head = '<tr><th>名称</th><th>说明</th><th style="width:100px;">单价(元)</th><th style="width:70px;">排序</th><th style="width:60px;">启用</th><th style="width:40px;"></th></tr>';
+        var body;
+        if (items.length === 0) {
+            body = '<tr><td colspan="6" style="text-align:center;color:#999;">暂无增值服务，可点击"添加"按钮新增（非必填）</td></tr>';
+        } else {
+            body = items.map(function (item, oi) {
+                return '<tr>' +
+                    '<td><input type="text" value="' + escAttr(item.name) + '" onchange="updateAddon(' + idx + ',' + oi + ',\'name\',this.value)"></td>' +
+                    '<td><input type="text" value="' + escAttr(item.description) + '" onchange="updateAddon(' + idx + ',' + oi + ',\'description\',this.value)"></td>' +
+                    '<td><input type="number" step="0.01" min="0" value="' + escAttr(item.price) + '" onchange="updateAddon(' + idx + ',' + oi + ',\'price\',parseFloat(this.value)||0)"></td>' +
+                    '<td><input type="number" value="' + escAttr(item.sort) + '" onchange="updateAddon(' + idx + ',' + oi + ',\'sort\',parseInt(this.value)||0)"></td>' +
+                    '<td style="text-align:center;"><input type="checkbox" ' + (item.status !== false ? 'checked' : '') + ' onchange="updateAddon(' + idx + ',' + oi + ',\'status\',this.checked)"></td>' +
+                    '<td style="text-align:center;"><button class="row-del" onclick="removeAddon(' + idx + ',' + oi + ')">&times;</button></td>' +
+                '</tr>';
+            }).join('');
+        }
+        return '<div class="sub-section">' +
+            '<div class="sub-section-title"><span>增值服务（附加项目）</span>' +
+            '<button class="btn btn-default btn-sm" onclick="addAddon(' + idx + ')">+ 添加</button></div>' +
+            '<p class="hint">管理员可选添加，非强制；客户下单时也可选非必选，选中后按单价叠加到总价（×数量）。</p>' +
+            '<table class="sub-table"><thead>' + head + '</thead><tbody>' + body + '</tbody></table>' +
+        '</div>';
+    }
+
     function updateGp(idx, field, value) { gameplays[idx][field] = value; }
     function updateOption(gpIdx, type, oi, field, value) { gameplays[gpIdx][type][oi][field] = value; }
     function updatePriceRule(gpIdx, ri, field, value) { gameplays[gpIdx].price_rules[ri][field] = value; }
@@ -478,7 +506,8 @@
             companion_mode: 'both', settlement_unit: 'hour',
             min_quantity: 1, quantity_step: 1, base_price: 0, remark_required: false,
             sort: gameplays.length, status: true, _collapsed: false,
-            difficulties: [], levels: [], services: [], price_rules: []
+            difficulties: [], levels: [], services: [], price_rules: [],
+            value_added_services: []
         });
         renderGameplays();
     }
@@ -508,6 +537,18 @@
 
     function removeOption(gpIdx, type, oi) {
         gameplays[gpIdx][type].splice(oi, 1);
+        renderGameplays();
+    }
+
+    function updateAddon(gpIdx, oi, field, value) { gameplays[gpIdx].value_added_services[oi][field] = value; }
+    function addAddon(gpIdx) {
+        var nextSort = (gameplays[gpIdx].value_added_services || []).length;
+        if (!gameplays[gpIdx].value_added_services) gameplays[gpIdx].value_added_services = [];
+        gameplays[gpIdx].value_added_services.push({ name: '', description: '', price: 0, sort: nextSort, status: true });
+        renderGameplays();
+    }
+    function removeAddon(gpIdx, oi) {
+        gameplays[gpIdx].value_added_services.splice(oi, 1);
         renderGameplays();
     }
 
@@ -630,6 +671,15 @@
                             unit_price: Number(r.unit_price) || 0,
                             status: r.status !== false
                         };
+                    }),
+                    value_added_services: (gp.value_added_services || []).filter(function (a) { return a.name && a.name.trim(); }).map(function (a) {
+                        return {
+                            name: a.name.trim(),
+                            description: a.description || '',
+                            price: Number(a.price) || 0,
+                            sort: parseInt(a.sort) || 0,
+                            status: a.status !== false
+                        };
                     })
                 };
             }),
@@ -645,12 +695,14 @@
             var diffs = gp.difficulties.map(function (d) { return escHtml(d.name); }).join('、') || '-';
             var levels = gp.levels.map(function (l) { return escHtml(l.name) + (l.is_recommended ? ' ★' : ''); }).join('、') || '-';
             var services = gp.services.map(function (s) { return escHtml(s.name) + (s.is_recommended ? ' ★' : ''); }).join('、') || '-';
+            var addons = (gp.value_added_services || []).map(function (a) { return escHtml(a.name) + '（' + formatMoney(a.price) + '元）'; }).join('、') || '无';
             return '<dt>玩法 ' + (i + 1) + '：' + escHtml(gp.name || '(未命名)') + '</dt>' +
                 '<dd>基础价 ' + formatMoney(gp.base_price) + ' 元 / 结算：' + (unitMap[gp.settlement_unit] || gp.settlement_unit) +
                 ' / 难度：' + (gp.difficulty_enabled ? '启用' : '未启用') + '<br>' +
                 '难度：' + diffs + '<br>' +
                 '等级：' + levels + '<br>' +
                 '服务：' + services + '<br>' +
+                '增值服务：' + addons + '<br>' +
                 '价格规则：' + gp.price_rules.length + ' 条</dd>';
         }).join('');
         var ssBadge = data.self_service_enabled
@@ -720,7 +772,10 @@
         removeOption: removeOption,
         updateOption: updateOption,
         regeneratePriceRules: regeneratePriceRules,
-        updatePriceRule: updatePriceRule
+        updatePriceRule: updatePriceRule,
+        addAddon: addAddon,
+        removeAddon: removeAddon,
+        updateAddon: updateAddon
     };
     Object.keys(exposed).forEach(function (k) { window[k] = exposed[k]; });
 

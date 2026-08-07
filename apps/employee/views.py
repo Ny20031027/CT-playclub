@@ -10,7 +10,7 @@ from .models import (
     Employee, EmployeeSkill, EmployeeTag, EmployeeWallet,
     EmployeeContract, EmployeeStatus, EmployeeSkillRelation, SkillLevel,
     SkillGameplay, GameplayDifficulty, GameplayLevelOption,
-    GameplayService, GameplayPriceRule
+    GameplayService, GameplayPriceRule, ValueAddedService
 )
 from .serializers import (
     EmployeeSerializer, EmployeeSkillSerializer, EmployeeTagSerializer,
@@ -393,6 +393,26 @@ class EmployeeSkillViewSet(BaseModelViewSet):
                     companion_type=companion_type,
                     unit_price=self._decimal(row.get('unit_price', 0), 'unit_price'),
                     status=row.get('status', True),
+                )
+
+            # 同步增值服务（附加项目）：管理员可选添加，客户可选非必选
+            addon_data = item.get('value_added_services', [])
+            if addon_data is None:
+                addon_data = []
+            if not isinstance(addon_data, list):
+                raise serializers.ValidationError({'value_added_services': '增值服务配置必须是数组'})
+            ValueAddedService.objects.filter(gameplay=gameplay).delete()
+            for addon_index, addon_row in enumerate(addon_data):
+                addon_name = str(addon_row.get('name', '')).strip()
+                if not addon_name:
+                    continue
+                ValueAddedService.objects.create(
+                    gameplay=gameplay,
+                    name=addon_name,
+                    description=str(addon_row.get('description', '') or '').strip(),
+                    price=self._decimal(addon_row.get('price', 0), 'price'),
+                    sort=int(addon_row.get('sort', addon_index) or addon_index),
+                    status=addon_row.get('status', True),
                 )
 
     @transaction.atomic
