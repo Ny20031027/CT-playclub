@@ -659,7 +659,13 @@
                         return { name: l.name.trim(), description: l.description || '', price_delta: Number(l.price_delta) || 0, is_recommended: !!l.is_recommended, sort: parseInt(l.sort) || 0, status: l.status !== false };
                     }),
                     services: (gp.services || []).filter(function (s) { return s.name && s.name.trim(); }).map(function (s) {
-                        return { name: s.name.trim(), description: s.description || '', price_delta: Number(s.price_delta) || 0, is_recommended: !!s.is_recommended, sort: parseInt(s.sort) || 0, status: s.status !== false };
+                        return {
+                            name: s.name.trim(), description: s.description || '', price_delta: Number(s.price_delta) || 0,
+                            is_recommended: !!s.is_recommended, sort: parseInt(s.sort) || 0, status: s.status !== false,
+                            value_added_services: (s.value_added_services || []).filter(function (v) { return v.name && v.name.trim(); }).map(function (v) {
+                                return { name: v.name.trim(), description: v.description || '', price: Number(v.price) || 0, sort: parseInt(v.sort) || 0, status: v.status !== false };
+                            })
+                        };
                     }),
                     price_rules: (gp.price_rules || []).map(function (r) {
                         return {

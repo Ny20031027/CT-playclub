@@ -5,7 +5,7 @@ from .models import (
     Employee, EmployeeSkill, EmployeeTag, EmployeeWallet,
     EmployeeContract, EmployeeStatus, EmployeeSkillRelation, SkillLevel,
     SkillGameplay, GameplayDifficulty, GameplayLevelOption,
-    GameplayService, GameplayPriceRule, ValueAddedService
+    GameplayService, GameplayPriceRule, ValueAddedService, ServiceValueAdded
 )
 
 
@@ -76,7 +76,23 @@ class SkillGameplaySerializer(serializers.ModelSerializer):
         return self._options(obj.level_options, include_description=True)
 
     def get_services(self, obj):
-        return self._options(obj.services, include_description=True)
+        services = self._options(obj.services, include_description=True)
+        # 为每个服务类型挂载其独立的增值服务
+        for svc in services:
+            svc_id = svc['id']
+            svc['value_added_services'] = [
+                {
+                    'id': v.id,
+                    'name': v.name,
+                    'description': v.description or '',
+                    'price': v.price,
+                    'sort': v.sort,
+                }
+                for v in ServiceValueAdded.objects.filter(
+                    service_id=svc_id, status=True, is_deleted=False
+                ).order_by('sort', 'id')
+            ]
+        return services
 
     def get_value_added_services(self, obj):
         qs = ValueAddedService.objects.filter(

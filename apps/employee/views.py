@@ -10,7 +10,7 @@ from .models import (
     Employee, EmployeeSkill, EmployeeTag, EmployeeWallet,
     EmployeeContract, EmployeeStatus, EmployeeSkillRelation, SkillLevel,
     SkillGameplay, GameplayDifficulty, GameplayLevelOption,
-    GameplayService, GameplayPriceRule, ValueAddedService
+    GameplayService, GameplayPriceRule, ValueAddedService, ServiceValueAdded
 )
 from .serializers import (
     EmployeeSerializer, EmployeeSkillSerializer, EmployeeTagSerializer,
@@ -405,7 +405,30 @@ class EmployeeSkillViewSet(BaseModelViewSet):
                     status=row.get('status', True),
                 )
 
-            # 同步增值服务（附加项目）：管理员可选添加，客户可选非必选
+            # 同步服务类型增值服务：每个服务类型独立设置
+            for svc_row in services:
+                svc_name = str(svc_row.get('name', '')).strip()
+                svc_obj = GameplayService.objects.filter(gameplay=gameplay, name=svc_name).first()
+                if not svc_obj:
+                    continue
+                svc_vas_data = svc_row.get('value_added_services', []) or []
+                if not isinstance(svc_vas_data, list):
+                    raise serializers.ValidationError({'value_added_services': '服务增值服务配置必须是数组'})
+                ServiceValueAdded.objects.filter(service=svc_obj).delete()
+                for vi, vr in enumerate(svc_vas_data):
+                    v_name = str(vr.get('name', '')).strip()
+                    if not v_name:
+                        continue
+                    ServiceValueAdded.objects.create(
+                        service=svc_obj,
+                        name=v_name,
+                        description=str(vr.get('description', '') or '').strip(),
+                        price=self._decimal(vr.get('price', 0), 'price'),
+                        sort=int(vr.get('sort', vi) or vi),
+                        status=vr.get('status', True),
+                    )
+
+            # 同步附加项目：管理员可选添加，客户可选非必选
             addon_data = item.get('value_added_services', [])
             if addon_data is None:
                 addon_data = []

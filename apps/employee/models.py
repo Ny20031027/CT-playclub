@@ -192,7 +192,7 @@ class GameplayPriceRule(BaseModel):
 
 
 class ValueAddedService(BaseModel):
-    """玩法增值服务（附加项），管理员可选配置，用户可选非强制"""
+    """玩法附加项目，管理员可选配置，用户可选非强制"""
     gameplay = models.ForeignKey(
         SkillGameplay, on_delete=models.CASCADE, related_name='value_added_services', verbose_name='所属玩法'
     )
@@ -204,13 +204,35 @@ class ValueAddedService(BaseModel):
 
     class Meta:
         db_table = 'emp_gameplay_value_added'
-        verbose_name = '增值服务'
+        verbose_name = '附加项目'
         verbose_name_plural = verbose_name
         ordering = ['sort', 'id']
         unique_together = [('gameplay', 'name')]
 
     def __str__(self):
         return f"{self.gameplay.name} - {self.name}"
+
+
+class ServiceValueAdded(BaseModel):
+    """服务类型增值服务，每个服务类型独立设置，管理员可选配置，用户可选非强制"""
+    service = models.ForeignKey(
+        GameplayService, on_delete=models.CASCADE, related_name='value_added_services', verbose_name='所属服务'
+    )
+    name = models.CharField(max_length=80, verbose_name='名称')
+    description = models.CharField(max_length=200, blank=True, verbose_name='说明')
+    price = models.DecimalField(max_digits=10, decimal_places=2, default=0, verbose_name='单价(元/单位)')
+    sort = models.IntegerField(default=0, verbose_name='排序')
+    status = models.BooleanField(default=True, verbose_name='状态')
+
+    class Meta:
+        db_table = 'emp_service_value_added'
+        verbose_name = '增值服务'
+        verbose_name_plural = verbose_name
+        ordering = ['sort', 'id']
+        unique_together = [('service', 'name')]
+
+    def __str__(self):
+        return f"{self.service.name} - {self.name}"
 
 
 class Employee(BaseModel):
