@@ -319,6 +319,10 @@ class Employee(BaseModel):
         ('king', '王者'),
     ], verbose_name='等级')
     level_num = models.IntegerField(default=0, verbose_name='等级数值')
+    assessment_mode = models.CharField(max_length=10, choices=[
+        ('single', '单考'),
+        ('double', '双考'),
+    ], default='single', verbose_name='考核模式')
     status = models.CharField(max_length=20, default='idle', choices=[
         ('idle', '空闲中'),
         ('busy', '接单中'),

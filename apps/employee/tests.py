@@ -62,6 +62,26 @@ class SkillSystemTests(TestCase):
             game_category=self.game, name='钻石', is_deleted=False
         ).exists())
 
+    def test_employee_assessment_mode_is_editable_and_exposed_in_game_list(self):
+        self.employee.game_categories.add(self.game)
+        updated = self.client.put(
+            f'/api/employee/employees/{self.employee.id}/',
+            {'assessment_mode': 'double'}, format='json'
+        ).json()
+        self.assertEqual(updated['code'], 200)
+        self.assertEqual(updated['data']['assessment_mode'], 'double')
+
+        listed = self.client.get(
+            f'/api/wx/employees/?game_id={self.game.id}'
+        ).json()
+        self.assertEqual(listed['code'], 200)
+        employee_data = next(
+            item for item in listed['data']['list']
+            if item['id'] == self.employee.id
+        )
+        self.assertEqual(employee_data['assessment_mode'], 'double')
+        self.assertEqual(employee_data['assessment_mode_display'], '双考')
+
     def set_rank(self, rank):
         relation, _ = EmployeeGameRank.objects.get_or_create(
             employee=self.employee, game_category=self.game,

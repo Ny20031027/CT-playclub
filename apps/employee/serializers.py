@@ -271,7 +271,7 @@ class EmployeeSerializer(serializers.ModelSerializer):
         fields = ['id', 'user', 'username', 'password', 'employee_no', 'real_name', 'nickname',
                   'phone', 'avatar', 'avatar_url', 'gender', 'age', 'birthday', 'id_card',
                   'id_card_verified', 'department', 'department_name', 'level', 'level_num', 'status',
-                  'online_status', 'work_status', 'skills', 'game_category_ids',
+                  'assessment_mode', 'online_status', 'work_status', 'skills', 'game_category_ids',
                   'game_categories_list', 'tags', 'tag_names', 'skill_list',
                   'intro', 'voice_intro', 'voice_intro_url', 'voice_duration', 'rating', 'order_count', 'total_duration', 'fans_count',
                   'commission_balance', 'join_date',

@@ -78,6 +78,13 @@
                 </select>
             </div>
             <div class="form-group">
+                <label>考核模式</label>
+                <select id="editEmpAssessmentMode">
+                    <option value="single">单考</option>
+                    <option value="double">双考</option>
+                </select>
+            </div>
+            <div class="form-group">
                 <label>联系电话</label>
                 <input type="text" id="editEmpPhone" placeholder="请输入联系电话">
             </div>
@@ -270,6 +277,15 @@
         flex-direction: column;
     }
     .employee-edit-modal .modal-body { overflow-y: auto; }
+    .employee-edit-modal .form-group > select {
+        width: 100%;
+        min-height: 38px;
+        padding: 8px 10px;
+        border: 1px solid #dcdfe6;
+        border-radius: 4px;
+        background: #fff;
+        box-sizing: border-box;
+    }
     .skill-system-row {
         display: grid;
         grid-template-columns: minmax(120px, 1fr) minmax(150px, 1.3fr);
@@ -598,6 +614,7 @@
                 document.getElementById('editEmpNickname').value = emp.nickname || '';
                 document.getElementById('editEmpRealName').value = emp.real_name || '';
                 document.getElementById('editEmpLevel').value = emp.level_num || 0;
+                document.getElementById('editEmpAssessmentMode').value = emp.assessment_mode || 'single';
                 document.getElementById('editEmpPhone').value = emp.phone || '';
                 document.getElementById('editEmpIntro').value = emp.intro || '';
                 document.getElementById('editEmpCommission').value = emp.commission_balance || 0;
@@ -620,6 +637,7 @@
             nickname: document.getElementById('editEmpNickname').value,
             real_name: document.getElementById('editEmpRealName').value,
             level_num: parseInt(document.getElementById('editEmpLevel').value),
+            assessment_mode: document.getElementById('editEmpAssessmentMode').value,
             phone: document.getElementById('editEmpPhone').value,
             intro: document.getElementById('editEmpIntro').value,
             commission_balance: parseFloat(document.getElementById('editEmpCommission').value) || 0,
