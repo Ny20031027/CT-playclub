@@ -173,11 +173,12 @@ class EmployeeSkillSerializer(serializers.ModelSerializer):
     def validate(self, attrs):
         game_category = attrs.get('game_category', getattr(self.instance, 'game_category', None))
         required_rank = attrs.get('required_rank', getattr(self.instance, 'required_rank', None))
+        assignment_mode = attrs.get('assignment_mode', getattr(self.instance, 'assignment_mode', 'manual'))
         if not game_category:
             raise serializers.ValidationError({'game_category': '请选择游戏分类'})
-        if not required_rank:
+        if assignment_mode == 'rank_auto' and not required_rank:
             raise serializers.ValidationError({'required_rank': '请选择该游戏分类下的所需段位'})
-        if required_rank.game_category_id != game_category.id:
+        if required_rank and required_rank.game_category_id != game_category.id:
             raise serializers.ValidationError({'required_rank': '所需段位不属于所选游戏分类'})
         return attrs
 

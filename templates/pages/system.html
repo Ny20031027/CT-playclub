@@ -887,14 +887,8 @@
                     </div>
                     <div class="form-group">
                         <label>游戏分类 *</label>
-                        <select id="selfServiceSkillGameCategory" onchange="loadSelfServiceRankOptions()" required>
+                        <select id="selfServiceSkillGameCategory" required>
                             <option value="">请选择品类设置中的分类</option>
-                        </select>
-                    </div>
-                    <div class="form-group">
-                        <label>所需段位 *</label>
-                        <select id="selfServiceSkillRequiredRank" required>
-                            <option value="">请先选择游戏分类</option>
                         </select>
                     </div>
                     <div class="form-group">
@@ -2560,38 +2554,12 @@
         }
     }
 
-    async function loadSelfServiceRankOptions(selectedId) {
-        var categoryId = document.getElementById('selfServiceSkillGameCategory').value;
-        var select = document.getElementById('selfServiceSkillRequiredRank');
-        if (!categoryId) {
-            select.innerHTML = '<option value="">请先选择游戏分类</option>';
-            return;
-        }
-        select.innerHTML = '<option value="">加载段位中...</option>';
-        try {
-            var result = await get('/employee/game-ranks/', { game_category: categoryId, status: true });
-            if (result.code !== 200) throw new Error(result.msg || '加载段位失败');
-            var ranks = (result.data && result.data.results) || [];
-            select.innerHTML = '<option value="">请选择所需段位</option>' + ranks.map(function (rank) {
-                return '<option value="' + rank.id + '">' + escHtml(rank.name) + '</option>';
-            }).join('');
-            if (selectedId) select.value = String(selectedId);
-            if (!ranks.length) {
-                select.innerHTML = '<option value="">该分类尚未配置段位</option>';
-            }
-        } catch (error) {
-            select.innerHTML = '<option value="">段位加载失败，请重试</option>';
-            showToast(error.message || '加载段位失败', 'error');
-        }
-    }
-
     async function showAddSelfServiceSkillModal() {
         selfServiceEditingSkillId = null;
         document.getElementById('selfServiceSkillModalTitle').textContent = '添加技能';
         document.getElementById('selfServiceSkillId').value = '';
         document.getElementById('selfServiceSkillName').value = '';
         await loadSelfServiceGameCategories();
-        await loadSelfServiceRankOptions();
         document.getElementById('selfServiceSkillSort').value = '0';
         document.getElementById('selfServiceSkillDescription').value = '';
         document.getElementById('selfServiceSkillOrderNotice').value = '';
@@ -2618,7 +2586,6 @@
             document.getElementById('selfServiceSkillId').value = s.id;
             document.getElementById('selfServiceSkillName').value = s.name || '';
             await loadSelfServiceGameCategories(s.game_category || s.game_category_id);
-            await loadSelfServiceRankOptions(s.required_rank);
             document.getElementById('selfServiceSkillSort').value = (s.sort === undefined || s.sort === null) ? 0 : s.sort;
             document.getElementById('selfServiceSkillDescription').value = s.description || '';
             document.getElementById('selfServiceSkillOrderNotice').value = s.order_notice || '';
@@ -3145,7 +3112,8 @@
         return {
             name: document.getElementById('selfServiceSkillName').value.trim(),
             game_category: parseInt(categorySelect.value) || null,
-            required_rank: parseInt(document.getElementById('selfServiceSkillRequiredRank').value) || null,
+            required_rank: null,
+            assignment_mode: 'manual',
             category: categorySelect.value && categoryOption ? categoryOption.textContent.trim() : '',
             sort: parseInt(document.getElementById('selfServiceSkillSort').value) || 0,
             description: document.getElementById('selfServiceSkillDescription').value,
@@ -3267,7 +3235,6 @@
         var data = collectSelfServiceFormData();
         if (!data.name) { showToast('请输入技能名称', 'error'); return; }
         if (!data.game_category) { showToast('请选择品类设置中的游戏分类', 'error'); return; }
-        if (!data.required_rank) { showToast('请选择该分类下的所需段位', 'error'); return; }
         if (data.gameplays.length === 0) { showToast('请至少添加一个玩法', 'error'); return; }
         for (var i = 0; i < data.gameplays.length; i++) {
             if (!data.gameplays[i].name) {

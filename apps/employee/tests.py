@@ -78,6 +78,31 @@ class SkillSystemTests(TestCase):
         self.assertFalse(manual.is_enabled)
         self.assertEqual(manual.unit_price, Decimal('99.00'))
 
+    def test_manual_self_service_skill_only_requires_game_category(self):
+        serializer = EmployeeSkillSerializer(data={
+            'name': '自助下单技能',
+            'game_category': self.game.id,
+            'required_rank': None,
+            'assignment_mode': 'manual',
+            'self_service_enabled': True,
+            'unit_price': '0.00',
+        })
+        self.assertTrue(serializer.is_valid(), serializer.errors)
+        skill = serializer.save()
+        self.assertEqual(skill.game_category, self.game)
+        self.assertIsNone(skill.required_rank)
+
+    def test_rank_auto_skill_still_requires_rank(self):
+        serializer = EmployeeSkillSerializer(data={
+            'name': '自动授予技能',
+            'game_category': self.game.id,
+            'required_rank': None,
+            'assignment_mode': 'rank_auto',
+            'unit_price': '0.00',
+        })
+        self.assertFalse(serializer.is_valid())
+        self.assertIn('required_rank', serializer.errors)
+
     def test_auto_skill_uses_template_price_and_preserves_dasher_switch(self):
         self.set_rank(self.bronze)
         relation = EmployeeSkillRelation.objects.get(
