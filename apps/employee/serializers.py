@@ -5,7 +5,7 @@ from .models import (
     Employee, EmployeeSkill, EmployeeTag, EmployeeWallet,
     EmployeeContract, EmployeeStatus, EmployeeSkillRelation, SkillLevel,
     SkillGameplay, GameplayDifficulty, GameplayLevelOption,
-    GameplayService, GameplayPriceRule
+    GameplayService, GameplayPriceRule, ValueAddedService
 )
 
 
@@ -39,6 +39,7 @@ class SkillGameplaySerializer(serializers.ModelSerializer):
     levels = serializers.SerializerMethodField()
     services = serializers.SerializerMethodField()
     price_rules = GameplayPriceRuleSerializer(many=True, read_only=True)
+    value_added_services = serializers.SerializerMethodField()
 
     class Meta:
         model = SkillGameplay
@@ -47,7 +48,7 @@ class SkillGameplaySerializer(serializers.ModelSerializer):
             'male_price_delta', 'female_price_delta',
             'companion_mode', 'settlement_unit', 'min_quantity', 'quantity_step',
             'base_price', 'remark_required', 'sort', 'status', 'difficulties',
-            'levels', 'services', 'price_rules'
+            'levels', 'services', 'price_rules', 'value_added_services'
         ]
 
     @staticmethod
@@ -76,6 +77,18 @@ class SkillGameplaySerializer(serializers.ModelSerializer):
 
     def get_services(self, obj):
         return self._options(obj.services, include_description=True)
+
+    def get_value_added_services(self, obj):
+        qs = ValueAddedService.objects.filter(
+            gameplay_id=obj.id, status=True, is_deleted=False
+        ).order_by('sort', 'id')
+        return [{
+            'id': item.id,
+            'name': item.name,
+            'description': item.description or '',
+            'price': item.price,
+            'sort': item.sort,
+        } for item in qs]
 
 
 class EmployeeSkillSerializer(serializers.ModelSerializer):

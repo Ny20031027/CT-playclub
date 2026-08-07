@@ -22,7 +22,7 @@ from apps.employee.models import (
 from apps.order.models import Order, OrderMember, OrderComment, OrderPrice, OrderStatus, SupportTicket, OrderCandidate
 from apps.order.comment_utils import create_order_comment_with_retry
 from apps.notice.models import Notice, UserNotice
-from .models import WxUser, Banner, Announcement, GameCategory, Gift, GameBanner
+from .models import WxUser, Banner, Announcement, GameCategory, Gift, GameBanner, Follow
 from .serializers import (
     WxUserSerializer, BannerSerializer, AnnouncementSerializer,
     GameCategorySerializer, GiftSerializer, GameBannerSerializer
@@ -1275,6 +1275,37 @@ def create_self_service_order(request):
     if skill.trial_mode == 'disabled':
         trial_requested = False
 
+    # 增值服务：附加项（可选非强制）
+    addon_ids_raw = request.data.get('addon_ids') or []
+    if isinstance(addon_ids_raw, str):
+        try:
+            import json as _json
+            addon_ids_raw = _json.loads(addon_ids_raw)
+        except Exception:
+            addon_ids_raw = []
+    if not isinstance(addon_ids_raw, (list, tuple)):
+        addon_ids_raw = []
+    addon_ids = [int(x) for x in addon_ids_raw if str(x).isdigit()]
+    selected_addons = []
+    addon_price_delta = Decimal('0')
+    if addon_ids:
+        from apps.employee.models import ValueAddedService
+        addon_qs = ValueAddedService.objects.filter(
+            gameplay=gameplay, status=True, is_deleted=False, id__in=addon_ids
+        )
+        addon_ids_seen = set()
+        for ad in addon_qs:
+            if ad.id in addon_ids_seen:
+                continue
+            addon_ids_seen.add(ad.id)
+            selected_addons.append({
+                'id': ad.id,
+                'name': ad.name,
+                'description': ad.description or '',
+                'price': float(ad.price),
+            })
+            addon_price_delta += Decimal(str(ad.price))
+
     selected_names = {
         'difficulty_name': difficulty.name if difficulty else '',
         'level_name': level.name,
@@ -1344,6 +1375,10 @@ def create_self_service_order(request):
             unit_price *= 2
         price_source = 'formula'
 
+    # 叠加增值服务单价（直接累加到单位价中，不影响前面的逻辑）
+    if addon_price_delta:
+        unit_price = Decimal(unit_price) + addon_price_delta
+
     unit_price = Decimal(unit_price).quantize(Decimal('0.01'), rounding=ROUND_HALF_UP)
     if unit_price < 0:
         return error_response(msg='该规格价格配置无效')
@@ -1377,6 +1412,9 @@ def create_self_service_order(request):
         'price_source': price_source,
         'trial_requested': trial_requested,
         'remark': remark,
+        'addon_ids': addon_ids,
+        'value_added_services': selected_addons,
+        'addon_price_delta': float(addon_price_delta),
     }
 
     import random
@@ -4618,3 +4656,107 @@ def game_ranking(request):
         return success_response({'list': spending_list, 'game_id': game_id, 'rank_type': 'spending'})
     else:
         return success_response(result)
+
+
+# ============ 关注模块 ============
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def check_follow(request, emp_id):
+    """查询当前用户是否已关注某打手"""
+    try:
+        emp = Employee.objects.get(pk=emp_id)
+    except Employee.DoesNotExist:
+        return error_response(msg='打手不存在', code=404)
+    is_followed = Follow.objects.filter(follower=request.user, employee=emp).exists()
+    return success_response({'is_followed': is_followed})
+
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def follow_employee(request, emp_id):
+    """关注打手"""
+    try:
+        emp = Employee.objects.get(pk=emp_id)
+    except Employee.DoesNotExist:
+        return error_response(msg='打手不存在', code=404)
+    rel, created = Follow.objects.get_or_create(
+        follower=request.user,
+        employee=emp
+    )
+    # 刷新计数
+    emp.refresh_from_db()
+    return success_response({
+        'is_followed': True,
+        'fans_count': emp.fans_count or 0,
+    }, msg='关注成功')
+
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def unfollow_employee(request, emp_id):
+    """取消关注打手"""
+    try:
+        emp = Employee.objects.get(pk=emp_id)
+    except Employee.DoesNotExist:
+        return error_response(msg='打手不存在', code=404)
+    deleted_count, _ = Follow.objects.filter(follower=request.user, employee=emp).delete()
+    emp.refresh_from_db()
+    return success_response({
+        'is_followed': False,
+        'fans_count': emp.fans_count or 0,
+    }, msg='已取消关注')
+
+
+@api_view(['GET'])
+def employee_fans_count(request, emp_id):
+    """获取打手粉丝数"""
+    try:
+        emp = Employee.objects.get(pk=emp_id)
+    except Employee.DoesNotExist:
+        return error_response(msg='打手不存在', code=404)
+    count = Follow.objects.filter(employee=emp).count()
+    # 同步到模型计数字段
+    if emp.fans_count != count:
+        Employee.objects.filter(pk=emp.pk).update(fans_count=count)
+    return success_response({'count': count})
+
+
+@api_view(['GET'])
+def employee_followers(request, emp_id):
+    """获取打手粉丝列表（分页）"""
+    try:
+        emp = Employee.objects.get(pk=emp_id)
+    except Employee.DoesNotExist:
+        return error_response(msg='打手不存在', code=404)
+    page = int(request.GET.get('page', 1))
+    page_size = int(request.GET.get('page_size', 20))
+    offset = (page - 1) * page_size
+    qs = Follow.objects.filter(employee=emp).select_related('follower', 'follower__wx_user'
+        ).order_by('-created_at')[offset:offset + page_size]
+    total = Follow.objects.filter(employee=emp).count()
+    followers = []
+    for rel in qs:
+        user = rel.follower
+        wx_user = getattr(user, 'wx_user', None)
+        nickname = ''
+        avatar = ''
+        if wx_user:
+            nickname = wx_user.nickname or ''
+            avatar = wx_user.avatar or ''
+        if not nickname and hasattr(user, 'nickname'):
+            nickname = user.nickname
+        if not nickname:
+            nickname = user.username or '匿名用户'
+        followers.append({
+            'id': user.id,
+            'nickname': nickname,
+            'avatar': avatar,
+            'followed_at': rel.created_at.strftime('%Y-%m-%d %H:%M') if rel.created_at else '',
+        })
+    return success_response({
+        'total': total,
+        'page': page,
+        'page_size': page_size,
+        'list': followers,
+    })

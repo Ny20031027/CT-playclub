@@ -95,4 +95,11 @@ urlpatterns = [
 
     # 排行榜
     path('game-ranking/', views.game_ranking, name='wx-game-ranking'),
+
+    # 关注
+    path('follows/check/<int:emp_id>/', views.check_follow, name='wx-check-follow'),
+    path('follows/follow/<int:emp_id>/', views.follow_employee, name='wx-follow'),
+    path('follows/unfollow/<int:emp_id>/', views.unfollow_employee, name='wx-unfollow'),
+    path('follows/<int:emp_id>/fans-count/', views.employee_fans_count, name='wx-fans-count'),
+    path('follows/<int:emp_id>/followers/', views.employee_followers, name='wx-followers'),
 ]
