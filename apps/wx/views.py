@@ -854,7 +854,6 @@ def employee_list(request):
     if gender:
         queryset = queryset.filter(gender=gender)
     if keyword:
-        from django.db.models import Q
         queryset = queryset.filter(
             Q(nickname__icontains=keyword) |
             Q(real_name__icontains=keyword) |
@@ -1497,7 +1496,6 @@ def dispatch_hall(request):
     if game_name:
         queryset = queryset.filter(game_name=game_name)
     if keyword:
-        from django.db.models import Q
         queryset = queryset.filter(
             Q(title__icontains=keyword) | Q(remark__icontains=keyword)
         )
@@ -1739,7 +1737,6 @@ def order_detail(request, order_id):
             ).first()
         elif is_dasher:
             # 打手可以查看：可接取的订单(published/transferring) + 自己已接取的订单
-            from django.db.models import Q
             order_qs = Order.objects.filter(
                 Q(id=order_id) & (
                     Q(status__in=['published', 'transferring']) | Q(
@@ -3983,7 +3980,6 @@ def cs_ticket_list(request):
     if status:
         tickets = tickets.filter(status=status)
     if keyword:
-        from django.db.models import Q
         tickets = tickets.filter(
             Q(ticket_no__icontains=keyword) |
             Q(order__order_no__icontains=keyword) |
