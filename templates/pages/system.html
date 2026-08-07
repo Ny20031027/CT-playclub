@@ -2498,9 +2498,9 @@
                     buildSelfServiceGameplayFields(idx, gp) +
                     buildSelfServiceSubSection('难度设置', idx, 'difficulties', gp) +
                     buildSelfServiceSubSection('等级设置', idx, 'levels', gp) +
+                    buildSelfServiceAddonSection(idx, gp) +
                     buildSelfServiceServicesSection(idx, gp) +
                     buildSelfServicePriceRulesSection(idx, gp) +
-                    buildSelfServiceAddonSection(idx, gp) +
                 '</div>' +
             '</div>';
         }).join('');
@@ -2714,7 +2714,7 @@
         var head = '<tr><th>名称</th><th>说明</th><th style="width:100px;">单价(元)</th><th style="width:70px;">排序</th><th style="width:60px;">启用</th><th style="width:40px;"></th></tr>';
         var body;
         if (items.length === 0) {
-            body = '<tr><td colspan="6" style="text-align:center;color:#999;">暂无增值服务，可点击"添加"按钮新增（非必填）</td></tr>';
+            body = '<tr><td colspan="6" style="text-align:center;color:#999;">暂无附加项目，可点击"添加"按钮新增（非必填）</td></tr>';
         } else {
             body = items.map(function (item, oi) {
                 return '<tr>' +
@@ -2728,7 +2728,7 @@
             }).join('');
         }
         return '<div class="sub-section">' +
-            '<div class="sub-section-title"><span>增值服务（附加项目）</span>' +
+            '<div class="sub-section-title"><span>附加项目</span>' +
             '<button class="btn btn-default btn-sm" onclick="addSelfServiceAddon(' + idx + ')">+ 添加</button></div>' +
             '<p class="hint">管理员可选添加，非强制；客户下单时也可选非必选，选中后按单价叠加到总价（×数量）。</p>' +
             '<table class="sub-table"><thead>' + head + '</thead><tbody>' + body + '</tbody></table>' +
