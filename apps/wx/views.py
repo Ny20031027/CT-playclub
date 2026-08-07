@@ -1352,6 +1352,10 @@ def create_self_service_order(request):
     addon_ids = parse_selected_ids('addon_ids')
     addon_value_ids = parse_selected_ids('addon_value_ids')
     service_value_ids = parse_selected_ids('service_value_ids')
+    if len(addon_ids) > 1:
+        return error_response(msg='附加项目只能选择一个')
+    if len(addon_value_ids) > 1:
+        return error_response(msg='附加增值只能选择一个')
     selected_addons = []
     selected_addon_values = []
     selected_service_values = []

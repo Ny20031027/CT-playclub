@@ -204,6 +204,21 @@ class SkillSystemTests(TestCase):
         level = GameplayLevelOption.objects.get(gameplay=gameplay, name='标准')
         service = GameplayService.objects.get(gameplay=gameplay, name='单排')
         service_value = ServiceValueAdded.objects.get(service=service, name='战术复盘')
+        another_addon = ValueAddedService.objects.create(
+            gameplay=gameplay, name='额外地图', price=Decimal('3.00')
+        )
+        invalid_order = self.client.post('/api/wx/orders/create-self-service/', {
+            'gameplay_id': gameplay.id,
+            'level_id': level.id,
+            'service_id': service.id,
+            'companion_type': 'single',
+            'gender_requirement': 'any',
+            'quantity': 1,
+            'addon_ids': [addon.id, another_addon.id],
+        }, format='json').json()
+        self.assertNotEqual(invalid_order['code'], 200)
+        self.assertEqual(invalid_order['msg'], '附加项目只能选择一个')
+
         order_payload = self.client.post('/api/wx/orders/create-self-service/', {
             'gameplay_id': gameplay.id,
             'level_id': level.id,
