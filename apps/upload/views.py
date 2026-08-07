@@ -16,6 +16,11 @@ logger = logging.getLogger(__name__)
 IMAGE_MIME_TYPES = {'image/jpeg', 'image/png', 'image/gif', 'image/webp'}
 IMAGE_EXTS = {'.jpg', '.jpeg', '.png', '.gif', '.webp'}
 
+AUDIO_MIME_TYPES = {'audio/mpeg', 'audio/mp3', 'audio/wav', 'audio/x-wav',
+                    'audio/flac', 'audio/aac', 'audio/ogg', 'audio/webm',
+                    'audio/x-m4a', 'audio/mp4'}
+AUDIO_EXTS = {'.mp3', '.wav', '.flac', '.aac', '.ogg', '.m4a', '.webm'}
+
 
 def upload_to_cos(file_obj, file_path):
     """上传文件到腾讯云 COS"""
@@ -53,7 +58,7 @@ class UploadViewSet(BaseModelViewSet):
 
     @action(detail=False, methods=['post'], url_path='image')
     def upload_image(self, request):
-        return self._handle_upload(request, 'image', IMAGE_MIME_TYPES)
+        return self._handle_upload(request, 'image', IMAGE_MIME_TYPES, IMAGE_EXTS)
 
     @action(detail=False, methods=['post'], url_path='file')
     def upload_file(self, request):
@@ -61,9 +66,13 @@ class UploadViewSet(BaseModelViewSet):
 
     @action(detail=False, methods=['post'], url_path='avatar')
     def upload_avatar(self, request):
-        return self._handle_upload(request, 'avatar', IMAGE_MIME_TYPES)
+        return self._handle_upload(request, 'avatar', IMAGE_MIME_TYPES, IMAGE_EXTS)
 
-    def _handle_upload(self, request, category, allowed_mime_types=None):
+    @action(detail=False, methods=['post'], url_path='voice')
+    def upload_voice(self, request):
+        return self._handle_upload(request, 'audio', AUDIO_MIME_TYPES, AUDIO_EXTS)
+
+    def _handle_upload(self, request, category, allowed_mime_types=None, allowed_exts=None):
         if 'file' not in request.FILES:
             return error_response(msg='请选择文件')
         file_obj = request.FILES['file']
@@ -74,9 +83,10 @@ class UploadViewSet(BaseModelViewSet):
         file_size = file_obj.size
         file_ext = os.path.splitext(file_name)[1].lower()
         detected_ext, detected_mime = self._detect_image_type(file_obj)
-        if allowed_mime_types and not self._is_allowed_image(file_obj.content_type, file_ext, detected_mime):
-            return error_response(msg=f'Unsupported file type: {file_obj.content_type or "unknown"}')
-        if allowed_mime_types and detected_ext and file_ext not in IMAGE_EXTS:
+        if allowed_mime_types and allowed_exts:
+            if not self._is_allowed(file_obj.content_type, file_ext, detected_mime, allowed_mime_types, allowed_exts):
+                return error_response(msg=f'Unsupported file type: {file_obj.content_type or "unknown"}')
+        if allowed_mime_types == IMAGE_MIME_TYPES and detected_ext and file_ext not in IMAGE_EXTS:
             file_ext = detected_ext
         file_type = self._get_file_type(file_ext)
         md5 = self._calculate_md5(file_obj)
@@ -177,9 +187,15 @@ class UploadViewSet(BaseModelViewSet):
             return '.webp', 'image/webp'
         return '', ''
 
-    def _is_allowed_image(self, content_type, file_ext, detected_mime):
-        if content_type in IMAGE_MIME_TYPES or detected_mime in IMAGE_MIME_TYPES:
+    def _is_allowed(self, content_type, file_ext, detected_mime, allowed_mime_types, allowed_exts):
+        if content_type in allowed_mime_types or detected_mime in allowed_mime_types:
             return True
-        if content_type and content_type.startswith('image/') and file_ext in IMAGE_EXTS:
+        if content_type and file_ext in allowed_exts:
             return True
-        return file_ext in IMAGE_EXTS
+        # 兼容：允许 content_type 前缀匹配（如 audio/*）且扩展名正确
+        if content_type and '/' in content_type and allowed_mime_types:
+            prefix = content_type.split('/', 1)[0]
+            first_mime = next(iter(allowed_mime_types))
+            if '/' in first_mime and prefix == first_mime.split('/', 1)[0] and file_ext in allowed_exts:
+                return True
+        return file_ext in allowed_exts
