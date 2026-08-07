@@ -31,6 +31,16 @@ class EmployeeViewSet(BaseModelViewSet):
         queryset = super().get_queryset()
         return queryset
 
+    def list(self, request, *args, **kwargs):
+        queryset = self.filter_queryset(self.get_queryset())
+        serializer = self.get_serializer(queryset, many=True)
+        return success_response({'results': serializer.data})
+
+    def retrieve(self, request, *args, **kwargs):
+        instance = self.get_object()
+        serializer = self.get_serializer(instance)
+        return success_response(serializer.data)
+
     @action(detail=False, methods=['get'], url_path='simple')
     def simple_list(self, request):
         employees = self.get_queryset().filter(status__in=['idle', 'busy']).order_by('sort')

@@ -199,7 +199,8 @@ class EmployeeSerializer(serializers.ModelSerializer):
                   'id_card_verified', 'department', 'department_name', 'level', 'level_num', 'status',
                   'online_status', 'work_status', 'skills', 'game_category_ids',
                   'game_categories_list', 'tags', 'tag_names', 'skill_list',
-                  'intro', 'rating', 'order_count', 'total_duration', 'fans_count', 'join_date',
+                  'intro', 'rating', 'order_count', 'total_duration', 'fans_count',
+                  'commission_balance', 'join_date',
                   'bank_name', 'bank_card', 'alipay', 'wechat', 'qq', 'sort', 'remark',
                   'wallet', 'created_at', 'updated_at']
         read_only_fields = ['id', 'rating', 'order_count', 'total_duration',
