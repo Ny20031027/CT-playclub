@@ -947,11 +947,14 @@ def employee_detail(request, emp_id):
     for c in comments:
         # 将逗号分隔的标签字符串转换为数组
         tags_list = [t.strip() for t in c.tags.split(',') if t.strip()] if c.tags else []
+        # 将逗号分隔的图片URL字符串转换为数组
+        images_list = [img.strip() for img in c.images.split(',') if img.strip()] if c.images else []
         comment_list.append({
             'id': c.id,
             'rating': c.rating,
             'content': c.content,
             'tags': tags_list,
+            'images': images_list,
             'customer_name': c.customer.nickname if not c.is_anonymous else '匿名用户',
             'customer_avatar': field_file_url(c.customer.avatar),
             'created_at': c.created_at.strftime('%Y-%m-%d %H:%M'),
@@ -1831,6 +1834,7 @@ def order_detail(request, order_id):
             'has_comment': bool(member_comment),
             'comment_rating': member_comment.rating if member_comment else 0,
             'comment_content': member_comment.content if member_comment else '',
+            'comment_images': [img.strip() for img in member_comment.images.split(',') if img.strip()] if (member_comment and member_comment.images) else [],
         })
 
     comment = None
@@ -1839,11 +1843,13 @@ def order_detail(request, order_id):
         c = comments_qs.first()
         # 将逗号分隔的标签字符串转换为数组
         tags_list = [t.strip() for t in c.tags.split(',') if t.strip()] if c.tags else []
+        images_list = [img.strip() for img in c.images.split(',') if img.strip()] if c.images else []
         comment = {
             'id': c.id,
             'rating': c.rating,
             'content': c.content,
             'tags': tags_list,
+            'images': images_list,
             'created_at': c.created_at.strftime('%Y-%m-%d %H:%M'),
         }
 
@@ -2688,6 +2694,10 @@ def comment_order(request, order_id):
     tags = request.data.get('tags', '')
     is_anonymous = request.data.get('is_anonymous', False)
     member_id = request.data.get('member_id')
+    images = request.data.get('images', '')
+    # images 可以是逗号分隔的字符串或列表
+    if isinstance(images, list):
+        images = ','.join(images)
 
     # 多人订单：需要指定评价哪个打手
     if order.quantity > 1:
@@ -2721,6 +2731,7 @@ def comment_order(request, order_id):
         existing.content = content
         existing.tags = tags
         existing.is_anonymous = is_anonymous
+        existing.images = images
         existing.save()
         comment = existing
     else:
@@ -2733,6 +2744,7 @@ def comment_order(request, order_id):
             content=content,
             tags=tags,
             is_anonymous=is_anonymous,
+            images=images,
         )
 
     # 检查是否所有打手都已评价
