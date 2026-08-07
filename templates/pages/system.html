@@ -886,8 +886,16 @@
                         <input type="text" id="selfServiceSkillName" placeholder="如：三角洲行动">
                     </div>
                     <div class="form-group">
-                        <label>分类</label>
-                        <input type="text" id="selfServiceSkillCategory" placeholder="如：FPS">
+                        <label>游戏分类 *</label>
+                        <select id="selfServiceSkillGameCategory" onchange="loadSelfServiceRankOptions()" required>
+                            <option value="">请选择品类设置中的分类</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label>所需段位 *</label>
+                        <select id="selfServiceSkillRequiredRank" required>
+                            <option value="">请先选择游戏分类</option>
+                        </select>
                     </div>
                     <div class="form-group">
                         <label>排序</label>
@@ -2504,7 +2512,8 @@
         var tbody = document.getElementById('selfServiceSkillList');
         var kw = (document.getElementById('selfServiceSkillSearchInput').value || '').trim().toLowerCase();
         var list = kw ? selfServiceSkillListCache.filter(function (s) {
-            return (s.name || '').toLowerCase().indexOf(kw) >= 0 || (s.category || '').toLowerCase().indexOf(kw) >= 0;
+            return (s.name || '').toLowerCase().indexOf(kw) >= 0 ||
+                (s.game_category_name || s.category || '').toLowerCase().indexOf(kw) >= 0;
         }) : selfServiceSkillListCache;
         if (list.length === 0) {
             tbody.innerHTML = '<tr><td colspan="8" class="empty-state"><i class="fa-solid fa-inbox"></i><br>' + (kw ? '未找到匹配的技能' : '暂无技能，请点击"添加技能"') + '</td></tr>';
@@ -2521,7 +2530,7 @@
             return '<tr style="cursor:pointer;" onclick="editSelfServiceSkill(' + s.id + ')">' +
                 '<td>' + s.id + '</td>' +
                 '<td>' + escHtml(s.name) + '</td>' +
-                '<td>' + escHtml(s.category || '-') + '</td>' +
+                '<td>' + escHtml(s.game_category_name || s.category || '-') + '</td>' +
                 '<td>' + ssBadge + '</td>' +
                 '<td>' + gpCount + '</td>' +
                 '<td>' + (s.sort || 0) + '</td>' +
@@ -2534,12 +2543,55 @@
         }).join('');
     }
 
-    function showAddSelfServiceSkillModal() {
+    async function loadSelfServiceGameCategories(selectedId) {
+        var select = document.getElementById('selfServiceSkillGameCategory');
+        select.innerHTML = '<option value="">加载分类中...</option>';
+        try {
+            var result = await get('/system/game-categories/', { status: true });
+            if (result.code !== 200) throw new Error(result.msg || '加载分类失败');
+            var categories = (result.data && result.data.results) || [];
+            select.innerHTML = '<option value="">请选择品类设置中的分类</option>' + categories.map(function (item) {
+                return '<option value="' + item.id + '">' + escHtml(item.name) + '</option>';
+            }).join('');
+            if (selectedId) select.value = String(selectedId);
+        } catch (error) {
+            select.innerHTML = '<option value="">分类加载失败，请重试</option>';
+            showToast(error.message || '加载分类失败', 'error');
+        }
+    }
+
+    async function loadSelfServiceRankOptions(selectedId) {
+        var categoryId = document.getElementById('selfServiceSkillGameCategory').value;
+        var select = document.getElementById('selfServiceSkillRequiredRank');
+        if (!categoryId) {
+            select.innerHTML = '<option value="">请先选择游戏分类</option>';
+            return;
+        }
+        select.innerHTML = '<option value="">加载段位中...</option>';
+        try {
+            var result = await get('/employee/game-ranks/', { game_category: categoryId, status: true });
+            if (result.code !== 200) throw new Error(result.msg || '加载段位失败');
+            var ranks = (result.data && result.data.results) || [];
+            select.innerHTML = '<option value="">请选择所需段位</option>' + ranks.map(function (rank) {
+                return '<option value="' + rank.id + '">' + escHtml(rank.name) + '</option>';
+            }).join('');
+            if (selectedId) select.value = String(selectedId);
+            if (!ranks.length) {
+                select.innerHTML = '<option value="">该分类尚未配置段位</option>';
+            }
+        } catch (error) {
+            select.innerHTML = '<option value="">段位加载失败，请重试</option>';
+            showToast(error.message || '加载段位失败', 'error');
+        }
+    }
+
+    async function showAddSelfServiceSkillModal() {
         selfServiceEditingSkillId = null;
         document.getElementById('selfServiceSkillModalTitle').textContent = '添加技能';
         document.getElementById('selfServiceSkillId').value = '';
         document.getElementById('selfServiceSkillName').value = '';
-        document.getElementById('selfServiceSkillCategory').value = '';
+        await loadSelfServiceGameCategories();
+        await loadSelfServiceRankOptions();
         document.getElementById('selfServiceSkillSort').value = '0';
         document.getElementById('selfServiceSkillDescription').value = '';
         document.getElementById('selfServiceSkillOrderNotice').value = '';
@@ -2565,7 +2617,8 @@
             document.getElementById('selfServiceSkillModalTitle').textContent = '编辑技能：' + (s.name || '');
             document.getElementById('selfServiceSkillId').value = s.id;
             document.getElementById('selfServiceSkillName').value = s.name || '';
-            document.getElementById('selfServiceSkillCategory').value = s.category || '';
+            await loadSelfServiceGameCategories(s.game_category || s.game_category_id);
+            await loadSelfServiceRankOptions(s.required_rank);
             document.getElementById('selfServiceSkillSort').value = (s.sort === undefined || s.sort === null) ? 0 : s.sort;
             document.getElementById('selfServiceSkillDescription').value = s.description || '';
             document.getElementById('selfServiceSkillOrderNotice').value = s.order_notice || '';
@@ -3041,9 +3094,13 @@
     }
 
     function collectSelfServiceFormData() {
+        var categorySelect = document.getElementById('selfServiceSkillGameCategory');
+        var categoryOption = categorySelect.options[categorySelect.selectedIndex];
         return {
             name: document.getElementById('selfServiceSkillName').value.trim(),
-            category: document.getElementById('selfServiceSkillCategory').value.trim(),
+            game_category: parseInt(categorySelect.value) || null,
+            required_rank: parseInt(document.getElementById('selfServiceSkillRequiredRank').value) || null,
+            category: categorySelect.value && categoryOption ? categoryOption.textContent.trim() : '',
             sort: parseInt(document.getElementById('selfServiceSkillSort').value) || 0,
             description: document.getElementById('selfServiceSkillDescription').value,
             trial_mode: 'optional',
@@ -3149,6 +3206,8 @@
     async function saveSelfServiceSkill() {
         var data = collectSelfServiceFormData();
         if (!data.name) { showToast('请输入技能名称', 'error'); return; }
+        if (!data.game_category) { showToast('请选择品类设置中的游戏分类', 'error'); return; }
+        if (!data.required_rank) { showToast('请选择该分类下的所需段位', 'error'); return; }
         if (data.gameplays.length === 0) { showToast('请至少添加一个玩法', 'error'); return; }
         for (var i = 0; i < data.gameplays.length; i++) {
             if (!data.gameplays[i].name) {
