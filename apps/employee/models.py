@@ -284,8 +284,10 @@ class Employee(BaseModel):
     tags = models.ManyToManyField(EmployeeTag, blank=True, related_name='employees',
                                   verbose_name='标签')
     intro = models.TextField(blank=True, verbose_name='个人简介')
-    voice_intro = models.FileField(upload_to='employee_voice/%Y/%m/',
-                                   null=True, blank=True, verbose_name='语音介绍')
+    # 语音文件由统一上传服务托管，这里只保存可访问 URL，不再让 FileField
+    # 误以为 Django 需要二次保存文件。
+    voice_intro = models.URLField(max_length=500, null=True, blank=True, default='',
+                                  verbose_name='语音介绍')
     voice_duration = models.IntegerField(default=0, verbose_name='语音时长(秒)')
     rating = models.DecimalField(max_digits=3, decimal_places=2, default=5.0,
                                  verbose_name='评分')

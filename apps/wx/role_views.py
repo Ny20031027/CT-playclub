@@ -5,6 +5,7 @@ from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework_simplejwt.tokens import RefreshToken
 
 from apps.account.models import User
+from apps.common.media import build_media_url
 from apps.common.response import success_response, error_response
 from apps.customer.models import Customer, CustomerService
 from apps.employee.models import Employee
@@ -15,7 +16,7 @@ from .views import (
 )
 
 
-def _build_profile_payload(user, related, nickname=None):
+def _build_profile_payload(user, related, nickname=None, request=None):
     customer = related['customer']
     employee = related['employee']
     user_type = user.get_primary_identity_code(customer=customer, employee=employee)
@@ -55,6 +56,8 @@ def _build_profile_payload(user, related, nickname=None):
             'status': 'busy' if has_in_progress else 'idle',
             'level_num': employee.level_num,
             'intro': employee.intro or '',
+            'voice_intro': build_media_url(employee.voice_intro, request) if employee.voice_intro else '',
+            'voice_duration': employee.voice_duration or 0,
             'commission_balance': float(employee.commission_balance),
             'tags': [{'id': tag.id, 'name': tag.name, 'color': tag.color} for tag in employee.tags.filter(status=True)],
         })
@@ -164,7 +167,12 @@ def wx_login(request):
     )
 
     refresh = RefreshToken.for_user(user)
-    payload = _build_profile_payload(user, get_related_profile_objects(user), nickname=display_nickname)
+    payload = _build_profile_payload(
+        user,
+        get_related_profile_objects(user),
+        nickname=display_nickname,
+        request=request,
+    )
     return success_response({
         'token': str(refresh.access_token),
         'refresh': str(refresh),
@@ -204,7 +212,7 @@ def test_login(request):
     user.save(update_fields=['last_login'])
 
     related = get_related_profile_objects(user)
-    payload = _build_profile_payload(user, related)
+    payload = _build_profile_payload(user, related, request=request)
     return success_response({
         'token': str(refresh.access_token),
         'refresh': str(refresh),
@@ -223,5 +231,5 @@ def user_profile(request):
         customer=related['customer'],
         employee=related['employee'],
     )
-    payload = _build_profile_payload(user, related, nickname=nickname)
+    payload = _build_profile_payload(user, related, nickname=nickname, request=request)
     return success_response(payload)

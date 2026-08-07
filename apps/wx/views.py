@@ -12,6 +12,7 @@ from rest_framework import viewsets, status
 from rest_framework.decorators import api_view, permission_classes, action
 from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework_simplejwt.tokens import RefreshToken
+from apps.common.media import build_media_url
 from apps.common.response import success_response, error_response
 from apps.common.viewsets import BaseModelViewSet
 from apps.account.models import User
@@ -22,6 +23,7 @@ from apps.employee.models import (
 from apps.order.models import Order, OrderMember, OrderComment, OrderPrice, OrderStatus, SupportTicket, OrderCandidate
 from apps.order.comment_utils import create_order_comment_with_retry
 from apps.notice.models import Notice, UserNotice
+from apps.upload.models import UploadFile
 from .models import WxUser, Banner, Announcement, GameCategory, Gift, GameBanner, Follow
 from .serializers import (
     WxUserSerializer, BannerSerializer, AnnouncementSerializer,
@@ -980,7 +982,8 @@ def employee_detail(request, emp_id):
         'total_duration': emp.total_duration,
         'fans_count': getattr(emp, 'fans_count', 0),
         'intro': emp.intro or '',
-        'voice_intro': field_file_url(emp.voice_intro) if emp.voice_intro else '',
+        'voice_intro': build_media_url(emp.voice_intro, request) if emp.voice_intro else '',
+        'voice_intro_url': build_media_url(emp.voice_intro, request) if emp.voice_intro else '',
         'voice_duration': emp.voice_duration or 0,
         'skills': skills,
         'tags': tags,
@@ -3391,7 +3394,7 @@ def user_profile(request):
         'work_status': work_status,
         'level_num': employee_obj.level_num if employee_obj else 0,
         'intro': employee_obj.intro if employee_obj else '',
-        'voice_intro': field_file_url(employee_obj.voice_intro) if employee_obj and employee_obj.voice_intro else '',
+        'voice_intro': build_media_url(employee_obj.voice_intro, request) if employee_obj and employee_obj.voice_intro else '',
         'voice_duration': employee_obj.voice_duration if employee_obj else 0,
         'commission_balance': float(employee_obj.commission_balance) if employee_obj else 0,
         'tags': tags,
@@ -3411,71 +3414,91 @@ def update_profile(request):
     intro = request.data.get('intro')
     gender = request.data.get('gender')
     voice_intro = request.data.get('voice_intro')
+    voice_upload_id = request.data.get('voice_upload_id')
+    remove_voice = request.data.get('remove_voice') is True
     voice_duration = request.data.get('voice_duration')
     tags = request.data.get('tags')
     
     logger.info(
         f'Update profile: user={user.id}, nickname={nickname!r}, gender={gender!r}, '
-        f'avatar={bool(avatar)}, voice={bool(voice_intro)}, voice_dur={voice_duration!r}, '
+        f'avatar={bool(avatar)}, voice_upload_id={voice_upload_id!r}, '
+        f'remove_voice={remove_voice}, voice_dur={voice_duration!r}, '
         f'tags={tags}'
     )
-
-    sync_profile_tables(user, nickname=nickname, avatar=avatar, gender=gender)
 
     # 如果是打手，保存个人介绍、语音、标签
     employee = user.get_active_employee() if hasattr(user, 'get_active_employee') else None
     if employee:
-        # intro / voice_duration 直接属性赋值即可（普通字段）
+        # 新录音必须引用当前用户刚上传的音频记录，不能信任客户端传入的任意 URL。
+        voice_upload = None
+        if voice_upload_id is not None:
+            voice_upload = UploadFile.objects.filter(
+                pk=voice_upload_id,
+                uploader=user,
+                category='audio',
+                is_deleted=False,
+            ).first()
+            if not voice_upload or not voice_upload.url:
+                return error_response(msg='语音上传记录无效，请重新录制')
+        elif voice_intro:
+            # 兼容尚未更新的小程序版本，但仍校验 URL 属于当前用户的音频上传记录。
+            voice_upload = UploadFile.objects.filter(
+                url=voice_intro,
+                uploader=user,
+                category='audio',
+                is_deleted=False,
+            ).first()
+            if not voice_upload:
+                return error_response(msg='语音上传记录无效，请重新录制')
+
+        parsed_voice_duration = None
+        if voice_upload:
+            try:
+                parsed_voice_duration = int(voice_duration)
+            except (TypeError, ValueError):
+                return error_response(msg='语音时长无效，请重新录制')
+            if parsed_voice_duration < 1 or parsed_voice_duration > 10:
+                return error_response(msg='语音时长必须为1到10秒')
+        elif remove_voice or voice_intro == '':
+            parsed_voice_duration = 0
+
         if intro is not None:
             employee.intro = intro
-        if voice_duration is not None:
-            try:
-                employee.voice_duration = int(voice_duration)
-            except (TypeError, ValueError):
-                pass
+        if parsed_voice_duration is not None:
+            employee.voice_duration = parsed_voice_duration
 
-        # --- 语音字段特殊处理：FileField 直接赋字符串不会真正更新，
-        # 用 QuerySet.update 绕过 FieldFile 代理写入实际 VARCHAR 值 ---
-        voice_qs_updates = {}
-        if voice_intro is not None:
-            voice_qs_updates['voice_intro'] = voice_intro if voice_intro else ''
-        if voice_qs_updates:
-            try:
-                from apps.employee.models import Employee
-                Employee.objects.filter(pk=employee.pk).update(**voice_qs_updates)
-                # 同步内存对象，避免后续 save(update_fields) 用旧值覆盖
-                if voice_intro:
-                    try:
-                        employee.voice_intro = voice_intro
-                    except Exception:
-                        pass
-                else:
-                    try:
-                        employee.voice_intro = None
-                    except Exception:
-                        pass
-            except Exception as e:
-                logger.exception('update_profile voice_intro QuerySet.update failed: %s', e)
+        try:
+            with transaction.atomic():
+                sync_profile_tables(user, nickname=nickname, avatar=avatar, gender=gender)
+                update_fields = []
+                if voice_upload:
+                    employee.voice_intro = voice_upload.url
+                    update_fields.extend(['voice_intro', 'voice_duration'])
+                    if voice_upload.duration != parsed_voice_duration:
+                        voice_upload.duration = parsed_voice_duration
+                        voice_upload.save(update_fields=['duration', 'updated_at'])
+                elif remove_voice or voice_intro == '':
+                    employee.voice_intro = ''
+                    update_fields.extend(['voice_intro', 'voice_duration'])
 
-        # 保存 intro / voice_duration（注意：不要包含 voice_intro，避免 FileField 赋字符串的副作用）
-        non_file_fields_to_save = []
-        if intro is not None:
-            non_file_fields_to_save.append('intro')
-        if voice_duration is not None:
-            non_file_fields_to_save.append('voice_duration')
-        if non_file_fields_to_save:
-            try:
-                employee.save(update_fields=non_file_fields_to_save)
-            except Exception as e:
-                logger.exception('update_profile employee intro/duration save failed: %s', e)
+                if intro is not None:
+                    update_fields.append('intro')
+                if update_fields:
+                    employee.save(update_fields=list(dict.fromkeys(update_fields)))
 
-        # 标签
-        if tags is not None:
-            try:
-                employee.tags.set(tags)
-            except Exception as e:
-                logger.exception('update_profile employee tags set failed: %s', e)
+                if tags is not None:
+                    employee.tags.set(tags)
+        except Exception as e:
+            logger.exception('update_profile employee data save failed: %s', e)
+            return error_response(msg='个人资料保存失败，请重试')
 
+        employee.refresh_from_db(fields=['voice_intro', 'voice_duration', 'intro'])
+        return success_response({
+            'voice_intro': build_media_url(employee.voice_intro, request) if employee.voice_intro else '',
+            'voice_duration': employee.voice_duration or 0,
+        }, msg='更新成功')
+
+    sync_profile_tables(user, nickname=nickname, avatar=avatar, gender=gender)
     return success_response(msg='更新成功')
 
 
