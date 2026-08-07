@@ -201,6 +201,7 @@ class EmployeeSerializer(serializers.ModelSerializer):
     tag_names = serializers.SerializerMethodField()
     skill_list = serializers.SerializerMethodField()
     avatar_url = serializers.SerializerMethodField()
+    voice_intro_url = serializers.SerializerMethodField()
     wallet = EmployeeWalletSerializer(read_only=True)
     game_category_ids = serializers.PrimaryKeyRelatedField(
         source='game_categories', many=True, required=False, allow_null=True,
@@ -215,7 +216,7 @@ class EmployeeSerializer(serializers.ModelSerializer):
                   'id_card_verified', 'department', 'department_name', 'level', 'level_num', 'status',
                   'online_status', 'work_status', 'skills', 'game_category_ids',
                   'game_categories_list', 'tags', 'tag_names', 'skill_list',
-                  'intro', 'voice_intro', 'voice_duration', 'rating', 'order_count', 'total_duration', 'fans_count',
+                  'intro', 'voice_intro', 'voice_intro_url', 'voice_duration', 'rating', 'order_count', 'total_duration', 'fans_count',
                   'commission_balance', 'join_date',
                   'bank_name', 'bank_card', 'alipay', 'wechat', 'qq', 'sort', 'remark',
                   'wallet', 'created_at', 'updated_at']
@@ -229,6 +230,9 @@ class EmployeeSerializer(serializers.ModelSerializer):
 
     def get_avatar_url(self, obj):
         return build_media_url(obj.avatar, self.context.get('request'))
+
+    def get_voice_intro_url(self, obj):
+        return build_media_url(obj.voice_intro, self.context.get('request')) if obj.voice_intro else ''
 
     def get_tag_names(self, obj):
         return list(obj.tags.filter(status=True).values_list('name', flat=True))

@@ -3412,42 +3412,69 @@ def update_profile(request):
     gender = request.data.get('gender')
     voice_intro = request.data.get('voice_intro')
     voice_duration = request.data.get('voice_duration')
+    tags = request.data.get('tags')
     
-    logger.info(f'Update profile: user={user.id}, nickname={nickname}, gender={gender}, avatar={bool(avatar)}, voice={bool(voice_intro)}')
+    logger.info(
+        f'Update profile: user={user.id}, nickname={nickname!r}, gender={gender!r}, '
+        f'avatar={bool(avatar)}, voice={bool(voice_intro)}, voice_dur={voice_duration!r}, '
+        f'tags={tags}'
+    )
 
     sync_profile_tables(user, nickname=nickname, avatar=avatar, gender=gender)
 
-    # 如果是打手，保存个人介绍和语音
-    try:
-        employee = user.get_active_employee()
-        if employee:
-            update_fields = []
-            if intro is not None:
-                employee.intro = intro
-                update_fields.append('intro')
-            if voice_intro is not None:
-                employee.voice_intro = voice_intro if voice_intro else None
-                update_fields.append('voice_intro')
-            if voice_duration is not None:
-                try:
-                    employee.voice_duration = int(voice_duration)
-                    update_fields.append('voice_duration')
-                except (TypeError, ValueError):
-                    pass
-            if update_fields:
-                employee.save(update_fields=update_fields)
-    except Exception:
-        pass
+    # 如果是打手，保存个人介绍、语音、标签
+    employee = user.get_active_employee() if hasattr(user, 'get_active_employee') else None
+    if employee:
+        # intro / voice_duration 直接属性赋值即可（普通字段）
+        if intro is not None:
+            employee.intro = intro
+        if voice_duration is not None:
+            try:
+                employee.voice_duration = int(voice_duration)
+            except (TypeError, ValueError):
+                pass
 
-    # 如果是打手，保存标签
-    tags = request.data.get('tags')
-    if tags is not None:
-        try:
-            employee = user.get_active_employee()
-            if employee:
+        # --- 语音字段特殊处理：FileField 直接赋字符串不会真正更新，
+        # 用 QuerySet.update 绕过 FieldFile 代理写入实际 VARCHAR 值 ---
+        voice_qs_updates = {}
+        if voice_intro is not None:
+            voice_qs_updates['voice_intro'] = voice_intro if voice_intro else ''
+        if voice_qs_updates:
+            try:
+                from apps.employee.models import Employee
+                Employee.objects.filter(pk=employee.pk).update(**voice_qs_updates)
+                # 同步内存对象，避免后续 save(update_fields) 用旧值覆盖
+                if voice_intro:
+                    try:
+                        employee.voice_intro = voice_intro
+                    except Exception:
+                        pass
+                else:
+                    try:
+                        employee.voice_intro = None
+                    except Exception:
+                        pass
+            except Exception as e:
+                logger.exception('update_profile voice_intro QuerySet.update failed: %s', e)
+
+        # 保存 intro / voice_duration（注意：不要包含 voice_intro，避免 FileField 赋字符串的副作用）
+        non_file_fields_to_save = []
+        if intro is not None:
+            non_file_fields_to_save.append('intro')
+        if voice_duration is not None:
+            non_file_fields_to_save.append('voice_duration')
+        if non_file_fields_to_save:
+            try:
+                employee.save(update_fields=non_file_fields_to_save)
+            except Exception as e:
+                logger.exception('update_profile employee intro/duration save failed: %s', e)
+
+        # 标签
+        if tags is not None:
+            try:
                 employee.tags.set(tags)
-        except Exception:
-            pass
+            except Exception as e:
+                logger.exception('update_profile employee tags set failed: %s', e)
 
     return success_response(msg='更新成功')
 
