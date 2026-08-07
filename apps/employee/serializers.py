@@ -197,14 +197,14 @@ class EmployeeSerializer(serializers.ModelSerializer):
         fields = ['id', 'user', 'username', 'password', 'employee_no', 'real_name', 'nickname',
                   'phone', 'avatar', 'avatar_url', 'gender', 'age', 'birthday', 'id_card',
                   'id_card_verified', 'department', 'department_name', 'level', 'level_num', 'status',
-                  'online_status', 'work_status', 'skills', 'game_categories', 'game_category_ids',
+                  'online_status', 'work_status', 'skills', 'game_category_ids',
                   'game_categories_list', 'tags', 'tag_names', 'skill_list',
                   'intro', 'rating', 'order_count', 'total_duration', 'fans_count', 'join_date',
                   'bank_name', 'bank_card', 'alipay', 'wechat', 'qq', 'sort', 'remark',
                   'wallet', 'created_at', 'updated_at']
         read_only_fields = ['id', 'rating', 'order_count', 'total_duration',
                             'online_status', 'created_at', 'updated_at', 'user', 'username', 'avatar_url',
-                            'game_categories', 'game_categories_list']
+                            'game_categories_list']
         extra_kwargs = {
             'employee_no': {'required': False},
             'real_name': {'required': False},
