@@ -136,7 +136,12 @@ class CustomerViewSet(BaseModelViewSet):
             type='recharge',
             remark='充值',
         )
-        return success_response(msg='充值成功')
+        return success_response(msg='充值成功', data={
+            'customer_id': customer.id,
+            'recharged_coins': coins,
+            'coins': int(customer.coins),
+            'balance': float(customer.balance),
+        })
 
     @action(detail=True, methods=['post'], url_path='add-coins')
     def add_coins(self, request, pk=None):
