@@ -11,7 +11,8 @@ from .models import (
     EmployeeContract, EmployeeStatus, EmployeeSkillRelation, SkillLevel,
     GameRank, EmployeeGameRank,
     SkillGameplay, GameplayDifficulty, GameplayLevelOption,
-    GameplayService, GameplayPriceRule, ValueAddedService, ServiceValueAdded
+    GameplayService, GameplayPriceRule, ValueAddedService,
+    AddonValueAddedService, ServiceValueAdded
 )
 from .serializers import (
     EmployeeSerializer, EmployeeSkillSerializer, EmployeeTagSerializer,
@@ -591,7 +592,7 @@ class EmployeeSkillViewSet(BaseModelViewSet):
                 addon_name = str(addon_row.get('name', '')).strip()
                 if not addon_name:
                     continue
-                ValueAddedService.objects.create(
+                addon = ValueAddedService.objects.create(
                     gameplay=gameplay,
                     name=addon_name,
                     description=str(addon_row.get('description', '') or '').strip(),
@@ -599,6 +600,29 @@ class EmployeeSkillViewSet(BaseModelViewSet):
                     sort=int(addon_row.get('sort', addon_index) or addon_index),
                     status=addon_row.get('status', True),
                 )
+                addon_values = addon_row.get('value_added_services', []) or []
+                if not isinstance(addon_values, list):
+                    raise serializers.ValidationError({
+                        'value_added_services': f'附加项“{addon_name}”的附加增值配置必须是数组'
+                    })
+                addon_value_names = [str(row.get('name', '')).strip() for row in addon_values]
+                non_empty_names = [name for name in addon_value_names if name]
+                if len(non_empty_names) != len(set(non_empty_names)):
+                    raise serializers.ValidationError({
+                        'value_added_services': f'附加项“{addon_name}”存在重复的附加增值名称'
+                    })
+                for value_index, value_row in enumerate(addon_values):
+                    value_name = addon_value_names[value_index]
+                    if not value_name:
+                        continue
+                    AddonValueAddedService.objects.create(
+                        addon=addon,
+                        name=value_name,
+                        description=str(value_row.get('description', '') or '').strip(),
+                        price=self._decimal(value_row.get('price', 0), 'price'),
+                        sort=int(value_row.get('sort', value_index) or value_index),
+                        status=value_row.get('status', True),
+                    )
 
     @transaction.atomic
     def create(self, request, *args, **kwargs):

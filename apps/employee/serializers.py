@@ -6,7 +6,8 @@ from .models import (
     EmployeeContract, EmployeeStatus, EmployeeSkillRelation, SkillLevel,
     GameRank, EmployeeGameRank,
     SkillGameplay, GameplayDifficulty, GameplayLevelOption,
-    GameplayService, GameplayPriceRule, ValueAddedService, ServiceValueAdded
+    GameplayService, GameplayPriceRule, ValueAddedService,
+    AddonValueAddedService, ServiceValueAdded
 )
 
 
@@ -116,7 +117,7 @@ class SkillGameplaySerializer(serializers.ModelSerializer):
 
     def get_value_added_services(self, obj):
         qs = ValueAddedService.objects.filter(
-            gameplay_id=obj.id, status=True, is_deleted=False
+            gameplay_id=obj.id, is_deleted=False
         ).order_by('sort', 'id')
         return [{
             'id': item.id,
@@ -124,6 +125,20 @@ class SkillGameplaySerializer(serializers.ModelSerializer):
             'description': item.description or '',
             'price': item.price,
             'sort': item.sort,
+            'status': item.status,
+            'value_added_services': [
+                {
+                    'id': value.id,
+                    'name': value.name,
+                    'description': value.description or '',
+                    'price': value.price,
+                    'sort': value.sort,
+                    'status': value.status,
+                }
+                for value in AddonValueAddedService.objects.filter(
+                    addon=item, is_deleted=False
+                ).order_by('sort', 'id')
+            ],
         } for item in qs]
 
 

@@ -5,8 +5,11 @@ from django.test import TestCase
 from apps.account.models import User
 from apps.wx.models import GameCategory
 from .models import (
-    Employee, EmployeeGameRank, EmployeeSkill, EmployeeSkillRelation, GameRank
+    AddonValueAddedService, Employee, EmployeeGameRank, EmployeeSkill,
+    EmployeeSkillRelation, GameRank, ValueAddedService
 )
+from .serializers import EmployeeSkillSerializer
+from .views import EmployeeSkillViewSet
 from .skill_services import sync_employee_rank_skills
 
 
@@ -88,3 +91,34 @@ class SkillSystemTests(TestCase):
         relation.refresh_from_db()
         self.assertFalse(relation.is_enabled)
         self.assertEqual(relation.unit_price, Decimal('35.00'))
+
+    def test_addon_value_added_services_are_saved_and_serialized(self):
+        EmployeeSkillViewSet()._sync_gameplays(self.manual_skill, [{
+            'name': '排位陪练',
+            'settlement_unit': 'hour',
+            'min_quantity': 1,
+            'quantity_step': 1,
+            'base_price': 50,
+            'levels': [{'name': '标准', 'price_delta': 0}],
+            'services': [{'name': '单排', 'price_delta': 0}],
+            'value_added_services': [{
+                'name': '指定英雄',
+                'price': 5,
+                'value_added_services': [{
+                    'name': '高难英雄',
+                    'description': '限定高操作英雄',
+                    'price': 12,
+                    'sort': 1,
+                    'status': True,
+                }],
+            }],
+        }])
+
+        addon = ValueAddedService.objects.get(name='指定英雄')
+        addon_value = AddonValueAddedService.objects.get(addon=addon)
+        self.assertEqual(addon_value.name, '高难英雄')
+        self.assertEqual(addon_value.price, Decimal('12.00'))
+
+        payload = EmployeeSkillSerializer(self.manual_skill).data
+        saved_addon = payload['gameplays'][0]['value_added_services'][0]
+        self.assertEqual(saved_addon['value_added_services'][0]['name'], '高难英雄')
