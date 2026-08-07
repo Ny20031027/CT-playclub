@@ -29,7 +29,11 @@ class CustomerViewSet(BaseModelViewSet):
 
     def list(self, request, *args, **kwargs):
         response = super().list(request, *args, **kwargs)
-        return success_response(response.data)
+        # CustomPageNumberPagination 已包装为 {code, msg, data}，直接返回
+        data = response.data
+        if isinstance(data, dict) and 'data' in data and isinstance(data.get('data'), dict) and 'results' in data['data']:
+            return response
+        return success_response(data)
 
     def retrieve(self, request, *args, **kwargs):
         response = super().retrieve(request, *args, **kwargs)
@@ -51,7 +55,7 @@ class CustomerViewSet(BaseModelViewSet):
         page = self.paginate_queryset(orders)
         if page is not None:
             serializer = OrderSerializer(page, many=True)
-            return success_response(self.get_paginated_response(serializer.data).data)
+            return self.get_paginated_response(serializer.data)
         serializer = OrderSerializer(orders, many=True)
         return success_response(serializer.data)
 
@@ -62,7 +66,7 @@ class CustomerViewSet(BaseModelViewSet):
         page = self.paginate_queryset(records)
         if page is not None:
             serializer = CustomerConsumeRecordSerializer(page, many=True)
-            return success_response(self.get_paginated_response(serializer.data).data)
+            return self.get_paginated_response(serializer.data)
         serializer = CustomerConsumeRecordSerializer(records, many=True)
         return success_response(serializer.data)
 
@@ -168,7 +172,10 @@ class CustomerLevelViewSet(BaseModelViewSet):
 
     def list(self, request, *args, **kwargs):
         response = super().list(request, *args, **kwargs)
-        return success_response(response.data)
+        data = response.data
+        if isinstance(data, dict) and 'data' in data and isinstance(data.get('data'), dict) and 'results' in data['data']:
+            return response
+        return success_response(data)
 
     def retrieve(self, request, *args, **kwargs):
         response = super().retrieve(request, *args, **kwargs)

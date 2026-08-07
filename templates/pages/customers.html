@@ -9,7 +9,7 @@
     <div class="card-header">
         <div class="card-title">客户列表</div>
         <div class="card-actions">
-            <input type="text" class="search-input" id="searchInput" placeholder="搜索昵称/手机号">
+            <input type="text" class="search-input" id="searchInput" placeholder="搜索昵称/手机/微信/QQ">
             <button class="btn btn-primary" onclick="showModal('addCustomerModal')">
                 <i class="fa-solid fa-plus"></i> 添加客户
             </button>
@@ -224,9 +224,11 @@
     }
 
     async function loadCustomers() {
-        const keyword = document.getElementById('searchInput').value;
+        const keyword = document.getElementById('searchInput').value.trim();
         try {
-            const result = await get('/customer/customers/', { keyword });
+            const params = {};
+            if (keyword) params.search = keyword;
+            const result = await get('/customer/customers/', params);
             if (result.code === 200) {
                 const customers = result.data.results || result.data || [];
                 const tbody = document.getElementById('customerList');
