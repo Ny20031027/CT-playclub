@@ -1648,30 +1648,33 @@
 
     // ============ 技能设置 ============
     async function loadSkills() {
+        const tbody = document.getElementById('skillList');
+        tbody.innerHTML = '<tr><td colspan="8" class="empty-state"><i class="fa-solid fa-spinner fa-spin"></i><br>加载中...</td></tr>';
         try {
             const result = await get('/employee/skills/');
-            if (result.code === 200) {
-                const skills = result.data.results || [];
-                const tbody = document.getElementById('skillList');
+            if (result.code !== 200) {
+                throw new Error(result.msg || '加载技能失败');
+            }
+            const skills = (result.data && result.data.results) || [];
 
-                if (skills.length === 0) {
-                    tbody.innerHTML = '<tr><td colspan="8" class="empty-state"><i class="fa-solid fa-inbox"></i><br>暂无技能数据</td></tr>';
-                    return;
-                }
+            if (skills.length === 0) {
+                tbody.innerHTML = '<tr><td colspan="8" class="empty-state"><i class="fa-solid fa-inbox"></i><br>暂无技能数据</td></tr>';
+                return;
+            }
 
-                tbody.innerHTML = skills.map(s => {
-                    const unitText = s.pricing_unit === 'round' ? '局' : '小时';
-                    const modeText = s.assignment_mode === 'rank_auto' ? '段位自动获得' : '管理员手动添加';
-                    const modeClass = s.assignment_mode === 'rank_auto' ? 'badge-primary' : 'badge-warning';
-                    const icon = s.icon
-                        ? `<img src="${escapeHtml(s.icon)}" style="width:40px;height:40px;border-radius:9px;object-fit:cover;">`
-                        : '<span style="display:inline-flex;width:40px;height:40px;border-radius:9px;background:#eef2ff;align-items:center;justify-content:center;color:#667eea;"><i class="fa-solid fa-gamepad"></i></span>';
-                    return `
+            tbody.innerHTML = skills.map(s => {
+                const unitText = s.pricing_unit === 'round' ? '局' : '小时';
+                const modeText = s.assignment_mode === 'rank_auto' ? '段位自动获得' : '管理员手动添加';
+                const modeClass = s.assignment_mode === 'rank_auto' ? 'badge-primary' : 'badge-warning';
+                const icon = s.icon
+                    ? `<img src="${escAttr(s.icon)}" style="width:40px;height:40px;border-radius:9px;object-fit:cover;">`
+                    : '<span style="display:inline-flex;width:40px;height:40px;border-radius:9px;background:#eef2ff;align-items:center;justify-content:center;color:#667eea;"><i class="fa-solid fa-gamepad"></i></span>';
+                return `
                     <tr>
                         <td>${icon}</td>
-                        <td><strong>${escapeHtml(s.name)}</strong></td>
-                        <td>${escapeHtml(s.game_category_name || '-')}</td>
-                        <td>${escapeHtml(s.required_rank_name || '未设置')}</td>
+                        <td><strong>${escHtml(s.name)}</strong></td>
+                        <td>${escHtml(s.game_category_name || '-')}</td>
+                        <td>${escHtml(s.required_rank_name || '未设置')}</td>
                         <td><strong style="color:#f56c6c;">¥${s.unit_price}</strong> / ${unitText}</td>
                         <td><span class="badge ${modeClass}">${modeText}</span></td>
                         <td>
@@ -1682,10 +1685,15 @@
                             <button class="btn btn-danger" onclick="deleteSkill(${s.id})">删除</button>
                         </td>
                     </tr>
-                `}).join('');
-            }
+                `;
+            }).join('');
         } catch (error) {
             console.error('加载技能失败:', error);
+            tbody.innerHTML = `<tr><td colspan="8" class="empty-state" style="color:#f56c6c;">
+                <i class="fa-solid fa-circle-exclamation"></i><br>
+                ${escHtml(error.message || '加载技能失败')}<br>
+                <button class="btn btn-default" style="margin-top:10px;" onclick="loadSkills()">重新加载</button>
+            </td></tr>`;
         }
     }
 
@@ -1710,7 +1718,7 @@
         const result = await get('/employee/game-ranks/', { game_category: categoryId, status: true });
         const ranks = result.code === 200 ? (result.data.results || []) : [];
         select.innerHTML = '<option value="">请选择所需段位</option>' + ranks.map(rank =>
-            `<option value="${rank.id}">${escapeHtml(rank.name)}</option>`
+            `<option value="${rank.id}">${escHtml(rank.name)}</option>`
         ).join('');
         if (selectedId) select.value = String(selectedId);
     }
@@ -1865,7 +1873,7 @@
         container.insertAdjacentHTML('beforeend', `
             <div class="rank-row" data-id="${rank.id || ''}" style="display:grid;grid-template-columns:34px 1fr 90px 90px 32px;gap:8px;align-items:center;margin-bottom:10px;">
                 <span style="width:28px;height:28px;border-radius:50%;display:flex;align-items:center;justify-content:center;background:#eef2ff;color:#667eea;font-weight:700;">${index + 1}</span>
-                <input class="rank-name" value="${escapeHtml(rank.name || '')}" placeholder="段位名称，如：黄金">
+                <input class="rank-name" value="${escAttr(rank.name || '')}" placeholder="段位名称，如：黄金">
                 <input class="rank-sort" type="number" min="0" value="${rank.sort ?? index}">
                 <select class="rank-status"><option value="true" ${rank.status !== false ? 'selected' : ''}>启用</option><option value="false" ${rank.status === false ? 'selected' : ''}>禁用</option></select>
                 <button type="button" onclick="this.closest('.rank-row').remove()" style="border:0;background:none;color:#f56c6c;font-size:20px;cursor:pointer;">&times;</button>
