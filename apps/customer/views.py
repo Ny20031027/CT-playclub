@@ -22,11 +22,18 @@ class CustomerViewSet(BaseModelViewSet):
 
     def get_queryset(self):
         queryset = super().get_queryset()
-        # 后台管理显示所有客户 - 排除当前有效的客服（未软删除的cs_profile）
         from django.db.models import Q
         return queryset.filter(
             Q(cs_profile__isnull=True) | Q(cs_profile__is_deleted=True)
         )
+
+    def list(self, request, *args, **kwargs):
+        response = super().list(request, *args, **kwargs)
+        return success_response(response.data)
+
+    def retrieve(self, request, *args, **kwargs):
+        response = super().retrieve(request, *args, **kwargs)
+        return success_response(response.data)
 
     @action(detail=False, methods=['get'], url_path='simple')
     def simple_list(self, request):
@@ -44,7 +51,7 @@ class CustomerViewSet(BaseModelViewSet):
         page = self.paginate_queryset(orders)
         if page is not None:
             serializer = OrderSerializer(page, many=True)
-            return self.get_paginated_response(serializer.data)
+            return success_response(self.get_paginated_response(serializer.data).data)
         serializer = OrderSerializer(orders, many=True)
         return success_response(serializer.data)
 
@@ -55,7 +62,7 @@ class CustomerViewSet(BaseModelViewSet):
         page = self.paginate_queryset(records)
         if page is not None:
             serializer = CustomerConsumeRecordSerializer(page, many=True)
-            return self.get_paginated_response(serializer.data)
+            return success_response(self.get_paginated_response(serializer.data).data)
         serializer = CustomerConsumeRecordSerializer(records, many=True)
         return success_response(serializer.data)
 
@@ -127,6 +134,30 @@ class CustomerViewSet(BaseModelViewSet):
         )
         return success_response(msg='充值成功')
 
+    @action(detail=True, methods=['post'], url_path='add-coins')
+    def add_coins(self, request, pk=None):
+        from decimal import Decimal
+        customer = self.get_object()
+        amount = int(request.data.get('amount', 0) or 0)
+        if amount <= 0:
+            return error_response(msg='数量必须大于0')
+        customer.coins = (customer.coins or 0) + amount
+        customer.save(update_fields=['coins'])
+        return success_response(msg=f'已添加{amount}黑钻')
+
+    @action(detail=True, methods=['post'], url_path='deduct-coins')
+    def deduct_coins(self, request, pk=None):
+        from decimal import Decimal
+        customer = self.get_object()
+        amount = int(request.data.get('amount', 0) or 0)
+        if amount <= 0:
+            return error_response(msg='数量必须大于0')
+        if (customer.coins or 0) < amount:
+            return error_response(msg='黑钻不足')
+        customer.coins -= amount
+        customer.save(update_fields=['coins'])
+        return success_response(msg=f'已扣除{amount}黑钻')
+
 
 class CustomerLevelViewSet(BaseModelViewSet):
     queryset = CustomerLevel.objects.all()
@@ -134,6 +165,14 @@ class CustomerLevelViewSet(BaseModelViewSet):
     filterset_fields = ['status']
     search_fields = ['name']
     ordering_fields = ['level', 'sort']
+
+    def list(self, request, *args, **kwargs):
+        response = super().list(request, *args, **kwargs)
+        return success_response(response.data)
+
+    def retrieve(self, request, *args, **kwargs):
+        response = super().retrieve(request, *args, **kwargs)
+        return success_response(response.data)
 
 
 class CustomerTagViewSet(BaseModelViewSet):

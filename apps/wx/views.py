@@ -1426,6 +1426,11 @@ def create_self_service_order(request):
         'addon_price_delta': float(addon_price_delta),
     }
 
+    # === 扣费前置校验：黑钻是否充足 ===
+    coin_cost = int(total_amount * 10)  # 1元 = 10黑钻
+    if coin_cost > 0 and (customer.coins or 0) < coin_cost:
+        return error_response(msg=f'黑钻不足，需要{coin_cost}黑钻，当前仅有{customer.coins or 0}黑钻')
+
     import random
     order_no = (
         f'SV{timezone.now().strftime("%Y%m%d%H%M%S")}'
@@ -1460,6 +1465,46 @@ def create_self_service_order(request):
         status='assigned',
         remark=f'{gameplay.name} / {level.name} / {service.name}',
     )
+
+    # === 扣费逻辑：黑钻扣减 + 消费流水 + 财务 Transaction ===
+    if coin_cost > 0:
+        # 扣减黑钻
+        customer.coins = (customer.coins or 0) - coin_cost
+        customer.total_amount = (customer.total_amount or Decimal('0')) + total_amount
+        customer.total_orders = (customer.total_orders or 0) + 1
+        customer.last_order_date = timezone.now()
+        if not customer.first_order_date:
+            customer.first_order_date = timezone.now()
+        customer.save(update_fields=['coins', 'total_amount', 'total_orders', 'last_order_date', 'first_order_date'])
+
+        # 消费记录
+        from apps.customer.models import CustomerConsumeRecord
+        CustomerConsumeRecord.objects.create(
+            customer=customer,
+            order_no=order_no,
+            amount=total_amount,
+            type='order',
+            remark=f'自助下单 {skill.name}·{gameplay.name}',
+        )
+
+        # 财务流水
+        from apps.finance.models import Wallet, Transaction
+        wallet, _ = Wallet.objects.get_or_create(user=user, type='user')
+        wallet.balance = (wallet.balance or Decimal('0')) - total_amount
+        wallet.total_expense = (wallet.total_expense or Decimal('0')) + total_amount
+        wallet.save(update_fields=['balance', 'total_expense'])
+        Transaction.objects.create(
+            wallet=wallet,
+            order_no=order_no,
+            transaction_no=f'TXN{timezone.now().strftime("%Y%m%d%H%M%S")}{user.id:04d}{order.id:04d}',
+            type='expense',
+            category='self_service_order',
+            amount=total_amount,
+            balance_after=wallet.balance,
+            remark=f'自助下单扣减 {coin_cost}黑钻',
+            operator=request.user if hasattr(request, 'user') else None,
+        )
+
     return success_response({
         'order_id': order.id,
         'order_no': order.order_no,
