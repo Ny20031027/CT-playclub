@@ -1,6 +1,7 @@
 from decimal import Decimal
 
 from django.test import TestCase
+from rest_framework.test import APIClient
 
 from apps.account.models import User
 from apps.wx.models import GameCategory
@@ -31,9 +32,32 @@ class SkillSystemTests(TestCase):
             assignment_mode='manual', pricing_unit='hour', unit_price=Decimal('80'),
         )
         user = User.objects.create_user(username='skill_tester')
+        self.client = APIClient()
+        self.client.force_authenticate(user=user)
         self.employee = Employee.objects.create(
             user=user, employee_no='EMP-SKILL-001', real_name='测试打手'
         )
+
+    def test_game_category_detail_uses_standard_response(self):
+        payload = self.client.get(
+            f'/api/system/game-categories/{self.game.id}/'
+        ).json()
+        self.assertEqual(payload['code'], 200)
+        self.assertEqual(payload['data']['id'], self.game.id)
+        self.assertEqual(payload['data']['name'], self.game.name)
+
+    def test_game_rank_can_be_created_for_selected_category(self):
+        payload = self.client.post('/api/employee/game-ranks/', {
+            'game_category': self.game.id,
+            'name': '钻石',
+            'sort': 30,
+            'status': True,
+        }, format='json').json()
+        self.assertEqual(payload['code'], 200)
+        self.assertEqual(payload['data']['game_category'], self.game.id)
+        self.assertTrue(GameRank.objects.filter(
+            game_category=self.game, name='钻石', is_deleted=False
+        ).exists())
 
     def set_rank(self, rank):
         relation, _ = EmployeeGameRank.objects.get_or_create(

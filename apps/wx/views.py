@@ -45,6 +45,10 @@ class GameCategoryViewSet(BaseModelViewSet):
         serializer = self.get_serializer(queryset, many=True)
         return success_response({'results': serializer.data})
 
+    def retrieve(self, request, *args, **kwargs):
+        instance = self.get_object()
+        return success_response(self.get_serializer(instance).data)
+
 # 微信小程序配置 - 需要在 settings.py 或环境变量中配置
 WX_APPID = getattr(settings, 'WX_APPID', '')
 WX_SECRET = getattr(settings, 'WX_SECRET', '')
