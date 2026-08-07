@@ -771,10 +771,14 @@ def home_data(request):
     employee_list = []
     for emp in employees:
         skills = []
-        for rel in emp.skill_relations.filter(skill__status=True).select_related('skill')[:3]:
+        for rel in emp.skill_relations.filter(
+            skill__status=True, is_deleted=False
+        ).select_related('skill').order_by('-is_enabled', 'skill__sort', 'id')[:3]:
             skills.append({
                 'name': rel.skill.name,
                 'price': float(rel.unit_price),
+                'is_enabled': rel.is_enabled,
+                'pricing_unit': rel.skill.pricing_unit,
             })
         # 获取评价数量
         review_count = OrderComment.objects.filter(employee=emp, is_deleted=False).count()
@@ -873,12 +877,20 @@ def employee_list(request):
     employee_list = []
     for emp in employees:
         skills = []
-        for rel in emp.skill_relations.filter(skill__status=True).select_related('skill', 'skill_level')[:5]:
+        for rel in emp.skill_relations.filter(
+            skill__status=True, is_deleted=False
+        ).select_related('skill', 'skill_level', 'skill__required_rank').order_by(
+            '-is_enabled', 'skill__sort', 'id'
+        )[:5]:
             skills.append({
                 'id': rel.skill.id,
                 'name': rel.skill.name,
                 'price': float(rel.unit_price),
                 'level': rel.skill_level.name if rel.skill_level else '',
+                'required_rank': rel.skill.required_rank.name if rel.skill.required_rank else '',
+                'is_enabled': rel.is_enabled,
+                'pricing_unit': rel.skill.pricing_unit,
+                'icon': rel.skill.icon or '',
             })
         tags = [{'name': t.name, 'color': t.color} for t in emp.tags.filter(status=True)[:5]]
         game_categories = [
@@ -925,14 +937,23 @@ def employee_detail(request, emp_id):
         return error_response(msg='陪玩师不存在')
 
     skills = []
-    for rel in emp.skill_relations.filter(skill__status=True).select_related('skill', 'skill_level'):
+    for rel in emp.skill_relations.filter(
+        skill__status=True, is_deleted=False
+    ).select_related('skill', 'skill_level', 'skill__required_rank').order_by(
+        '-is_enabled', 'skill__sort', 'id'
+    ):
         skills.append({
             'id': rel.skill.id,
             'name': rel.skill.name,
             'category': rel.skill.category,
             'price': float(rel.unit_price),
             'level': rel.skill_level.name if rel.skill_level else '',
+            'required_rank': rel.skill.required_rank.name if rel.skill.required_rank else '',
             'min_people': rel.skill.min_people or 1,
+            'icon': rel.skill.icon or '',
+            'is_enabled': rel.is_enabled,
+            'pricing_unit': rel.skill.pricing_unit,
+            'assignment_source': rel.assignment_source,
         })
 
     tags = [{'name': t.name, 'color': t.color} for t in emp.tags.filter(status=True)]
@@ -1019,6 +1040,7 @@ def create_order(request):
     if employee_id:
         employee_id = int(employee_id)
     duration = request.data.get('duration', 60)
+    purchase_quantity_raw = request.data.get('purchase_quantity')
     quantity = request.data.get('quantity', 1)
     game_id = request.data.get('game_id', '')
     game_name = request.data.get('game_name', '')
@@ -1041,21 +1063,36 @@ def create_order(request):
     if quantity < 1:
         return error_response(msg='购买数量不能小于1')
 
+    try:
+        purchase_quantity = Decimal(str(
+            purchase_quantity_raw if purchase_quantity_raw is not None
+            else (Decimal(str(duration)) / Decimal('60') if skill.pricing_unit == 'hour' else 1)
+        ))
+    except (InvalidOperation, TypeError, ValueError):
+        return error_response(msg='购买数量格式不正确')
+    if purchase_quantity <= 0:
+        return error_response(msg='购买数量必须大于0')
+    if skill.pricing_unit == 'round' and purchase_quantity % 1 != 0:
+        return error_response(msg='按局计价时局数必须为整数')
+
     # 计算价格
     unit_price = 0
     if employee_id:
         try:
-            relation = EmployeeSkillRelation.objects.get(employee_id=employee_id, skill_id=skill_id)
+            relation = EmployeeSkillRelation.objects.get(
+                employee_id=employee_id, skill_id=skill_id,
+                is_deleted=False, is_enabled=True
+            )
             unit_price = float(relation.unit_price)
         except EmployeeSkillRelation.DoesNotExist:
-            pass
+            return error_response(msg='该打手暂未开启此技能')
 
     if unit_price == 0:
         price_obj = OrderPrice.objects.filter(skill_id=skill_id, status=True).first()
         if price_obj:
             unit_price = float(price_obj.unit_price)
 
-    total_amount = unit_price * duration / 60 * quantity if unit_price else 0
+    total_amount = Decimal(str(unit_price)) * purchase_quantity * quantity if unit_price else Decimal('0')
 
     # 生成订单号（包含随机数避免重复）
     import random
@@ -1069,6 +1106,8 @@ def create_order(request):
         status=OrderStatus.PUBLISHED,
         duration=duration,
         quantity=quantity,
+        purchase_quantity=purchase_quantity,
+        settlement_unit=skill.pricing_unit,
         unit_price=unit_price,
         total_amount=round(total_amount, 2),
         pay_amount=round(total_amount, 2),
@@ -3514,8 +3553,11 @@ def get_my_skills(request):
     except Exception:
         return error_response(msg='您不是打手')
 
-    relations = EmployeeSkillRelation.objects.filter(employee=employee, is_deleted=False).select_related(
-        'skill', 'skill__game_category', 'skill_level')
+    relations = EmployeeSkillRelation.objects.filter(
+        employee=employee, is_deleted=False, skill__status=True
+    ).select_related(
+        'skill', 'skill__game_category', 'skill__required_rank'
+    ).order_by('-is_enabled', 'skill__sort', 'id')
     my_skills = []
     for rel in relations:
         my_skills.append({
@@ -3525,10 +3567,16 @@ def get_my_skills(request):
             'category': rel.skill.category,
             'game_name': rel.skill.game_category.name if rel.skill.game_category else '',
             'game_id': rel.skill.game_category.id if rel.skill.game_category else 0,
-            'skill_level_id': rel.skill_level.id if rel.skill_level else 0,
-            'level_name': rel.skill_level.name if rel.skill_level else '',
+            'required_rank_id': rel.skill.required_rank_id or 0,
+            'required_rank_name': rel.skill.required_rank.name if rel.skill.required_rank else '',
+            'level_name': rel.skill.required_rank.name if rel.skill.required_rank else '',
             'unit_price': float(rel.unit_price),
-            'skill_type': rel.skill_type,
+            'pricing_unit': rel.skill.pricing_unit,
+            'pricing_unit_text': '局' if rel.skill.pricing_unit == 'round' else '小时',
+            'icon': rel.skill.icon or '',
+            'assignment_source': rel.assignment_source,
+            'assignment_source_text': '段位自动获得' if rel.assignment_source == 'rank_auto' else '管理员授予',
+            'is_enabled': rel.is_enabled,
         })
 
     return success_response(data=my_skills)
@@ -3642,18 +3690,10 @@ def get_self_service_catalog(request):
 @api_view(['GET'])
 @permission_classes([AllowAny])
 def get_all_skills(request):
-    """获取所有可用技能列表（含段位）"""
-    skills = EmployeeSkill.objects.filter(status=True).select_related('game_category').prefetch_related('levels')
+    """Compatibility catalog for clients that need published skill templates."""
+    skills = EmployeeSkill.objects.filter(status=True).select_related('game_category', 'required_rank')
     data = []
     for s in skills:
-        levels = []
-        for lv in s.levels.all().order_by('sort', 'id'):
-            levels.append({
-                'id': lv.id,
-                'name': lv.name,
-                'unit_price': float(lv.unit_price),
-                'sort': lv.sort,
-            })
         data.append({
             'id': s.id,
             'name': s.name,
@@ -3661,9 +3701,12 @@ def get_all_skills(request):
             'unit_price': float(s.unit_price),
             'game_name': s.game_category.name if s.game_category else '',
             'game_id': s.game_category.id if s.game_category else 0,
-            'skill_type': s.skill_type,
+            'pricing_unit': s.pricing_unit,
+            'assignment_mode': s.assignment_mode,
+            'required_rank_id': s.required_rank_id or 0,
+            'required_rank_name': s.required_rank.name if s.required_rank else '',
             'min_people': s.min_people or 1,
-            'levels': levels,
+            'icon': s.icon or '',
         })
     return success_response(data=data)
 
@@ -3680,7 +3723,7 @@ def get_all_tags(request):
 @api_view(['POST'])
 @permission_classes([IsAuthenticated])
 def update_my_skills(request):
-    """更新打手技能设置（增删改）"""
+    """A dasher may only enable or disable skills already granted by the system."""
     user = request.user
     try:
         employee = user.get_active_employee()
@@ -3690,41 +3733,21 @@ def update_my_skills(request):
         return error_response(msg='您不是打手')
 
     skills_data = request.data.get('skills', [])
-
-    # 先清空旧的
-    EmployeeSkillRelation.objects.filter(employee=employee, is_deleted=False).update(is_deleted=True)
-
-    # 写入新的
+    if not isinstance(skills_data, list):
+        return error_response(msg='技能开关数据格式不正确')
+    relations = {
+        relation.id: relation
+        for relation in EmployeeSkillRelation.objects.filter(employee=employee, is_deleted=False)
+    }
     for item in skills_data:
-        skill_id = item.get('skill_id')
-        unit_price = item.get('unit_price', 0)
-        skill_level_id = item.get('skill_level_id', 0)
-        skill_type = item.get('skill_type', 'secondary')
+        relation_id = int(item.get('id') or 0)
+        relation = relations.get(relation_id)
+        if not relation:
+            return error_response(msg='存在无权修改的技能')
+        relation.is_enabled = bool(item.get('is_enabled', True))
+        relation.save(update_fields=['is_enabled', 'updated_at'])
 
-        if not skill_id:
-            continue
-
-        try:
-            skill = EmployeeSkill.objects.get(id=skill_id)
-        except EmployeeSkill.DoesNotExist:
-            continue
-
-        skill_level = None
-        if skill_level_id:
-            try:
-                skill_level = SkillLevel.objects.get(id=skill_level_id, skill=skill)
-            except SkillLevel.DoesNotExist:
-                pass
-
-        EmployeeSkillRelation.objects.create(
-            employee=employee,
-            skill=skill,
-            skill_level=skill_level,
-            unit_price=unit_price,
-            skill_type=skill_type,
-        )
-
-    return success_response(msg='技能设置保存成功')
+    return success_response(msg='技能开关保存成功')
 
 
 # ============ 组队模块 ============

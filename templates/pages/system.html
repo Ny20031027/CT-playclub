@@ -4,6 +4,8 @@
 <style>
     .modal-large { width: 900px; max-width: 95%; }
     .modal-large .modal-body { max-height: 68vh; overflow-y: auto; }
+    .skill-system-modal { max-height: calc(100vh - 40px); display: flex; flex-direction: column; }
+    .skill-system-modal .modal-body { overflow-y: auto; }
     .card-actions .btn-primary,
     .modal-footer .btn-primary,
     .btn-sm.btn-primary { width: auto; height: auto; padding: 8px 16px; font-size: 14px; }
@@ -180,8 +182,11 @@
 <div id="skillTab" style="display: none;">
     <div class="card">
         <div class="card-header">
-            <div class="card-title">技能设置（技能 & 段位管理）</div>
+            <div class="card-title">技能系统</div>
             <div class="card-actions">
+                <button class="btn btn-default" onclick="showRankManager()">
+                    <i class="fa-solid fa-ranking-star"></i> 游戏段位
+                </button>
                 <button class="btn btn-primary" onclick="showAddSkillModal()">
                     <i class="fa-solid fa-plus"></i> 添加技能
                 </button>
@@ -191,17 +196,18 @@
             <table>
                 <thead>
                     <tr>
+                        <th>图标</th>
                         <th>技能名称</th>
                         <th>游戏分类</th>
-                        <th>技能类型</th>
-                        <th>最低下单人数</th>
-                        <th>段位</th>
+                        <th>所需段位</th>
+                        <th>价格</th>
+                        <th>授予方式</th>
                         <th>状态</th>
                         <th>操作</th>
                     </tr>
                 </thead>
                 <tbody id="skillList">
-                    <tr><td colspan="7" class="empty-state"><i class="fa-solid fa-spinner fa-spin"></i><br>加载中...</td></tr>
+                    <tr><td colspan="8" class="empty-state"><i class="fa-solid fa-spinner fa-spin"></i><br>加载中...</td></tr>
                 </tbody>
             </table>
         </div>
@@ -631,7 +637,7 @@
 </div>
 
 <div class="modal-overlay" id="skillModal">
-    <div class="modal">
+    <div class="modal skill-system-modal">
         <div class="modal-header">
             <div class="modal-title" id="skillModalTitle">添加技能</div>
             <div class="modal-close" onclick="hideModal('skillModal')">&times;</div>
@@ -641,17 +647,44 @@
                 <input type="hidden" id="skillId">
                 <div class="form-group">
                     <label>技能名称 *</label>
-                    <input type="text" id="skillName" required placeholder="如：王者荣耀陪玩">
+                    <input type="text" id="skillName" required placeholder="如：排位陪玩">
                 </div>
                 <div class="form-group">
-                    <label>游戏分类</label>
-                    <select id="skillGameCategory">
+                    <label>技能图标</label>
+                    <div style="display:flex;align-items:center;gap:12px;">
+                        <img id="skillIconPreview" src="" style="display:none;width:48px;height:48px;border-radius:10px;object-fit:cover;background:#f5f7fa;">
+                        <input type="file" id="skillIconFile" accept="image/*" onchange="uploadSkillIcon(this)" style="flex:1;">
+                        <input type="hidden" id="skillIcon">
+                    </div>
+                </div>
+                <div class="form-group">
+                    <label>游戏分类 *</label>
+                    <select id="skillGameCategory" onchange="loadSkillRankOptions()" required>
                         <option value="">请选择游戏分类</option>
                     </select>
                 </div>
                 <div class="form-group">
-                    <label>排序</label>
-                    <input type="number" id="skillSort" value="0" min="0">
+                    <label>所需段位 *</label>
+                    <select id="skillRequiredRank" required>
+                        <option value="">请先选择游戏分类</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label>技能价格 *</label>
+                    <div style="display:flex;gap:10px;">
+                        <input type="number" id="skillUnitPrice" value="0" min="0" step="0.01" required style="flex:1;">
+                        <select id="skillPricingUnit" style="width:130px;">
+                            <option value="hour">每小时</option>
+                            <option value="round">每局</option>
+                        </select>
+                    </div>
+                </div>
+                <div class="form-group">
+                    <label>授予方式 *</label>
+                    <select id="skillAssignmentMode">
+                        <option value="rank_auto">达到段位后自动拥有</option>
+                        <option value="manual">管理员手动添加并设置专属价格</option>
+                    </select>
                 </div>
                 <div class="form-group">
                     <label>状态</label>
@@ -661,28 +694,39 @@
                     </select>
                 </div>
                 <div class="form-group">
-                    <label>技能类型</label>
-                    <select id="skillType">
-                        <option value="secondary">副技能</option>
-                        <option value="primary">主技能</option>
-                    </select>
+                    <label>排序</label>
+                    <input type="number" id="skillSort" value="0" min="0">
                 </div>
-                <div class="form-group">
-                    <label>最低下单人数 *</label>
-                    <input type="number" id="skillMinPeople" value="1" min="1" max="20" required placeholder="客户在小程序下单时最少需要选择的人数，默认1">
-                    <small style="color: #999; font-size: 12px;">客户在小程序下单时，该技能最少需要选择的人数（例如：5人车队则填5）</small>
-                </div>
-                <hr style="margin: 15px 0; border: none; border-top: 1px solid #eee;">
-                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;">
-                    <p style="font-weight: 600; margin: 0;">段位设置</p>
-                    <button type="button" class="btn btn-default" onclick="addLevelRow()" style="padding: 4px 12px; font-size: 13px;">+ 添加段位</button>
-                </div>
-                <div id="levelRows"></div>
             </form>
         </div>
         <div class="modal-footer">
             <button class="btn btn-default" onclick="hideModal('skillModal')">取消</button>
             <button class="btn btn-primary" onclick="saveSkill()">确定</button>
+        </div>
+    </div>
+</div>
+
+<div class="modal-overlay" id="rankManagerModal">
+    <div class="modal skill-system-modal">
+        <div class="modal-header">
+            <div class="modal-title">游戏段位设置</div>
+            <div class="modal-close" onclick="hideModal('rankManagerModal')">&times;</div>
+        </div>
+        <div class="modal-body">
+            <div class="form-group">
+                <label>游戏分类</label>
+                <select id="rankGameCategory" onchange="loadRankRows()"></select>
+            </div>
+            <div style="display:flex;justify-content:space-between;align-items:center;margin:16px 0 10px;">
+                <strong>段位阶梯（由低到高）</strong>
+                <button class="btn btn-default" type="button" onclick="addRankRow()">+ 添加段位</button>
+            </div>
+            <div id="rankRows"></div>
+            <div class="empty-state" id="rankEmpty" style="display:none;">该游戏还没有设置段位</div>
+        </div>
+        <div class="modal-footer">
+            <button class="btn btn-default" onclick="hideModal('rankManagerModal')">取消</button>
+            <button class="btn btn-primary" onclick="saveRankRows()">保存段位</button>
         </div>
     </div>
 </div>
@@ -1611,23 +1655,25 @@
                 const tbody = document.getElementById('skillList');
 
                 if (skills.length === 0) {
-                    tbody.innerHTML = '<tr><td colspan="7" class="empty-state"><i class="fa-solid fa-inbox"></i><br>暂无技能数据</td></tr>';
+                    tbody.innerHTML = '<tr><td colspan="8" class="empty-state"><i class="fa-solid fa-inbox"></i><br>暂无技能数据</td></tr>';
                     return;
                 }
 
                 tbody.innerHTML = skills.map(s => {
-                    const levels = (s.levels || []).map(l => l.name + '(¥' + l.unit_price + ')').join('、');
-                    const typeLabel = s.skill_type === 'primary' ? '<span class="badge badge-primary">主技能</span>' : '<span class="badge badge-default">副技能</span>';
-                    const minPeople = (s.min_people && s.min_people > 1)
-                        ? `<span class="badge badge-warning">${s.min_people}人起</span>`
-                        : '<span style="color:#999;">1人</span>';
+                    const unitText = s.pricing_unit === 'round' ? '局' : '小时';
+                    const modeText = s.assignment_mode === 'rank_auto' ? '段位自动获得' : '管理员手动添加';
+                    const modeClass = s.assignment_mode === 'rank_auto' ? 'badge-primary' : 'badge-warning';
+                    const icon = s.icon
+                        ? `<img src="${escapeHtml(s.icon)}" style="width:40px;height:40px;border-radius:9px;object-fit:cover;">`
+                        : '<span style="display:inline-flex;width:40px;height:40px;border-radius:9px;background:#eef2ff;align-items:center;justify-content:center;color:#667eea;"><i class="fa-solid fa-gamepad"></i></span>';
                     return `
                     <tr>
-                        <td>${s.name}</td>
-                        <td>${s.game_category_name || '-'}</td>
-                        <td>${typeLabel}</td>
-                        <td>${minPeople}</td>
-                        <td>${levels || '<span style="color:#999;">未设置段位</span>'}</td>
+                        <td>${icon}</td>
+                        <td><strong>${escapeHtml(s.name)}</strong></td>
+                        <td>${escapeHtml(s.game_category_name || '-')}</td>
+                        <td>${escapeHtml(s.required_rank_name || '未设置')}</td>
+                        <td><strong style="color:#f56c6c;">¥${s.unit_price}</strong> / ${unitText}</td>
+                        <td><span class="badge ${modeClass}">${modeText}</span></td>
                         <td>
                             <span class="badge ${s.status ? 'badge-success' : 'badge-danger'}">${s.status ? '启用' : '禁用'}</span>
                         </td>
@@ -1643,27 +1689,48 @@
         }
     }
 
-    function addLevelRow(name, unitPrice, sort) {
-        const container = document.getElementById('levelRows');
-        const html = `
-            <div style="display: flex; gap: 8px; align-items: center; margin-bottom: 8px;" class="level-row">
-                <input type="text" placeholder="段位名" value="${name || ''}" style="flex:1; padding:6px 10px; border:1px solid #ddd; border-radius:4px; font-size:13px;" class="lv-name">
-                <input type="number" placeholder="单价(元/小时)" value="${unitPrice || ''}" step="0.01" min="0" style="width:120px; padding:6px 10px; border:1px solid #ddd; border-radius:4px; font-size:13px;" class="lv-price">
-                <input type="number" placeholder="排序" value="${sort || 0}" style="width:60px; padding:6px 10px; border:1px solid #ddd; border-radius:4px; font-size:13px;" class="lv-sort">
-                <button type="button" onclick="this.parentElement.remove()" style="background:none; border:none; color:#ff4d4f; cursor:pointer; font-size:16px;">&times;</button>
-            </div>
-        `;
-        container.insertAdjacentHTML('beforeend', html);
-    }
-
     async function showAddSkillModal() {
         document.getElementById('skillModalTitle').textContent = '添加技能';
         document.getElementById('skillForm').reset();
         document.getElementById('skillId').value = '';
-        document.getElementById('skillMinPeople').value = 1;
-        document.getElementById('levelRows').innerHTML = '';
+        document.getElementById('skillIcon').value = '';
+        document.getElementById('skillIconPreview').style.display = 'none';
         await loadSkillGameCategories();
+        await loadSkillRankOptions();
         showModal('skillModal');
+    }
+
+    async function loadSkillRankOptions(selectedId) {
+        const categoryId = document.getElementById('skillGameCategory').value;
+        const select = document.getElementById('skillRequiredRank');
+        if (!categoryId) {
+            select.innerHTML = '<option value="">请先选择游戏分类</option>';
+            return;
+        }
+        const result = await get('/employee/game-ranks/', { game_category: categoryId, status: true });
+        const ranks = result.code === 200 ? (result.data.results || []) : [];
+        select.innerHTML = '<option value="">请选择所需段位</option>' + ranks.map(rank =>
+            `<option value="${rank.id}">${escapeHtml(rank.name)}</option>`
+        ).join('');
+        if (selectedId) select.value = String(selectedId);
+    }
+
+    async function uploadSkillIcon(input) {
+        if (!input.files || !input.files[0]) return;
+        const formData = new FormData();
+        formData.append('file', input.files[0]);
+        try {
+            const result = await upload('/upload/files/image/', formData);
+            if (result.code !== 200) throw new Error(result.msg || '上传失败');
+            document.getElementById('skillIcon').value = result.data.url;
+            const preview = document.getElementById('skillIconPreview');
+            preview.src = result.data.url;
+            preview.style.display = 'block';
+            showToast('图标上传成功', 'success');
+        } catch (error) {
+            input.value = '';
+            showToast(error.message || '图标上传失败', 'error');
+        }
     }
 
     async function loadSkillGameCategories() {
@@ -1690,17 +1757,17 @@
                 document.getElementById('skillName').value = s.name;
                 document.getElementById('skillSort').value = s.sort || 0;
                 document.getElementById('skillStatus').value = s.status ? 'true' : 'false';
-                document.getElementById('skillType').value = s.skill_type || 'secondary';
-                document.getElementById('skillMinPeople').value = s.min_people || 1;
+                document.getElementById('skillUnitPrice').value = s.unit_price || 0;
+                document.getElementById('skillPricingUnit').value = s.pricing_unit || 'hour';
+                document.getElementById('skillAssignmentMode').value = s.assignment_mode || 'manual';
+                document.getElementById('skillIcon').value = s.icon || '';
+                const preview = document.getElementById('skillIconPreview');
+                preview.src = s.icon || '';
+                preview.style.display = s.icon ? 'block' : 'none';
 
                 await loadSkillGameCategories();
                 document.getElementById('skillGameCategory').value = s.game_category || '';
-
-                // 填充段位
-                document.getElementById('levelRows').innerHTML = '';
-                (s.levels || []).forEach(lv => {
-                    addLevelRow(lv.name, lv.unit_price, lv.sort);
-                });
+                await loadSkillRankOptions(s.required_rank);
 
                 showModal('skillModal');
             }
@@ -1709,47 +1776,39 @@
         }
     }
 
-    function collectLevels() {
-        const rows = document.querySelectorAll('#levelRows .level-row');
-        const levels = [];
-        rows.forEach((row, idx) => {
-            const name = row.querySelector('.lv-name').value.trim();
-            const unitPrice = parseFloat(row.querySelector('.lv-price').value) || 0;
-            const sort = parseInt(row.querySelector('.lv-sort').value) || 0;
-            if (name) {
-                levels.push({ name, unit_price: unitPrice, sort });
-            }
-        });
-        return levels;
-    }
-
     async function saveSkill() {
         const id = document.getElementById('skillId').value;
         const name = document.getElementById('skillName').value;
         const gameCategory = document.getElementById('skillGameCategory').value;
         const sort = document.getElementById('skillSort').value;
         const status = document.getElementById('skillStatus').value === 'true';
-        const skillType = document.getElementById('skillType').value;
-        const minPeople = parseInt(document.getElementById('skillMinPeople').value) || 1;
-        const levels = collectLevels();
+        const requiredRank = document.getElementById('skillRequiredRank').value;
+        const unitPrice = parseFloat(document.getElementById('skillUnitPrice').value);
 
         if (!name) {
             showToast('请输入技能名称', 'error');
             return;
         }
-        if (minPeople < 1) {
-            showToast('最低下单人数不能小于1', 'error');
+        if (!gameCategory || !requiredRank) {
+            showToast('请选择游戏分类和所需段位', 'error');
+            return;
+        }
+        if (Number.isNaN(unitPrice) || unitPrice < 0) {
+            showToast('请输入正确的技能价格', 'error');
             return;
         }
 
         const data = {
             name,
             game_category: gameCategory || null,
+            required_rank: parseInt(requiredRank),
+            icon: document.getElementById('skillIcon').value,
+            unit_price: unitPrice,
+            pricing_unit: document.getElementById('skillPricingUnit').value,
+            assignment_mode: document.getElementById('skillAssignmentMode').value,
             sort: parseInt(sort) || 0,
             status,
-            skill_type: skillType,
-            min_people: minPeople,
-            levels,
+            min_people: 1,
         };
 
         try {
@@ -1769,6 +1828,89 @@
             }
         } catch (error) {
             showToast('操作失败: ' + error.message, 'error');
+        }
+    }
+
+    let originalRankIds = [];
+
+    async function showRankManager() {
+        await loadSkillGameCategories();
+        const source = document.getElementById('skillGameCategory');
+        const target = document.getElementById('rankGameCategory');
+        target.innerHTML = source.innerHTML;
+        if (!target.value && target.options.length > 1) target.selectedIndex = 1;
+        await loadRankRows();
+        showModal('rankManagerModal');
+    }
+
+    async function loadRankRows() {
+        const categoryId = document.getElementById('rankGameCategory').value;
+        const container = document.getElementById('rankRows');
+        container.innerHTML = '';
+        originalRankIds = [];
+        if (!categoryId) {
+            document.getElementById('rankEmpty').style.display = 'block';
+            return;
+        }
+        const result = await get('/employee/game-ranks/', { game_category: categoryId });
+        const ranks = result.code === 200 ? (result.data.results || []) : [];
+        ranks.forEach(rank => addRankRow(rank));
+        originalRankIds = ranks.map(rank => rank.id);
+        document.getElementById('rankEmpty').style.display = ranks.length ? 'none' : 'block';
+    }
+
+    function addRankRow(rank = {}) {
+        const container = document.getElementById('rankRows');
+        const index = container.children.length;
+        container.insertAdjacentHTML('beforeend', `
+            <div class="rank-row" data-id="${rank.id || ''}" style="display:grid;grid-template-columns:34px 1fr 90px 90px 32px;gap:8px;align-items:center;margin-bottom:10px;">
+                <span style="width:28px;height:28px;border-radius:50%;display:flex;align-items:center;justify-content:center;background:#eef2ff;color:#667eea;font-weight:700;">${index + 1}</span>
+                <input class="rank-name" value="${escapeHtml(rank.name || '')}" placeholder="段位名称，如：黄金">
+                <input class="rank-sort" type="number" min="0" value="${rank.sort ?? index}">
+                <select class="rank-status"><option value="true" ${rank.status !== false ? 'selected' : ''}>启用</option><option value="false" ${rank.status === false ? 'selected' : ''}>禁用</option></select>
+                <button type="button" onclick="this.closest('.rank-row').remove()" style="border:0;background:none;color:#f56c6c;font-size:20px;cursor:pointer;">&times;</button>
+            </div>
+        `);
+        document.getElementById('rankEmpty').style.display = 'none';
+    }
+
+    async function saveRankRows() {
+        const categoryId = parseInt(document.getElementById('rankGameCategory').value);
+        if (!categoryId) {
+            showToast('请选择游戏分类', 'error');
+            return;
+        }
+        const rows = Array.from(document.querySelectorAll('#rankRows .rank-row'));
+        const names = rows.map(row => row.querySelector('.rank-name').value.trim());
+        if (names.some(name => !name) || new Set(names).size !== names.length) {
+            showToast('段位名称不能为空或重复', 'error');
+            return;
+        }
+        try {
+            const keptIds = [];
+            for (let index = 0; index < rows.length; index++) {
+                const row = rows[index];
+                const id = row.dataset.id;
+                const payload = {
+                    game_category: categoryId,
+                    name: names[index],
+                    sort: parseInt(row.querySelector('.rank-sort').value) || index,
+                    status: row.querySelector('.rank-status').value === 'true',
+                };
+                const result = id
+                    ? await put(`/employee/game-ranks/${id}/`, payload)
+                    : await post('/employee/game-ranks/', payload);
+                if (result.code !== 200) throw new Error(result.msg || '保存段位失败');
+                keptIds.push(Number(result.data.id));
+            }
+            for (const id of originalRankIds.filter(id => !keptIds.includes(Number(id)))) {
+                const result = await del(`/employee/game-ranks/${id}/`);
+                if (result.code !== 200) throw new Error(result.msg || '删除段位失败');
+            }
+            showToast('段位设置已保存', 'success');
+            await loadRankRows();
+        } catch (error) {
+            showToast(error.message || '段位保存失败；已被技能或打手使用的段位不能删除', 'error');
         }
     }
 

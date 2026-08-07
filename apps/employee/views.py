@@ -9,6 +9,7 @@ from apps.common.viewsets import BaseModelViewSet
 from .models import (
     Employee, EmployeeSkill, EmployeeTag, EmployeeWallet,
     EmployeeContract, EmployeeStatus, EmployeeSkillRelation, SkillLevel,
+    GameRank, EmployeeGameRank,
     SkillGameplay, GameplayDifficulty, GameplayLevelOption,
     GameplayService, GameplayPriceRule, ValueAddedService, ServiceValueAdded
 )
@@ -16,8 +17,9 @@ from .serializers import (
     EmployeeSerializer, EmployeeSkillSerializer, EmployeeTagSerializer,
     EmployeeWalletSerializer, EmployeeContractSerializer,
     EmployeeStatusSerializer, EmployeeSkillRelationSerializer,
-    EmployeeSimpleSerializer
+    EmployeeSimpleSerializer, GameRankSerializer, EmployeeGameRankSerializer
 )
+from .skill_services import sync_employee_rank_skills, sync_rank_auto_skill
 
 
 class EmployeeViewSet(BaseModelViewSet):
@@ -68,25 +70,139 @@ class EmployeeViewSet(BaseModelViewSet):
     def add_skill(self, request, pk=None):
         employee = self.get_object()
         skill_id = request.data.get('skill_id')
-        level = request.data.get('level', '')
-        unit_price = request.data.get('unit_price', 0)
-        relation, created = EmployeeSkillRelation.objects.get_or_create(
-            employee=employee,
-            skill_id=skill_id,
-            defaults={'level': level, 'unit_price': unit_price}
-        )
-        if not created:
-            relation.level = level
+        skill = EmployeeSkill.objects.filter(
+            id=skill_id, assignment_mode='manual', status=True, is_deleted=False
+        ).first()
+        if not skill:
+            raise serializers.ValidationError({'skill_id': '只能人工添加管理员授予类型的技能'})
+        unit_price = self._manual_price(request.data.get('unit_price', skill.unit_price))
+        relation = EmployeeSkillRelation.objects.filter(employee=employee, skill=skill).first()
+        if relation:
             relation.unit_price = unit_price
-            relation.save()
+            relation.assignment_source = 'manual'
+            relation.price_overridden = True
+            relation.is_deleted = False
+            relation.save(update_fields=[
+                'unit_price', 'assignment_source', 'price_overridden', 'is_deleted', 'updated_at'
+            ])
+        else:
+            relation = EmployeeSkillRelation.objects.create(
+                employee=employee, skill=skill, unit_price=unit_price,
+                assignment_source='manual', price_overridden=True
+            )
         return success_response(EmployeeSkillRelationSerializer(relation).data)
 
     @action(detail=True, methods=['post'], url_path='remove-skill')
     def remove_skill(self, request, pk=None):
         employee = self.get_object()
-        skill_id = request.data.get('skill')
-        EmployeeSkillRelation.objects.filter(employee=employee, skill_id=skill_id).delete()
+        skill_id = request.data.get('skill') or request.data.get('skill_id')
+        EmployeeSkillRelation.objects.filter(
+            employee=employee, skill_id=skill_id, assignment_source='manual'
+        ).update(is_deleted=True)
         return success_response(msg='技能已移除')
+
+    @staticmethod
+    def _manual_price(value):
+        try:
+            price = Decimal(str(value))
+        except (InvalidOperation, TypeError, ValueError):
+            raise serializers.ValidationError({'unit_price': '专属价格格式不正确'})
+        if price < 0:
+            raise serializers.ValidationError({'unit_price': '专属价格不能小于0'})
+        return price
+
+    @action(detail=True, methods=['get', 'post'], url_path='skill-system')
+    @transaction.atomic
+    def skill_system(self, request, pk=None):
+        employee = self.get_object()
+        if request.method == 'POST':
+            previous_rank_categories = set(EmployeeGameRank.objects.filter(
+                employee=employee, is_deleted=False
+            ).values_list('game_category_id', flat=True))
+            rank_data = request.data.get('ranks', [])
+            manual_skill_data = request.data.get('manual_skills', [])
+            if not isinstance(rank_data, list) or not isinstance(manual_skill_data, list):
+                raise serializers.ValidationError('段位和技能配置必须为数组')
+
+            desired_rank_categories = set()
+            for item in rank_data:
+                category_id = int(item.get('game_category_id') or 0)
+                rank_id = int(item.get('rank_id') or 0)
+                if not category_id or not rank_id:
+                    continue
+                rank = GameRank.objects.filter(
+                    id=rank_id, game_category_id=category_id,
+                    status=True, is_deleted=False
+                ).first()
+                if not rank:
+                    raise serializers.ValidationError({'ranks': '存在无效或跨游戏分类的段位'})
+                desired_rank_categories.add(category_id)
+                relation = EmployeeGameRank.objects.filter(
+                    employee=employee, game_category_id=category_id
+                ).first()
+                if relation:
+                    relation.rank = rank
+                    relation.is_deleted = False
+                    relation.save(update_fields=['rank', 'is_deleted', 'updated_at'])
+                else:
+                    EmployeeGameRank.objects.create(
+                        employee=employee, game_category_id=category_id, rank=rank
+                    )
+                employee.game_categories.add(category_id)
+
+            EmployeeGameRank.objects.filter(
+                employee=employee, is_deleted=False
+            ).exclude(game_category_id__in=desired_rank_categories).update(is_deleted=True)
+
+            desired_manual_ids = set()
+            for item in manual_skill_data:
+                skill_id = int(item.get('skill_id') or 0)
+                skill = EmployeeSkill.objects.filter(
+                    id=skill_id, assignment_mode='manual', status=True, is_deleted=False
+                ).first()
+                if not skill:
+                    raise serializers.ValidationError({'manual_skills': '只能分配启用中的人工授予技能'})
+                try:
+                    unit_price = Decimal(str(item.get('unit_price')))
+                except (InvalidOperation, TypeError, ValueError):
+                    raise serializers.ValidationError({'manual_skills': '专属价格格式不正确'})
+                if unit_price < 0:
+                    raise serializers.ValidationError({'manual_skills': '专属价格不能小于0'})
+                desired_manual_ids.add(skill_id)
+                relation = EmployeeSkillRelation.objects.filter(
+                    employee=employee, skill=skill
+                ).first()
+                if relation:
+                    relation.unit_price = unit_price
+                    relation.assignment_source = 'manual'
+                    relation.price_overridden = True
+                    relation.is_deleted = False
+                    relation.save(update_fields=[
+                        'unit_price', 'assignment_source', 'price_overridden',
+                        'is_deleted', 'updated_at'
+                    ])
+                else:
+                    EmployeeSkillRelation.objects.create(
+                        employee=employee, skill=skill, unit_price=unit_price,
+                        assignment_source='manual', price_overridden=True
+                    )
+
+            EmployeeSkillRelation.objects.filter(
+                employee=employee, assignment_source='manual', is_deleted=False
+            ).exclude(skill_id__in=desired_manual_ids).update(is_deleted=True)
+            for category_id in previous_rank_categories | desired_rank_categories:
+                sync_employee_rank_skills(employee, category_id)
+
+        ranks = EmployeeGameRank.objects.filter(
+            employee=employee, is_deleted=False
+        ).select_related('game_category', 'rank').order_by('game_category__sort', 'rank__sort')
+        relations = EmployeeSkillRelation.objects.filter(
+            employee=employee, is_deleted=False
+        ).select_related('skill', 'skill__game_category', 'skill__required_rank')
+        return success_response({
+            'ranks': EmployeeGameRankSerializer(ranks, many=True).data,
+            'skills': EmployeeSkillRelationSerializer(relations, many=True).data,
+        })
 
     @action(detail=False, methods=['post'], url_path='convert')
     @transaction.atomic
@@ -222,10 +338,46 @@ class EmployeeViewSet(BaseModelViewSet):
         return success_response(serializer.data)
 
 
+class GameRankViewSet(BaseModelViewSet):
+    queryset = GameRank.objects.select_related('game_category').all()
+    serializer_class = GameRankSerializer
+    filterset_fields = ['game_category', 'status']
+    search_fields = ['name', 'game_category__name']
+    ordering_fields = ['sort', 'id']
+
+    def list(self, request, *args, **kwargs):
+        queryset = self.filter_queryset(self.get_queryset())
+        return success_response({'results': self.get_serializer(queryset, many=True).data})
+
+    def perform_create(self, serializer):
+        rank = serializer.save()
+        self._sync_category(rank.game_category_id)
+
+    def perform_update(self, serializer):
+        old_category_id = serializer.instance.game_category_id
+        rank = serializer.save()
+        self._sync_category(old_category_id)
+        if rank.game_category_id != old_category_id:
+            self._sync_category(rank.game_category_id)
+
+    def perform_destroy(self, instance):
+        category_id = instance.game_category_id
+        super().perform_destroy(instance)
+        self._sync_category(category_id)
+
+    @staticmethod
+    def _sync_category(category_id):
+        employee_ids = EmployeeGameRank.objects.filter(
+            game_category_id=category_id, is_deleted=False
+        ).values_list('employee_id', flat=True)
+        for employee in Employee.objects.filter(id__in=employee_ids, is_deleted=False):
+            sync_employee_rank_skills(employee, category_id)
+
+
 class EmployeeSkillViewSet(BaseModelViewSet):
-    queryset = EmployeeSkill.objects.all()
+    queryset = EmployeeSkill.objects.select_related('game_category', 'required_rank').all()
     serializer_class = EmployeeSkillSerializer
-    filterset_fields = ['status', 'category']
+    filterset_fields = ['status', 'category', 'game_category', 'assignment_mode', 'pricing_unit']
     search_fields = ['name', 'category']
     ordering_fields = ['sort', 'id']
 
@@ -473,6 +625,7 @@ class EmployeeSkillViewSet(BaseModelViewSet):
             )
 
         self._sync_gameplays(skill, gameplays_data)
+        sync_rank_auto_skill(skill)
 
         return success_response(self.get_serializer(skill).data)
 
@@ -480,6 +633,9 @@ class EmployeeSkillViewSet(BaseModelViewSet):
     def update(self, request, *args, **kwargs):
         partial = kwargs.pop('partial', False)
         instance = self.get_object()
+        affected_employee_ids = list(EmployeeSkillRelation.objects.filter(
+            skill=instance, is_deleted=False
+        ).values_list('employee_id', flat=True))
         levels_data = request.data.get('levels', None)
         gameplays_data = request.data.get('gameplays', None)
         self_service_enabled = request.data.get('self_service_enabled', instance.self_service_enabled)
@@ -506,6 +662,9 @@ class EmployeeSkillViewSet(BaseModelViewSet):
                 )
 
         self._sync_gameplays(skill, gameplays_data)
+        for employee in Employee.objects.filter(id__in=affected_employee_ids, is_deleted=False):
+            sync_employee_rank_skills(employee, skill.game_category_id)
+        sync_rank_auto_skill(skill)
 
         return success_response(self.get_serializer(skill).data)
 

@@ -46,7 +46,7 @@
 
 <!-- 编辑打手弹窗 -->
 <div class="modal-overlay" id="editEmployeeModal">
-    <div class="modal">
+    <div class="modal employee-edit-modal">
         <div class="modal-header">
             <div class="modal-title">编辑打手</div>
             <div class="modal-close" onclick="hideModal('editEmployeeModal')">&times;</div>
@@ -93,6 +93,18 @@
                 <label>游戏分类（可多选）</label>
                 <div id="editEmpGameCategories" class="game-category-checkboxes">
                     <div class="empty-hint">加载游戏分类中...</div>
+                </div>
+            </div>
+            <div class="form-group">
+                <label>游戏段位（由管理员设定）</label>
+                <div id="editEmpGameRanks" class="skill-system-panel">
+                    <div class="empty-hint">加载段位设置中...</div>
+                </div>
+            </div>
+            <div class="form-group">
+                <label>人工授予技能与专属价格</label>
+                <div id="editEmpManualSkills" class="skill-system-panel">
+                    <div class="empty-hint">加载人工技能中...</div>
                 </div>
             </div>
         </div>
@@ -245,6 +257,30 @@
         background: #f0f0f0;
         color: #999;
     }
+    .skill-system-panel {
+        border: 1px solid #e8ebf0;
+        border-radius: 8px;
+        max-height: 240px;
+        overflow-y: auto;
+        background: #fafbfc;
+    }
+    .employee-edit-modal {
+        max-height: calc(100vh - 40px);
+        display: flex;
+        flex-direction: column;
+    }
+    .employee-edit-modal .modal-body { overflow-y: auto; }
+    .skill-system-row {
+        display: grid;
+        grid-template-columns: minmax(120px, 1fr) minmax(150px, 1.3fr);
+        gap: 12px;
+        align-items: center;
+        padding: 10px 12px;
+        border-bottom: 1px solid #edf0f4;
+    }
+    .skill-system-row:last-child { border-bottom: 0; }
+    .manual-skill-price { display: flex; align-items: center; gap: 8px; }
+    .manual-skill-price input { min-width: 0; }
 </style>
 
 <script>
@@ -253,9 +289,12 @@
     let selectedCustomerId = null;
     let customerSearchTimer = null;
     let gameCategories = [];
+    let gameRanks = [];
+    let manualSkills = [];
+    let currentSkillSystem = { ranks: [], skills: [] };
 
     document.addEventListener('DOMContentLoaded', async function() {
-        await Promise.all([loadGameCategories(), loadEmployees()]);
+        await Promise.all([loadGameCategories(), loadSkillSystemCatalog(), loadEmployees()]);
         
         document.getElementById('searchInput').addEventListener('input', debounce(async function() {
             currentPage = 1;
@@ -275,6 +314,72 @@
         } catch (error) {
             console.error('加载游戏分类失败:', error);
         }
+    }
+
+    async function loadSkillSystemCatalog() {
+        try {
+            const [rankResult, skillResult] = await Promise.all([
+                get('/employee/game-ranks/', { page_size: 1000, status: true }),
+                get('/employee/skills/', { page_size: 1000, status: true, assignment_mode: 'manual' }),
+            ]);
+            gameRanks = rankResult.code === 200 ? (rankResult.data.results || []) : [];
+            manualSkills = skillResult.code === 200 ? (skillResult.data.results || []) : [];
+        } catch (error) {
+            console.error('加载技能系统配置失败:', error);
+        }
+    }
+
+    function renderEmployeeSkillSystem(data) {
+        currentSkillSystem = data || { ranks: [], skills: [] };
+        const selectedRanks = new Map((currentSkillSystem.ranks || []).map(item => [Number(item.game_category), Number(item.rank)]));
+        const rankContainer = document.getElementById('editEmpGameRanks');
+        rankContainer.innerHTML = gameCategories.map(category => {
+            const ranks = gameRanks.filter(rank => Number(rank.game_category) === Number(category.id));
+            if (!ranks.length) return '';
+            return `<div class="skill-system-row">
+                <strong>${escapeHtml(category.name)}</strong>
+                <select class="employee-game-rank" data-category-id="${category.id}">
+                    <option value="">未设定</option>
+                    ${ranks.map(rank => `<option value="${rank.id}" ${selectedRanks.get(Number(category.id)) === Number(rank.id) ? 'selected' : ''}>${escapeHtml(rank.name)}</option>`).join('')}
+                </select>
+            </div>`;
+        }).join('') || '<div class="empty-hint">请先在系统设置中配置游戏段位</div>';
+
+        const assignedManual = new Map(
+            (currentSkillSystem.skills || []).filter(item => item.assignment_source === 'manual')
+                .map(item => [Number(item.skill), item])
+        );
+        const skillContainer = document.getElementById('editEmpManualSkills');
+        skillContainer.innerHTML = manualSkills.map(skill => {
+            const assigned = assignedManual.get(Number(skill.id));
+            const unitText = skill.pricing_unit === 'round' ? '局' : '小时';
+            return `<div class="skill-system-row">
+                <label style="display:flex;align-items:center;gap:8px;cursor:pointer;">
+                    <input class="employee-manual-skill" type="checkbox" value="${skill.id}" ${assigned ? 'checked' : ''} onchange="toggleManualSkillPrice(this)">
+                    <span><strong>${escapeHtml(skill.name)}</strong><br><small style="color:#909399;">${escapeHtml(skill.game_category_name || '')}</small></span>
+                </label>
+                <div class="manual-skill-price">
+                    <span>¥</span>
+                    <input type="number" min="0" step="0.01" value="${assigned ? assigned.unit_price : skill.unit_price}" ${assigned ? '' : 'disabled'}>
+                    <span>/${unitText}</span>
+                </div>
+            </div>`;
+        }).join('') || '<div class="empty-hint">暂无“管理员手动添加”类型的技能</div>';
+    }
+
+    function toggleManualSkillPrice(checkbox) {
+        checkbox.closest('.skill-system-row').querySelector('.manual-skill-price input').disabled = !checkbox.checked;
+    }
+
+    function collectEmployeeSkillSystem() {
+        const ranks = Array.from(document.querySelectorAll('.employee-game-rank'))
+            .filter(select => select.value)
+            .map(select => ({ game_category_id: Number(select.dataset.categoryId), rank_id: Number(select.value) }));
+        const manual_skills = Array.from(document.querySelectorAll('.employee-manual-skill:checked')).map(checkbox => ({
+            skill_id: Number(checkbox.value),
+            unit_price: Number(checkbox.closest('.skill-system-row').querySelector('.manual-skill-price input').value || 0),
+        }));
+        return { ranks, manual_skills };
     }
 
     function renderGameCategoryCheckboxes(containerId, selectedIds = []) {
@@ -483,7 +588,10 @@
 
     async function editEmployee(id) {
         try {
-            const result = await get(`/employee/employees/${id}/`);
+            const [result, skillSystemResult] = await Promise.all([
+                get(`/employee/employees/${id}/`),
+                get(`/employee/employees/${id}/skill-system/`),
+            ]);
             if (result.code === 200) {
                 const emp = result.data;
                 document.getElementById('editEmpId').value = emp.id;
@@ -495,6 +603,7 @@
                 document.getElementById('editEmpCommission').value = emp.commission_balance || 0;
                 const categoryList = emp.game_categories_list || [];
                 renderGameCategoryCheckboxes('editEmpGameCategories', categoryList.map(c => c.id));
+                renderEmployeeSkillSystem(skillSystemResult.code === 200 ? skillSystemResult.data : null);
                 showModal('editEmployeeModal');
             } else {
                 showToast('获取打手信息失败', 'error');
@@ -520,6 +629,10 @@
         try {
             const result = await put(`/employee/employees/${id}/`, data);
             if (result.code === 200) {
+                const skillResult = await post(`/employee/employees/${id}/skill-system/`, collectEmployeeSkillSystem());
+                if (skillResult.code !== 200) {
+                    throw new Error(skillResult.msg || '段位与技能配置保存失败');
+                }
                 showToast('保存成功', 'success');
                 hideModal('editEmployeeModal');
                 await loadEmployees();

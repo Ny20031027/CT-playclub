@@ -19,6 +19,27 @@ class EmployeeTag(BaseModel):
         return self.name
 
 
+class GameRank(BaseModel):
+    """A rank ladder entry owned by one game category."""
+    game_category = models.ForeignKey(
+        'wx.GameCategory', on_delete=models.CASCADE,
+        related_name='ranks', verbose_name='游戏分类'
+    )
+    name = models.CharField(max_length=50, verbose_name='段位名称')
+    sort = models.IntegerField(default=0, verbose_name='段位顺序')
+    status = models.BooleanField(default=True, verbose_name='状态')
+
+    class Meta:
+        db_table = 'emp_game_rank'
+        verbose_name = '游戏段位'
+        verbose_name_plural = verbose_name
+        ordering = ['game_category_id', 'sort', 'id']
+        unique_together = [('game_category', 'name')]
+
+    def __str__(self):
+        return f'{self.game_category.name} - {self.name}'
+
+
 class EmployeeSkill(BaseModel):
     name = models.CharField(max_length=100, unique=True, verbose_name='技能名称')
     category = models.CharField(max_length=50, blank=True, verbose_name='分类')
@@ -28,7 +49,19 @@ class EmployeeSkill(BaseModel):
     )
     unit_price = models.DecimalField(max_digits=10, decimal_places=2, default=0,
                                      verbose_name='单价(元/小时)')
-    icon = models.ImageField(upload_to='skills/', blank=True, verbose_name='图标')
+    icon = models.CharField(max_length=500, blank=True, verbose_name='图标URL')
+    required_rank = models.ForeignKey(
+        GameRank, on_delete=models.PROTECT, null=True, blank=True,
+        related_name='skills', verbose_name='所需段位'
+    )
+    assignment_mode = models.CharField(max_length=20, default='manual', choices=[
+        ('rank_auto', '达到段位自动拥有'),
+        ('manual', '管理员手动添加'),
+    ], verbose_name='授予方式')
+    pricing_unit = models.CharField(max_length=20, default='hour', choices=[
+        ('hour', '每小时'),
+        ('round', '每局'),
+    ], verbose_name='计价单位')
     sort = models.IntegerField(default=0, verbose_name='排序')
     status = models.BooleanField(default=True, verbose_name='状态')
     skill_type = models.CharField(max_length=20, default='secondary', choices=[
@@ -315,6 +348,31 @@ class Employee(BaseModel):
         return self.nickname or self.real_name
 
 
+class EmployeeGameRank(BaseModel):
+    """The rank manually assigned to an employee for one game category."""
+    employee = models.ForeignKey(
+        Employee, on_delete=models.CASCADE,
+        related_name='game_rank_relations', verbose_name='打手'
+    )
+    game_category = models.ForeignKey(
+        'wx.GameCategory', on_delete=models.CASCADE,
+        related_name='employee_rank_relations', verbose_name='游戏分类'
+    )
+    rank = models.ForeignKey(
+        GameRank, on_delete=models.PROTECT,
+        related_name='employee_relations', verbose_name='当前段位'
+    )
+
+    class Meta:
+        db_table = 'emp_employee_game_rank'
+        verbose_name = '打手游戏段位'
+        verbose_name_plural = verbose_name
+        unique_together = [('employee', 'game_category')]
+
+    def __str__(self):
+        return f'{self.employee} - {self.game_category.name}: {self.rank.name}'
+
+
 class EmployeeSkillRelation(BaseModel):
     employee = models.ForeignKey(Employee, on_delete=models.CASCADE,
                                  related_name='skill_relations', verbose_name='打手')
@@ -328,6 +386,12 @@ class EmployeeSkillRelation(BaseModel):
         ('primary', '主技能'),
         ('secondary', '副技能'),
     ], verbose_name='技能类型')
+    assignment_source = models.CharField(max_length=20, default='manual', choices=[
+        ('rank_auto', '段位自动授予'),
+        ('manual', '管理员手动授予'),
+    ], verbose_name='授予来源')
+    price_overridden = models.BooleanField(default=False, verbose_name='使用专属价格')
+    is_enabled = models.BooleanField(default=True, verbose_name='打手已开启')
 
     class Meta:
         db_table = 'emp_skill_relation'

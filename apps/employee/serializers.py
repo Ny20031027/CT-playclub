@@ -4,9 +4,29 @@ from apps.wx.models import GameCategory
 from .models import (
     Employee, EmployeeSkill, EmployeeTag, EmployeeWallet,
     EmployeeContract, EmployeeStatus, EmployeeSkillRelation, SkillLevel,
+    GameRank, EmployeeGameRank,
     SkillGameplay, GameplayDifficulty, GameplayLevelOption,
     GameplayService, GameplayPriceRule, ValueAddedService, ServiceValueAdded
 )
+
+
+class GameRankSerializer(serializers.ModelSerializer):
+    game_category_name = serializers.CharField(source='game_category.name', read_only=True)
+
+    class Meta:
+        model = GameRank
+        fields = ['id', 'game_category', 'game_category_name', 'name', 'sort', 'status']
+        read_only_fields = ['id']
+
+
+class EmployeeGameRankSerializer(serializers.ModelSerializer):
+    game_category_name = serializers.CharField(source='game_category.name', read_only=True)
+    rank_name = serializers.CharField(source='rank.name', read_only=True)
+
+    class Meta:
+        model = EmployeeGameRank
+        fields = ['id', 'employee', 'game_category', 'game_category_name', 'rank', 'rank_name']
+        read_only_fields = ['id']
 
 
 class SkillLevelSerializer(serializers.ModelSerializer):
@@ -113,13 +133,15 @@ class EmployeeSkillSerializer(serializers.ModelSerializer):
     )
     game_category_id = serializers.IntegerField(source='game_category.id', read_only=True)
     game_category_name = serializers.CharField(source='game_category.name', read_only=True, default='')
+    required_rank_name = serializers.CharField(source='required_rank.name', read_only=True, default='')
     levels = SkillLevelSerializer(many=True, read_only=True)
     gameplays = SkillGameplaySerializer(source='self_service_gameplays', many=True, read_only=True)
 
     class Meta:
         model = EmployeeSkill
         fields = ['id', 'name', 'category', 'game_category', 'game_category_id', 'game_category_name',
-                  'unit_price', 'icon', 'sort', 'status', 'skill_type', 'min_people',
+                  'unit_price', 'pricing_unit', 'icon', 'sort', 'status', 'skill_type', 'min_people',
+                  'required_rank', 'required_rank_name', 'assignment_mode',
                   'description', 'trial_mode', 'order_notice', 'remark_placeholder',
                   'self_service_enabled', 'levels', 'gameplays', 'created_at']
         read_only_fields = ['id', 'created_at']
@@ -132,6 +154,17 @@ class EmployeeSkillSerializer(serializers.ModelSerializer):
         elif not validated_data.get('category'):
             validated_data['category'] = ''
         return super().create(validated_data)
+
+    def validate(self, attrs):
+        game_category = attrs.get('game_category', getattr(self.instance, 'game_category', None))
+        required_rank = attrs.get('required_rank', getattr(self.instance, 'required_rank', None))
+        if not game_category:
+            raise serializers.ValidationError({'game_category': '请选择游戏分类'})
+        if not required_rank:
+            raise serializers.ValidationError({'required_rank': '请选择该游戏分类下的所需段位'})
+        if required_rank.game_category_id != game_category.id:
+            raise serializers.ValidationError({'required_rank': '所需段位不属于所选游戏分类'})
+        return attrs
 
     def update(self, instance, validated_data):
         # Sync category field from game_category name for backwards compatibility
@@ -156,10 +189,18 @@ class EmployeeSkillRelationSerializer(serializers.ModelSerializer):
     skill_name = serializers.CharField(source='skill.name', read_only=True)
     skill_category = serializers.CharField(source='skill.category', read_only=True)
     level_name = serializers.CharField(source='skill_level.name', read_only=True, default='')
+    game_category_name = serializers.CharField(source='skill.game_category.name', read_only=True, default='')
+    required_rank_name = serializers.CharField(source='skill.required_rank.name', read_only=True, default='')
+    pricing_unit = serializers.CharField(source='skill.pricing_unit', read_only=True)
+    icon = serializers.CharField(source='skill.icon', read_only=True)
 
     class Meta:
         model = EmployeeSkillRelation
-        fields = ['id', 'skill', 'skill_name', 'skill_category', 'skill_level', 'level_name', 'unit_price']
+        fields = [
+            'id', 'skill', 'skill_name', 'skill_category', 'skill_level', 'level_name',
+            'game_category_name', 'required_rank_name', 'pricing_unit', 'icon', 'unit_price',
+            'assignment_source', 'price_overridden', 'is_enabled'
+        ]
         read_only_fields = ['id']
 
 
