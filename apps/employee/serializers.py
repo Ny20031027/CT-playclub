@@ -276,6 +276,7 @@ class EmployeeSerializer(serializers.ModelSerializer):
                   'intro', 'voice_intro', 'voice_intro_url', 'voice_duration', 'rating', 'order_count', 'total_duration', 'fans_count',
                   'commission_balance', 'join_date',
                   'bank_name', 'bank_card', 'alipay', 'wechat', 'qq', 'sort', 'remark',
+                  'is_star', 'star_sort',
                   'wallet', 'created_at', 'updated_at']
         read_only_fields = ['id', 'rating', 'order_count', 'total_duration',
                             'online_status', 'created_at', 'updated_at', 'user', 'username', 'avatar_url',

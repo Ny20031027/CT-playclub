@@ -97,6 +97,9 @@ urlpatterns = [
     path('employee/photos/upload/', views.upload_employee_photo, name='wx-upload-photo'),
     path('employee/photos/delete/', views.delete_employee_photo, name='wx-delete-photo'),
 
+    # 周星榜单
+    path('ranking/', views.ranking_list, name='wx-ranking-list'),
+
     # 排行榜
     path('game-ranking/', views.game_ranking, name='wx-game-ranking'),
 

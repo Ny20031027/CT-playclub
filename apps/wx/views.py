@@ -810,11 +810,27 @@ def home_data(request):
             'is_online': emp.online_status,
         })
 
+    # 明星打手（TOP3，按star_sort排序）
+    star_dashers = Employee.objects.filter(
+        is_star=True, is_deleted=False
+    ).order_by('star_sort', 'id')[:3]
+    star_list = []
+    for emp in star_dashers:
+        star_list.append({
+            'id': emp.id,
+            'nickname': emp.nickname or emp.real_name,
+            'avatar': employee_avatar_url(emp),
+            'level': emp.level,
+            'level_num': emp.level_num,
+            'order_count': emp.order_count,
+        })
+
     return success_response({
         'banners': BannerSerializer(banners, many=True, context={'request': request}).data,
         'announcements': AnnouncementSerializer(announcements, many=True).data,
         'games': GameCategorySerializer(games, many=True, context={'request': request}).data,
         'employees': employee_list,
+        'star_dashers': star_list,
     })
 
 
@@ -824,6 +840,48 @@ def game_list(request):
     """游戏分类列表（与首页共用）"""
     games = GameCategory.objects.filter(status=True, is_deleted=False).order_by('sort', 'id')
     return success_response(GameCategorySerializer(games, many=True, context={'request': request}).data)
+
+
+@api_view(['GET'])
+@permission_classes([AllowAny])
+def ranking_list(request):
+    """周星榜单 — 明星打手 + 全部排名"""
+    # 明星打手 TOP3
+    star_dashers = Employee.objects.filter(
+        is_star=True, is_deleted=False
+    ).order_by('star_sort', 'id')[:3]
+    star_list = []
+    for emp in star_dashers:
+        star_list.append({
+            'id': emp.id,
+            'nickname': emp.nickname or emp.real_name,
+            'avatar': employee_avatar_url(emp),
+            'level': emp.level,
+            'level_num': emp.level_num,
+            'order_count': emp.order_count,
+        })
+
+    # 全部打手排名（按接单数）
+    all_ranked = Employee.objects.filter(
+        is_deleted=False, order_count__gt=0
+    ).order_by('-order_count', 'id')[:50]
+    rank_list = []
+    for idx, emp in enumerate(all_ranked):
+        rank_list.append({
+            'rank': idx + 1,
+            'id': emp.id,
+            'nickname': emp.nickname or emp.real_name,
+            'avatar': employee_avatar_url(emp),
+            'level': emp.level,
+            'level_num': emp.level_num,
+            'order_count': emp.order_count,
+            'is_star': emp.is_star,
+        })
+
+    return success_response({
+        'stars': star_list,
+        'ranking': rank_list,
+    })
 
 
 @api_view(['GET'])
