@@ -27,13 +27,14 @@
                     <th>等级</th>
                     <th>接单状态</th>
                     <th>上下班</th>
+                    <th>明星榜单</th>
                     <th>评分</th>
                     <th>接单数</th>
                     <th>操作</th>
                 </tr>
             </thead>
             <tbody id="employeeList">
-                <tr><td colspan="11" class="empty-state"><i class="fa-solid fa-spinner fa-spin"></i><br>加载中...</td></tr>
+                <tr><td colspan="12" class="empty-state"><i class="fa-solid fa-spinner fa-spin"></i><br>加载中...</td></tr>
             </tbody>
         </table>
     </div>
@@ -95,6 +96,20 @@
             <div class="form-group">
                 <label>佣金余额(元)</label>
                 <input type="number" id="editEmpCommission" min="0" step="0.01" value="0" placeholder="打手可提现的佣金余额">
+            </div>
+            <div class="form-group star-settings">
+                <label class="star-toggle-row" for="editEmpIsStar">
+                    <span>
+                        <strong>明星打手</strong>
+                        <small>开启后，该打手会进入小程序明星榜单</small>
+                    </span>
+                    <input type="checkbox" id="editEmpIsStar" onchange="toggleStarSortState()">
+                </label>
+                <div class="star-sort-row" id="editEmpStarSortRow">
+                    <label for="editEmpStarSort">明星榜单排序</label>
+                    <input type="number" id="editEmpStarSort" min="0" step="1" value="0" inputmode="numeric">
+                    <small>数字越小越靠前，0 为最高优先级</small>
+                </div>
             </div>
             <div class="form-group">
                 <label>游戏分类（可多选）</label>
@@ -264,6 +279,57 @@
         background: #f0f0f0;
         color: #999;
     }
+    .star-badge {
+        display: inline-flex;
+        align-items: center;
+        gap: 5px;
+        color: #9a6700;
+        background: #fff7d6;
+        border: 1px solid #f4d35e;
+        white-space: nowrap;
+    }
+    .star-settings {
+        padding: 14px;
+        border: 1px solid #f1df9b;
+        border-radius: 8px;
+        background: #fffdf5;
+    }
+    .star-settings .star-toggle-row {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 16px;
+        margin: 0;
+        cursor: pointer;
+    }
+    .star-toggle-row span {
+        display: flex;
+        flex-direction: column;
+        gap: 3px;
+    }
+    .star-toggle-row small,
+    .star-sort-row small {
+        color: #8a7a45;
+        font-weight: 400;
+    }
+    .star-settings .star-toggle-row input {
+        width: 18px;
+        height: 18px;
+        accent-color: #e6a700;
+        flex-shrink: 0;
+    }
+    .star-sort-row {
+        display: grid;
+        grid-template-columns: minmax(120px, auto) minmax(90px, 1fr);
+        align-items: center;
+        gap: 8px 12px;
+        margin-top: 14px;
+        padding-top: 14px;
+        border-top: 1px solid #f3e7bb;
+    }
+    .star-sort-row label { margin: 0; }
+    .star-sort-row small { grid-column: 1 / -1; }
+    .star-sort-row.is-disabled { opacity: 0.5; }
     .skill-system-panel {
         border: 1px solid #e8ebf0;
         border-radius: 8px;
@@ -443,7 +509,7 @@
                 const tbody = document.getElementById('employeeList');
                 
                 if (employees.length === 0) {
-                    tbody.innerHTML = '<tr><td colspan="11" class="empty-state"><i class="fa-solid fa-inbox"></i><br>暂无数据</td></tr>';
+                    tbody.innerHTML = '<tr><td colspan="12" class="empty-state"><i class="fa-solid fa-inbox"></i><br>暂无数据</td></tr>';
                     return;
                 }
 
@@ -465,6 +531,9 @@
                     const categoryBadges = categoryList.length > 0
                         ? categoryList.map(c => `<span class="category-badge">${escapeHtml(c.name)}</span>`).join('')
                         : `<span class="category-badge muted">未指定</span>`;
+                    const starBadge = emp.is_star
+                        ? `<span class="badge star-badge"><i class="fa-solid fa-star"></i> 明星 · ${Number(emp.star_sort) || 0}</span>`
+                        : '<span class="category-badge muted">普通</span>';
                     return `
                     <tr>
                         <td>${emp.id}</td>
@@ -475,6 +544,7 @@
                         <td>${levelText}</td>
                         <td><span class="badge ${status.class}">${status.text}</span></td>
                         <td><span class="badge ${workStatusClass}">${workStatusText}</span></td>
+                        <td>${starBadge}</td>
                         <td>${emp.rating || 0.0}</td>
                         <td>${emp.order_count || 0}</td>
                         <td>
@@ -489,7 +559,7 @@
             }
         } catch (error) {
                 console.error('加载打手数据失败:', error);
-                document.getElementById('employeeList').innerHTML = '<tr><td colspan="11" class="empty-state"><i class="fa-solid fa-exclamation-triangle"></i><br>加载失败</td></tr>';
+                document.getElementById('employeeList').innerHTML = '<tr><td colspan="12" class="empty-state"><i class="fa-solid fa-exclamation-triangle"></i><br>加载失败</td></tr>';
             }
     }
 
@@ -618,6 +688,9 @@
                 document.getElementById('editEmpPhone').value = emp.phone || '';
                 document.getElementById('editEmpIntro').value = emp.intro || '';
                 document.getElementById('editEmpCommission').value = emp.commission_balance || 0;
+                document.getElementById('editEmpIsStar').checked = Boolean(emp.is_star);
+                document.getElementById('editEmpStarSort').value = Number(emp.star_sort) || 0;
+                toggleStarSortState();
                 const categoryList = emp.game_categories_list || [];
                 renderGameCategoryCheckboxes('editEmpGameCategories', categoryList.map(c => c.id));
                 renderEmployeeSkillSystem(skillSystemResult.code === 200 ? skillSystemResult.data : null);
@@ -641,6 +714,8 @@
             phone: document.getElementById('editEmpPhone').value,
             intro: document.getElementById('editEmpIntro').value,
             commission_balance: parseFloat(document.getElementById('editEmpCommission').value) || 0,
+            is_star: document.getElementById('editEmpIsStar').checked,
+            star_sort: Math.max(0, parseInt(document.getElementById('editEmpStarSort').value, 10) || 0),
             game_category_ids: game_category_ids,
         };
 
@@ -660,6 +735,14 @@
         } catch (error) {
             showToast(error.message || '保存失败', 'error');
         }
+    }
+
+    function toggleStarSortState() {
+        const isStar = document.getElementById('editEmpIsStar').checked;
+        const sortInput = document.getElementById('editEmpStarSort');
+        const sortRow = document.getElementById('editEmpStarSortRow');
+        sortInput.disabled = !isStar;
+        sortRow.classList.toggle('is-disabled', !isStar);
     }
 
     function prevPage() {

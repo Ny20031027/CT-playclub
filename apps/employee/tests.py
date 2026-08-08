@@ -95,6 +95,26 @@ class SkillSystemTests(TestCase):
         self.assertEqual(employee_data['assessment_mode'], 'double')
         self.assertEqual(employee_data['assessment_mode_display'], '双考')
 
+    def test_employee_star_status_and_sort_are_editable(self):
+        updated = self.client.put(
+            f'/api/employee/employees/{self.employee.id}/',
+            {'is_star': True, 'star_sort': 2}, format='json'
+        ).json()
+        self.assertEqual(updated['code'], 200)
+        self.assertTrue(updated['data']['is_star'])
+        self.assertEqual(updated['data']['star_sort'], 2)
+
+        self.employee.refresh_from_db()
+        self.assertTrue(self.employee.is_star)
+        self.assertEqual(self.employee.star_sort, 2)
+
+    def test_employee_star_sort_cannot_be_negative(self):
+        updated = self.client.put(
+            f'/api/employee/employees/{self.employee.id}/',
+            {'is_star': True, 'star_sort': -1}, format='json'
+        ).json()
+        self.assertEqual(updated['code'], 400)
+
     def set_rank(self, rank):
         relation, _ = EmployeeGameRank.objects.get_or_create(
             employee=self.employee, game_category=self.game,
