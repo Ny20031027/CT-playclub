@@ -93,6 +93,10 @@ urlpatterns = [
     path('dasher/dashboard/', views.dasher_dashboard, name='wx-dasher-dashboard'),
     path('work-status/toggle/', views.toggle_work_status, name='wx-toggle-work-status'),
 
+    # 照片墙
+    path('employee/photos/upload/', views.upload_employee_photo, name='wx-upload-photo'),
+    path('employee/photos/delete/', views.delete_employee_photo, name='wx-delete-photo'),
+
     # 排行榜
     path('game-ranking/', views.game_ranking, name='wx-game-ranking'),
 

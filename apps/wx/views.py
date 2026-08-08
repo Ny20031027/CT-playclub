@@ -14,6 +14,7 @@ from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework_simplejwt.tokens import RefreshToken
 from apps.common.media import build_media_url
 from apps.common.response import success_response, error_response
+from apps.common.encoding_utils import fix_mojibake
 from apps.common.viewsets import BaseModelViewSet
 from apps.account.models import User
 from apps.employee.models import (
@@ -24,12 +25,16 @@ from apps.employee.models import (
 from apps.order.models import Order, OrderMember, OrderComment, OrderPrice, OrderStatus, SupportTicket, OrderCandidate
 from apps.order.comment_utils import create_order_comment_with_retry
 from apps.notice.models import Notice, UserNotice
+from apps.finance.models import Wallet, Transaction
 from apps.upload.models import UploadFile
 from .models import WxUser, Banner, Announcement, GameCategory, Gift, GameBanner, Follow
 from .serializers import (
     WxUserSerializer, BannerSerializer, AnnouncementSerializer,
     GameCategorySerializer, GiftSerializer, GameBannerSerializer
 )
+
+import logging
+logger = logging.getLogger(__name__)
 
 
 class GameCategoryViewSet(BaseModelViewSet):
@@ -891,10 +896,10 @@ def employee_list(request):
         )[:5]:
             skills.append({
                 'id': rel.skill.id,
-                'name': rel.skill.name,
+                'name': fix_mojibake(rel.skill.name),
                 'price': float(rel.unit_price),
-                'level': rel.skill_level.name if rel.skill_level else '',
-                'required_rank': rel.skill.required_rank.name if rel.skill.required_rank else '',
+                'level': fix_mojibake(rel.skill_level.name) if rel.skill_level else '',
+                'required_rank': fix_mojibake(rel.skill.required_rank.name) if rel.skill.required_rank else '',
                 'is_enabled': rel.is_enabled,
                 'pricing_unit': rel.skill.pricing_unit,
                 'icon': rel.skill.icon or '',
@@ -909,7 +914,7 @@ def employee_list(request):
 
         employee_list.append({
             'id': emp.id,
-            'nickname': emp.nickname or emp.real_name,
+            'nickname': fix_mojibake(emp.nickname or emp.real_name),
             'avatar': employee_avatar_url(emp),
             'gender': emp.gender if emp.gender != 'unknown' else (emp.user.gender if emp.user else 'unknown'),
             'age': emp.age,
@@ -953,11 +958,11 @@ def employee_detail(request, emp_id):
     ):
         skills.append({
             'id': rel.skill.id,
-            'name': rel.skill.name,
-            'category': rel.skill.category,
+            'name': fix_mojibake(rel.skill.name),
+            'category': fix_mojibake(rel.skill.category),
             'price': float(rel.unit_price),
-            'level': rel.skill_level.name if rel.skill_level else '',
-            'required_rank': rel.skill.required_rank.name if rel.skill.required_rank else '',
+            'level': fix_mojibake(rel.skill_level.name) if rel.skill_level else '',
+            'required_rank': fix_mojibake(rel.skill.required_rank.name) if rel.skill.required_rank else '',
             'min_people': rel.skill.min_people or 1,
             'icon': rel.skill.icon or '',
             'is_enabled': rel.is_enabled,
@@ -1000,8 +1005,8 @@ def employee_detail(request, emp_id):
 
     return success_response({
         'id': emp.id,
-        'nickname': emp.nickname or emp.real_name,
-        'real_name': emp.real_name,
+        'nickname': fix_mojibake(emp.nickname or emp.real_name),
+        'real_name': fix_mojibake(emp.real_name),
         'avatar': employee_avatar_url(emp),
         'gender': emp.gender,
         'age': emp.age,
@@ -1019,6 +1024,7 @@ def employee_detail(request, emp_id):
         'tags': tags,
         'game_categories': game_categories,
         'comments': comment_list,
+        'photos': emp.photos or [],
         'is_online': emp.online_status,
     })
 
@@ -1910,6 +1916,9 @@ def order_detail(request, order_id):
     sync_order_seat_state(order)
     ensure_order_leader(order)
 
+    # 自动到期检测：以时间为结算单位的订单，到期自动完成
+    _auto_complete_order(order)
+
     members = []
     for m in order.order_members.filter(is_deleted=False):
         if m.employee is None:
@@ -2656,6 +2665,148 @@ def discount_order(request, order_id):
     return success_response(msg='免单成功', data={'pay_amount': float(order.pay_amount)})
 
 
+# ============ 订单结算 ============
+
+COIN_TO_RMB_RATIO = Decimal('10')  # 1元 = 10黑钻
+
+
+def _settle_order(order):
+    """
+    订单结算：将订单金额按比例结算给接单打手。
+    - 对于自助单(order_type='self_service')：pay_amount 为黑钻，需换算为人民币
+    - 对于普通订单：pay_amount 已为人民币
+    - 结算金额按各成员分配，更新 Employee.commission_balance 并创建 Transaction 记录
+    """
+    if order.status != 'completed':
+        return
+
+    # 检查是否已结算（通过 Transaction 记录判断）
+    existing_tx = Transaction.objects.filter(
+        order_no=order.order_no, category='order_settle'
+    ).exists()
+    if existing_tx:
+        return
+
+    members = order.order_members.filter(is_deleted=False, employee__isnull=False)
+    if not members.exists():
+        return
+
+    member_count = members.count()
+    if member_count == 0:
+        return
+
+    # 计算结算总额（人民币）
+    if order.order_type == 'self_service':
+        # 自助单：pay_amount 是黑钻，需换算
+        total_rmb = (Decimal(str(order.pay_amount)) / COIN_TO_RMB_RATIO).quantize(
+            Decimal('0.01'), rounding=ROUND_HALF_UP
+        )
+    else:
+        # 普通订单：pay_amount 已经是人民币
+        total_rmb = Decimal(str(order.pay_amount))
+
+    if total_rmb <= 0:
+        return
+
+    # 人均金额
+    per_member_rmb = (total_rmb / member_count).quantize(
+        Decimal('0.01'), rounding=ROUND_HALF_UP
+    )
+
+    settled = 0
+    for member in members:
+        employee = member.employee
+        if not employee:
+            continue
+
+        # 记录到 OrderMember
+        member.commission_amount = per_member_rmb
+        member.save(update_fields=['commission_amount'])
+
+        # 更新打手佣金余额
+        employee.commission_balance = (
+            Decimal(str(employee.commission_balance or 0)) + per_member_rmb
+        ).quantize(Decimal('0.01'), rounding=ROUND_HALF_UP)
+        employee.save(update_fields=['commission_balance'])
+
+        # 创建财务流水
+        Transaction.objects.create(
+            employee=employee,
+            order_no=order.order_no,
+            transaction_no=_generate_tx_no(),
+            type='income',
+            category='order_settle',
+            amount=per_member_rmb,
+            balance_after=employee.commission_balance,
+            remark=f'订单 {order.order_no} 结算',
+            source='order',
+        )
+        settled += 1
+
+    if settled > 0:
+        import logging
+        logger = logging.getLogger(__name__)
+        logger.info(
+            f'订单结算完成: {order.order_no}, '
+            f'总额={total_rmb}元, 人均={per_member_rmb}元, '
+            f'结算人数={settled}/{member_count}'
+        )
+
+
+def _generate_tx_no():
+    """生成流水号"""
+    import random
+    return f'TX{timezone.now().strftime("%Y%m%d%H%M%S")}{random.randint(1000, 9999)}'
+
+
+def _auto_complete_order(order):
+    """
+    自动到期检测：以时间为结算单位的订单(start_time + duration)，到期自动完成。
+    仅在查看订单详情时触发，幂等操作。
+    """
+    if order.status != 'in_progress':
+        return
+
+    # 仅处理以时间为结算单位的订单
+    if order.settlement_unit != 'hour':
+        return
+
+    if not order.start_time:
+        return
+
+    now = timezone.now()
+    elapsed = (now - order.start_time).total_seconds() / 60  # 已过分钟数
+
+    if elapsed >= (order.duration or 0):
+        with transaction.atomic():
+            # 重新获取带锁的订单
+            order_locked = Order.objects.select_for_update().get(id=order.id)
+            if order_locked.status != 'in_progress':
+                return
+
+            order_locked.status = 'completed'
+            order_locked.end_time = now
+            order_locked.complete_time = now
+            order_locked.save(update_fields=['status', 'end_time', 'complete_time', 'updated_at'])
+
+            # 更新打手状态
+            for member in order_locked.order_members.filter(is_deleted=False):
+                member.status = 'completed'
+                member.end_time = now
+                member.save(update_fields=['status', 'end_time'])
+                if member.employee:
+                    member.employee.status = 'idle'
+                    member.employee.save(update_fields=['status'])
+
+            # 执行结算
+            _settle_order(order_locked)
+
+            # 更新原始 order 对象的状态（用于后续的响应构建）
+            order.status = 'completed'
+            order.end_time = now
+            order.complete_time = now
+
+
 @api_view(['POST'])
 @permission_classes([IsAuthenticated])
 def complete_order(request, order_id):
@@ -2689,6 +2840,9 @@ def complete_order(request, order_id):
         if member.employee:
             member.employee.status = 'idle'
             member.employee.save(update_fields=['status'])
+
+    # 执行结算
+    _settle_order(order)
 
     return success_response(msg='订单已完结')
 
@@ -2768,6 +2922,9 @@ def end_order(request, order_id):
         if member.employee:
             member.employee.status = 'idle'
             member.employee.save(update_fields=['status'])
+
+    # 执行结算
+    _settle_order(order)
 
     return success_response(msg='订单已结束')
 
@@ -3497,6 +3654,7 @@ def user_profile(request):
         'voice_duration': employee_obj.voice_duration if employee_obj else 0,
         'commission_balance': float(employee_obj.commission_balance) if employee_obj else 0,
         'tags': tags,
+        'photos': employee_obj.photos if employee_obj else [],
     })
 
 
@@ -3599,6 +3757,114 @@ def update_profile(request):
 
     sync_profile_tables(user, nickname=nickname, avatar=avatar, gender=gender)
     return success_response(msg='更新成功')
+
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def upload_employee_photo(request):
+    """打手上传照片到个人照片墙"""
+    user = request.user
+    try:
+        employee = user.get_active_employee()
+        if not employee:
+            raise Exception()
+    except Exception:
+        return error_response(msg='您不是打手')
+
+    if 'file' not in request.FILES:
+        return error_response(msg='请选择照片')
+
+    file_obj = request.FILES['file']
+    if file_obj.size > 10 * 1024 * 1024:
+        return error_response(msg='照片大小不能超过10MB')
+
+    # 验证图片类型
+    import os
+    ext = os.path.splitext(file_obj.name)[1].lower()
+    allowed_exts = {'.jpg', '.jpeg', '.png', '.gif', '.webp'}
+    if ext not in allowed_exts:
+        return error_response(msg='不支持的图片格式，请上传 JPG/PNG/GIF/WEBP')
+
+    # 上传到 COS 或本地
+    from apps.upload.views import upload_to_cos
+    from apps.upload.models import UploadFile
+    import hashlib
+    from datetime import date
+
+    md5_hash = hashlib.md5()
+    for chunk in file_obj.chunks():
+        md5_hash.update(chunk)
+    file_obj.seek(0)
+    md5 = md5_hash.hexdigest()
+
+    today = date.today().strftime('%Y/%m/%d')
+    file_path = f'uploads/{today}/{md5}{ext}'
+
+    use_cos = bool(settings.COS_SECRET_ID and settings.COS_SECRET_KEY and settings.COS_BUCKET)
+    if use_cos:
+        try:
+            full_url = upload_to_cos(file_obj, file_path)
+            storage_type = 'cos'
+        except Exception as e:
+            logger.exception('COS upload failed: %s', e)
+            return error_response(msg='照片上传失败，请重试')
+    else:
+        from django.core.files.storage import default_storage
+        local_path = default_storage.save(file_path, file_obj)
+        full_url = f'{request.scheme}://{request.get_host()}/media/{local_path}'
+        storage_type = 'local'
+
+    UploadFile.objects.create(
+        file_name=file_obj.name,
+        file_size=file_obj.size,
+        file_type='image',
+        mime_type=getattr(file_obj, 'content_type', '') or 'image/jpeg',
+        md5=md5,
+        uploader=user,
+        category='employee_photo',
+        storage_type=storage_type,
+        url=full_url,
+    )
+
+    # 更新 Employee.photos
+    photos = list(employee.photos or [])
+    photos.append(full_url)
+    employee.photos = photos
+    employee.save(update_fields=['photos', 'updated_at'])
+
+    return success_response({
+        'url': full_url,
+        'photos': photos,
+    }, msg='上传成功')
+
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def delete_employee_photo(request):
+    """打手删除照片墙中的某张照片"""
+    user = request.user
+    try:
+        employee = user.get_active_employee()
+        if not employee:
+            raise Exception()
+    except Exception:
+        return error_response(msg='您不是打手')
+
+    photo_url = request.data.get('url', '').strip()
+    if not photo_url:
+        return error_response(msg='请指定要删除的照片')
+
+    photos = list(employee.photos or [])
+    if photo_url not in photos:
+        return error_response(msg='照片不存在')
+
+    photos.remove(photo_url)
+    employee.photos = photos
+    employee.save(update_fields=['photos', 'updated_at'])
+
+    return success_response({
+        'photos': photos,
+    }, msg='已删除')
 
 
 @api_view(['GET'])

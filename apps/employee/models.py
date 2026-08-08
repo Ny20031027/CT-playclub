@@ -349,6 +349,7 @@ class Employee(BaseModel):
     voice_intro = models.URLField(max_length=500, null=True, blank=True, default='',
                                   verbose_name='语音介绍')
     voice_duration = models.IntegerField(default=0, verbose_name='语音时长(秒)')
+    photos = models.JSONField(default=list, blank=True, verbose_name='照片墙')
     rating = models.DecimalField(max_digits=3, decimal_places=2, default=5.0,
                                  verbose_name='评分')
     order_count = models.IntegerField(default=0, verbose_name='接单总数')
