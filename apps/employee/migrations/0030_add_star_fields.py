@@ -3,6 +3,29 @@
 from django.db import migrations, models
 
 
+def ensure_star_fields(apps, schema_editor):
+    """补齐明星打手字段，并兼容生产库中字段已提前存在的情况。"""
+    Employee = apps.get_model('employee', 'Employee')
+    connection = schema_editor.connection
+
+    with connection.cursor() as cursor:
+        description = connection.introspection.get_table_description(
+            cursor, Employee._meta.db_table
+        )
+    existing_columns = {column.name for column in description}
+
+    fields = (
+        ('is_star', models.BooleanField(default=False, verbose_name='明星打手')),
+        ('star_sort', models.IntegerField(default=0, verbose_name='明星排序')),
+    )
+    for field_name, field in fields:
+        if field_name in existing_columns:
+            continue
+        field.set_attributes_from_name(field_name)
+        field.model = Employee
+        schema_editor.add_field(Employee, field)
+
+
 class Migration(migrations.Migration):
 
     dependencies = [
@@ -10,14 +33,24 @@ class Migration(migrations.Migration):
     ]
 
     operations = [
-        migrations.AddField(
-            model_name='employee',
-            name='is_star',
-            field=models.BooleanField(default=False, verbose_name='明星打手'),
-        ),
-        migrations.AddField(
-            model_name='employee',
-            name='star_sort',
-            field=models.IntegerField(default=0, verbose_name='明星排序'),
+        migrations.SeparateDatabaseAndState(
+            database_operations=[
+                migrations.RunPython(
+                    ensure_star_fields,
+                    reverse_code=migrations.RunPython.noop,
+                ),
+            ],
+            state_operations=[
+                migrations.AddField(
+                    model_name='employee',
+                    name='is_star',
+                    field=models.BooleanField(default=False, verbose_name='明星打手'),
+                ),
+                migrations.AddField(
+                    model_name='employee',
+                    name='star_sort',
+                    field=models.IntegerField(default=0, verbose_name='明星排序'),
+                ),
+            ],
         ),
     ]
