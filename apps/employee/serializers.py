@@ -265,6 +265,7 @@ class EmployeeSerializer(serializers.ModelSerializer):
         queryset=GameCategory.objects.all(), write_only=True
     )
     game_categories_list = serializers.SerializerMethodField(read_only=True)
+    star_sort = serializers.SerializerMethodField(read_only=True)
 
     class Meta:
         model = Employee
@@ -301,6 +302,12 @@ class EmployeeSerializer(serializers.ModelSerializer):
             'name': gc.name,
             'icon': gc.icon or '',
         } for gc in obj.game_categories.filter(status=True).order_by('sort', 'id')]
+
+    def get_star_sort(self, obj):
+        try:
+            return obj.star_sort
+        except Exception:
+            return 0
 
     def get_skill_list(self, obj):
         relations = EmployeeSkillRelation.objects.filter(employee=obj, is_deleted=False)

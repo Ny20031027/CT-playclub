@@ -811,19 +811,22 @@ def home_data(request):
         })
 
     # 明星打手（TOP3，按star_sort排序）
-    star_dashers = Employee.objects.filter(
-        is_star=True, is_deleted=False
-    ).order_by('star_sort', 'id')[:3]
     star_list = []
-    for emp in star_dashers:
-        star_list.append({
-            'id': emp.id,
-            'nickname': emp.nickname or emp.real_name,
-            'avatar': employee_avatar_url(emp),
-            'level': emp.level,
-            'level_num': emp.level_num,
-            'order_count': emp.order_count,
-        })
+    try:
+        star_dashers = Employee.objects.filter(
+            is_star=True, is_deleted=False
+        ).order_by('star_sort', 'id')[:3]
+        for emp in star_dashers:
+            star_list.append({
+                'id': emp.id,
+                'nickname': emp.nickname or emp.real_name,
+                'avatar': employee_avatar_url(emp),
+                'level': emp.level,
+                'level_num': emp.level_num,
+                'order_count': emp.order_count,
+            })
+    except Exception:
+        pass
 
     return success_response({
         'banners': BannerSerializer(banners, many=True, context={'request': request}).data,
@@ -847,19 +850,22 @@ def game_list(request):
 def ranking_list(request):
     """周星榜单 — 明星打手 + 全部排名"""
     # 明星打手 TOP3
-    star_dashers = Employee.objects.filter(
-        is_star=True, is_deleted=False
-    ).order_by('star_sort', 'id')[:3]
     star_list = []
-    for emp in star_dashers:
-        star_list.append({
-            'id': emp.id,
-            'nickname': emp.nickname or emp.real_name,
-            'avatar': employee_avatar_url(emp),
-            'level': emp.level,
-            'level_num': emp.level_num,
-            'order_count': emp.order_count,
-        })
+    try:
+        star_dashers = Employee.objects.filter(
+            is_star=True, is_deleted=False
+        ).order_by('star_sort', 'id')[:3]
+        for emp in star_dashers:
+            star_list.append({
+                'id': emp.id,
+                'nickname': emp.nickname or emp.real_name,
+                'avatar': employee_avatar_url(emp),
+                'level': emp.level,
+                'level_num': emp.level_num,
+                'order_count': emp.order_count,
+            })
+    except Exception:
+        pass
 
     # 全部打手排名（按接单数）
     all_ranked = Employee.objects.filter(
