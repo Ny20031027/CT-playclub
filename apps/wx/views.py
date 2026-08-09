@@ -1351,12 +1351,23 @@ def create_self_service_order(request):
             return error_response(msg='请选择有效的预制单项目')
         if not preset_item.display_image or not preset_item.content:
             return error_response(msg='该预制单配置不完整，请联系管理员')
+        try:
+            preset_quantity_value = Decimal(str(request.data.get('quantity', 1)))
+            if not preset_quantity_value.is_finite() or preset_quantity_value % 1 != 0:
+                raise ValueError
+            preset_quantity = int(preset_quantity_value)
+        except (InvalidOperation, TypeError, ValueError):
+            return error_response(msg='预制单数量必须是1至999之间的整数')
+        if preset_quantity < 1 or preset_quantity > 999:
+            return error_response(msg='预制单数量必须是1至999之间的整数')
         preset_price = Decimal(preset_item.price).quantize(Decimal('0.01'), rounding=ROUND_HALF_UP)
         if preset_price < 0:
             return error_response(msg='该预制单价格配置无效，请联系管理员')
-        coin_cost = int(
+        unit_coin_cost = int(
             (preset_price * Decimal('10')).quantize(Decimal('1'), rounding=ROUND_HALF_UP)
         )
+        coin_cost = unit_coin_cost * preset_quantity
+        total_price = (preset_price * preset_quantity).quantize(Decimal('0.01'))
         charged_amount = (Decimal(coin_cost) / Decimal('10')).quantize(Decimal('0.01'))
         if coin_cost > 0 and (customer.coins or 0) < coin_cost:
             return error_response(msg=f'黑钻不足，需要{coin_cost}黑钻，当前仅有{customer.coins or 0}黑钻')
@@ -1378,9 +1389,10 @@ def create_self_service_order(request):
             'display_image': build_media_url(preset_item.display_image, request),
             'preset_content': preset_item.content,
             'preset_remark': preset_item.remark,
-            'quantity': 1,
+            'quantity': preset_quantity,
             'unit_price': float(preset_price),
-            'total_amount': float(preset_price),
+            'unit_coins': unit_coin_cost,
+            'total_amount': float(total_price),
             'pay_amount': float(charged_amount),
             'total_coins': coin_cost,
         }
@@ -1393,11 +1405,11 @@ def create_self_service_order(request):
             order_type='self_service',
             duration=0,
             quantity=1,
-            purchase_quantity=1,
-            settlement_unit='',
+            purchase_quantity=preset_quantity,
+            settlement_unit='item',
             self_service_snapshot=snapshot,
             unit_price=preset_price,
-            total_amount=preset_price,
+            total_amount=total_price,
             pay_amount=charged_amount,
             game_id=str(skill.game_category_id or ''),
             game_name=game_name,
@@ -1449,7 +1461,7 @@ def create_self_service_order(request):
         return success_response({
             'order_id': order.id,
             'order_no': order.order_no,
-            'total_amount': float(preset_price),
+            'total_amount': float(total_price),
             'pay_amount': float(charged_amount),
             'total_coins': coin_cost,
             'snapshot': snapshot,

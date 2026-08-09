@@ -470,34 +470,46 @@ class SkillSystemTests(TestCase):
         insufficient = self.client.post('/api/wx/orders/create-self-service/', {
             'gameplay_id': gameplay.id,
             'preset_item_id': preset_item_id,
+            'quantity': 2,
         }, format='json').json()
         self.assertNotEqual(insufficient['code'], 200)
         self.assertIn('黑钻不足', insufficient['msg'])
+
+        invalid_quantity = self.client.post('/api/wx/orders/create-self-service/', {
+            'gameplay_id': gameplay.id,
+            'preset_item_id': preset_item_id,
+            'quantity': 1000,
+        }, format='json').json()
+        self.assertNotEqual(invalid_quantity['code'], 200)
+        self.assertIn('1至999', invalid_quantity['msg'])
 
         customer.coins = 888
         customer.save(update_fields=['coins'])
         response = self.client.post('/api/wx/orders/create-self-service/', {
             'gameplay_id': gameplay.id,
             'preset_item_id': preset_item_id,
+            'quantity': 2,
         }, format='json').json()
         self.assertEqual(response['code'], 200)
-        self.assertEqual(response['data']['total_coins'], 299)
+        self.assertEqual(response['data']['total_coins'], 598)
         self.assertEqual(response['data']['snapshot']['order_mode'], 'preset')
         self.assertEqual(response['data']['snapshot']['gameplay_name'], '护航')
         self.assertEqual(response['data']['snapshot']['preset_item_name'], '航天护航')
+        self.assertEqual(response['data']['snapshot']['quantity'], 2)
         order = Order.objects.get(id=response['data']['order_id'])
         self.assertEqual(order.status, 'published')
-        self.assertEqual(order.total_amount, Decimal('29.90'))
+        self.assertEqual(order.purchase_quantity, Decimal('2'))
+        self.assertEqual(order.total_amount, Decimal('59.80'))
         self.assertEqual(order.self_service_snapshot['preset_content'], '一局完整护航服务，提交后等待打手接单。')
         customer.refresh_from_db()
-        self.assertEqual(customer.coins, 589)
+        self.assertEqual(customer.coins, 290)
         self.assertEqual(customer.total_orders, 1)
-        self.assertEqual(customer.total_amount, Decimal('29.90'))
+        self.assertEqual(customer.total_amount, Decimal('59.80'))
         self.assertEqual(
             CustomerConsumeRecord.objects.get(order_no=order.order_no).amount,
-            Decimal('29.90'),
+            Decimal('59.80'),
         )
         self.assertEqual(
             Transaction.objects.get(order_no=order.order_no).amount,
-            Decimal('29.90'),
+            Decimal('59.80'),
         )
