@@ -1,0 +1,129 @@
+{% extends "layout.html" %}
+{% block title %}入驻审核{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <h2>入驻审核</h2>
+</div>
+
+<div class="filter-bar">
+    <select id="statusFilter" onchange="loadApplications()">
+        <option value="">全部</option>
+        <option value="pending" selected>待审核</option>
+        <option value="approved">已通过</option>
+        <option value="rejected">已拒绝</option>
+    </select>
+</div>
+
+<div class="table-container">
+    <table class="data-table">
+        <thead>
+            <tr>
+                <th>申请人</th>
+                <th>真实姓名</th>
+                <th>手机号</th>
+                <th>身份证正面</th>
+                <th>身份证反面</th>
+                <th>提交时间</th>
+                <th>状态</th>
+                <th>操作</th>
+            </tr>
+        </thead>
+        <tbody id="appTableBody">
+            <tr><td colspan="8" style="text-align:center;padding:40px;">加载中...</td></tr>
+        </tbody>
+    </table>
+</div>
+
+<!-- 审核弹窗 -->
+<div class="modal-overlay" id="reviewModal" style="display:none;">
+    <div class="modal-content">
+        <h3 id="modalTitle">审核申请</h3>
+        <div class="applicant-info" id="applicantInfo"></div>
+        <div class="form-group">
+            <label>审核备注</label>
+            <textarea id="reviewRemark" placeholder="审核备注(选填)" rows="3"></textarea>
+        </div>
+        <div class="modal-actions">
+            <button class="btn btn-danger" onclick="doReview('reject')">拒绝</button>
+            <button class="btn btn-primary" onclick="doReview('approve')">通过</button>
+            <button class="btn btn-default" onclick="closeModal()">取消</button>
+        </div>
+    </div>
+</div>
+
+<script>
+var currentAppId = null;
+var token = localStorage.getItem('admin_token') || '';
+
+function getHeaders() {
+    return { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + token };
+}
+
+function loadApplications() {
+    var status = document.getElementById('statusFilter').value;
+    var url = '/api/wx/dasher/applications/';
+    if (status) url += '?status=' + status;
+    fetch(url, { headers: getHeaders() })
+        .then(function(r) { return r.json(); })
+        .then(function(res) {
+            var list = res.data || [];
+            var tbody = document.getElementById('appTableBody');
+            if (list.length === 0) {
+                tbody.innerHTML = '<tr><td colspan="8" style="text-align:center;padding:40px;">暂无数据</td></tr>';
+                return;
+            }
+            tbody.innerHTML = list.map(function(a) {
+                var statusClass = a.status === 'pending' ? 'warning' : (a.status === 'approved' ? 'success' : 'danger');
+                return '<tr>' +
+                    '<td>' + (a.user_nickname || '未知') + '</td>' +
+                    '<td>' + a.real_name + '</td>' +
+                    '<td>' + a.phone + '</td>' +
+                    '<td><a href="' + a.id_card_front + '" target="_blank" class="img-link">查看</a></td>' +
+                    '<td><a href="' + a.id_card_back + '" target="_blank" class="img-link">查看</a></td>' +
+                    '<td>' + (a.created_at || '') + '</td>' +
+                    '<td><span class="badge badge-' + statusClass + '">' + a.status_display + '</span></td>' +
+                    '<td>' + (a.status === 'pending' ? '<button class="btn btn-sm btn-primary" onclick="openReview(' + a.id + ', \'' + a.real_name + '\', \'' + (a.phone || '') + '\')">审核</button>' : (a.review_remark || '-')) + '</td>' +
+                    '</tr>';
+            }).join('');
+        });
+}
+
+function openReview(id, name, phone) {
+    currentAppId = id;
+    document.getElementById('applicantInfo').innerHTML = '<p>申请人: ' + name + '</p><p>手机: ' + phone + '</p>';
+    document.getElementById('reviewRemark').value = '';
+    document.getElementById('reviewModal').style.display = 'flex';
+}
+
+function closeModal() {
+    document.getElementById('reviewModal').style.display = 'none';
+    currentAppId = null;
+}
+
+function doReview(action) {
+    if (!currentAppId) return;
+    var remark = document.getElementById('reviewRemark').value.trim();
+    fetch('/api/wx/dasher/review/', {
+        method: 'POST',
+        headers: getHeaders(),
+        body: JSON.stringify({ id: currentAppId, action: action, remark: remark })
+    })
+    .then(function(r) { return r.json(); })
+    .then(function(res) {
+        if (res.code === 200) {
+            alert((action === 'approve' ? '已通过' : '已拒绝') + '！');
+            closeModal();
+            loadApplications();
+        } else {
+            alert(res.msg || '操作失败');
+        }
+    })
+    .catch(function() { alert('网络错误'); });
+}
+
+document.addEventListener('DOMContentLoaded', function() {
+    loadApplications();
+});
+</script>
+{% endblock %}
