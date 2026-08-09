@@ -5,6 +5,7 @@ from django.db.models import Q
 from apps.common.response import success_response, error_response
 from apps.common.viewsets import BaseModelViewSet
 from .comment_utils import create_order_comment_with_retry
+from .services import OrderCompletionError, complete_order_and_settle
 from .models import (
     Order, OrderMember, OrderPrice, OrderComment, OrderRefund, OrderStatus,
     SupportTicket
@@ -83,18 +84,17 @@ class OrderViewSet(BaseModelViewSet):
         order = self.get_object()
         if order.status != OrderStatus.IN_PROGRESS:
             return error_response(msg='订单状态不正确')
-        order.status = OrderStatus.COMPLETED
-        order.end_time = timezone.now()
-        order.complete_time = timezone.now()
-        order.save()
-        order.order_members.all().update(status='completed', end_time=timezone.now())
-        from apps.employee.models import Employee
-        for member in order.order_members.all():
-            member.employee.status = 'idle'
-            member.employee.order_count += 1
-            member.employee.total_duration += order.duration
-            member.employee.save(update_fields=['status', 'order_count', 'total_duration'])
-        return success_response(msg='订单已完成')
+        try:
+            _, settlement = complete_order_and_settle(order.id)
+        except OrderCompletionError as exc:
+            return error_response(msg=str(exc))
+        return success_response(
+            data={
+                'settled_count': settlement['settled_count'],
+                'commission_total': float(settlement['commission_total']),
+            },
+            msg='订单已完成，佣金已结算',
+        )
 
     @action(detail=True, methods=['post'], url_path='cancel')
     def cancel(self, request, pk=None):

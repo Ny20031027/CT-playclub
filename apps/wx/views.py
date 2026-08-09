@@ -24,6 +24,9 @@ from apps.employee.models import (
 )
 from apps.order.models import Order, OrderMember, OrderComment, OrderPrice, OrderStatus, SupportTicket, OrderCandidate
 from apps.order.comment_utils import create_order_comment_with_retry
+from apps.order.services import (
+    OrderCompletionError, complete_order_and_settle,
+)
 from apps.notice.models import Notice, UserNotice
 from apps.finance.models import Wallet, Transaction
 from apps.upload.models import UploadFile
@@ -2915,100 +2918,6 @@ def discount_order(request, order_id):
     return success_response(msg='免单成功', data={'pay_amount': float(order.pay_amount)})
 
 
-# ============ 订单结算 ============
-
-COIN_TO_RMB_RATIO = Decimal('10')  # 1元 = 10黑钻
-
-
-def _settle_order(order):
-    """
-    订单结算：将订单金额按比例结算给接单打手。
-    - 对于自助单(order_type='self_service')：pay_amount 为黑钻，需换算为人民币
-    - 对于普通订单：pay_amount 已为人民币
-    - 结算金额按各成员分配，更新 Employee.commission_balance 并创建 Transaction 记录
-    """
-    if order.status != 'completed':
-        return
-
-    # 检查是否已结算（通过 Transaction 记录判断）
-    existing_tx = Transaction.objects.filter(
-        order_no=order.order_no, category='order_settle'
-    ).exists()
-    if existing_tx:
-        return
-
-    members = order.order_members.filter(is_deleted=False, employee__isnull=False)
-    if not members.exists():
-        return
-
-    member_count = members.count()
-    if member_count == 0:
-        return
-
-    # 计算结算总额（人民币）
-    if order.order_type == 'self_service':
-        # 自助单：pay_amount 是黑钻，需换算
-        total_rmb = (Decimal(str(order.pay_amount)) / COIN_TO_RMB_RATIO).quantize(
-            Decimal('0.01'), rounding=ROUND_HALF_UP
-        )
-    else:
-        # 普通订单：pay_amount 已经是人民币
-        total_rmb = Decimal(str(order.pay_amount))
-
-    if total_rmb <= 0:
-        return
-
-    # 人均金额
-    per_member_rmb = (total_rmb / member_count).quantize(
-        Decimal('0.01'), rounding=ROUND_HALF_UP
-    )
-
-    settled = 0
-    for member in members:
-        employee = member.employee
-        if not employee:
-            continue
-
-        # 记录到 OrderMember
-        member.commission_amount = per_member_rmb
-        member.save(update_fields=['commission_amount'])
-
-        # 更新打手佣金余额
-        employee.commission_balance = (
-            Decimal(str(employee.commission_balance or 0)) + per_member_rmb
-        ).quantize(Decimal('0.01'), rounding=ROUND_HALF_UP)
-        employee.save(update_fields=['commission_balance'])
-
-        # 创建财务流水
-        Transaction.objects.create(
-            employee=employee,
-            order_no=order.order_no,
-            transaction_no=_generate_tx_no(),
-            type='income',
-            category='order_settle',
-            amount=per_member_rmb,
-            balance_after=employee.commission_balance,
-            remark=f'订单 {order.order_no} 结算',
-            source='order',
-        )
-        settled += 1
-
-    if settled > 0:
-        import logging
-        logger = logging.getLogger(__name__)
-        logger.info(
-            f'订单结算完成: {order.order_no}, '
-            f'总额={total_rmb}元, 人均={per_member_rmb}元, '
-            f'结算人数={settled}/{member_count}'
-        )
-
-
-def _generate_tx_no():
-    """生成流水号"""
-    import random
-    return f'TX{timezone.now().strftime("%Y%m%d%H%M%S")}{random.randint(1000, 9999)}'
-
-
 def _auto_complete_order(order):
     """
     自动到期检测：以时间为结算单位的订单(start_time + duration)，到期自动完成。
@@ -3028,33 +2937,15 @@ def _auto_complete_order(order):
     elapsed = (now - order.start_time).total_seconds() / 60  # 已过分钟数
 
     if elapsed >= (order.duration or 0):
-        with transaction.atomic():
-            # 重新获取带锁的订单
-            order_locked = Order.objects.select_for_update().get(id=order.id)
-            if order_locked.status != 'in_progress':
-                return
+        try:
+            complete_order_and_settle(order.id, completed_at=now)
+        except OrderCompletionError:
+            return
 
-            order_locked.status = 'completed'
-            order_locked.end_time = now
-            order_locked.complete_time = now
-            order_locked.save(update_fields=['status', 'end_time', 'complete_time', 'updated_at'])
-
-            # 更新打手状态
-            for member in order_locked.order_members.filter(is_deleted=False):
-                member.status = 'completed'
-                member.end_time = now
-                member.save(update_fields=['status', 'end_time'])
-                if member.employee:
-                    member.employee.status = 'idle'
-                    member.employee.save(update_fields=['status'])
-
-            # 执行结算
-            _settle_order(order_locked)
-
-            # 更新原始 order 对象的状态（用于后续的响应构建）
-            order.status = 'completed'
-            order.end_time = now
-            order.complete_time = now
+        # 更新原始 order 对象的状态（用于后续的响应构建）
+        order.status = 'completed'
+        order.end_time = now
+        order.complete_time = now
 
 
 @api_view(['POST'])
@@ -3077,24 +2968,15 @@ def complete_order(request, order_id):
     if order.leader_id != employee.id:
         return error_response(msg='只有队长可以完结订单')
 
-    order.status = 'completed'
-    order.end_time = timezone.now()
-    order.complete_time = timezone.now()
-    order.save(update_fields=['status', 'end_time', 'complete_time', 'updated_at'])
+    try:
+        _, settlement = complete_order_and_settle(order.id)
+    except OrderCompletionError as exc:
+        return error_response(msg=str(exc))
 
-    # 更新打手状态为空闲
-    for member in order.order_members.filter(is_deleted=False):
-        member.status = 'completed'
-        member.end_time = timezone.now()
-        member.save(update_fields=['status', 'end_time'])
-        if member.employee:
-            member.employee.status = 'idle'
-            member.employee.save(update_fields=['status'])
-
-    # 执行结算
-    _settle_order(order)
-
-    return success_response(msg='订单已完结')
+    return success_response(data={
+        'settled_count': settlement['settled_count'],
+        'commission_total': float(settlement['commission_total']),
+    }, msg='订单已完结，佣金已结算')
 
 
 @api_view(['POST'])
@@ -3158,25 +3040,15 @@ def end_order(request, order_id):
     except Order.DoesNotExist:
         return error_response(msg='订单不存在或状态不正确')
 
-    # 更新订单状态为已完成
-    order.status = 'completed'
-    order.end_time = timezone.now()
-    order.complete_time = timezone.now()
-    order.save(update_fields=['status', 'end_time', 'complete_time', 'updated_at'])
+    try:
+        _, settlement = complete_order_and_settle(order.id)
+    except OrderCompletionError as exc:
+        return error_response(msg=str(exc))
 
-    # 更新打手状态为空闲
-    for member in order.order_members.filter(is_deleted=False):
-        member.status = 'completed'
-        member.end_time = timezone.now()
-        member.save(update_fields=['status', 'end_time'])
-        if member.employee:
-            member.employee.status = 'idle'
-            member.employee.save(update_fields=['status'])
-
-    # 执行结算
-    _settle_order(order)
-
-    return success_response(msg='订单已结束')
+    return success_response(data={
+        'settled_count': settlement['settled_count'],
+        'commission_total': float(settlement['commission_total']),
+    }, msg='订单已结束，佣金已结算')
 
 
 @api_view(['POST'])
