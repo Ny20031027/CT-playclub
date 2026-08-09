@@ -2,127 +2,384 @@
 {% block title %}入驻审核{% endblock %}
 
 {% block content %}
-<div class="page-header">
-    <h2>入驻审核</h2>
-</div>
+<script>
+    document.getElementById('pageTitle').textContent = '入驻审核';
+</script>
 
-<div class="filter-bar">
-    <select id="statusFilter" onchange="loadApplications()">
-        <option value="">全部</option>
-        <option value="pending" selected>待审核</option>
-        <option value="approved">已通过</option>
-        <option value="rejected">已拒绝</option>
-    </select>
-</div>
+<style>
+    .review-card .card-header {
+        gap: 20px;
+        align-items: flex-end;
+    }
 
-<div class="table-container">
-    <table class="data-table">
-        <thead>
-            <tr>
-                <th>申请人</th>
-                <th>真实姓名</th>
-                <th>手机号</th>
-                <th>身份证正面</th>
-                <th>身份证反面</th>
-                <th>提交时间</th>
-                <th>状态</th>
-                <th>操作</th>
-            </tr>
-        </thead>
-        <tbody id="appTableBody">
-            <tr><td colspan="8" style="text-align:center;padding:40px;">加载中...</td></tr>
-        </tbody>
-    </table>
-</div>
+    .review-heading {
+        min-width: 0;
+    }
 
-<!-- 审核弹窗 -->
-<div class="modal-overlay" id="reviewModal" style="display:none;">
-    <div class="modal-content">
-        <h3 id="modalTitle">审核申请</h3>
-        <div class="applicant-info" id="applicantInfo"></div>
-        <div class="form-group">
-            <label>审核备注</label>
-            <textarea id="reviewRemark" placeholder="审核备注(选填)" rows="3"></textarea>
+    .review-heading .card-title {
+        margin-bottom: 4px;
+    }
+
+    .review-description {
+        color: #909399;
+        font-size: 13px;
+    }
+
+    .review-filter {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        flex-shrink: 0;
+    }
+
+    .review-filter label {
+        color: #606266;
+        font-size: 13px;
+    }
+
+    .review-filter select {
+        min-width: 120px;
+        height: 36px;
+        padding: 0 32px 0 12px;
+        border: 1px solid #dcdfe6;
+        border-radius: 6px;
+        background: #fff;
+        color: #303133;
+        outline: none;
+    }
+
+    .review-filter select:focus,
+    .review-modal textarea:focus {
+        border-color: #409eff;
+        box-shadow: 0 0 0 2px rgba(64, 158, 255, 0.12);
+    }
+
+    .review-table th,
+    .review-table td {
+        vertical-align: middle;
+    }
+
+    .review-table .applicant-name {
+        font-weight: 600;
+        color: #303133;
+    }
+
+    .identity-link {
+        display: inline-flex;
+        align-items: center;
+        gap: 5px;
+        color: #409eff;
+        text-decoration: none;
+        font-weight: 500;
+    }
+
+    .identity-link:hover {
+        color: #66b1ff;
+    }
+
+    .review-note {
+        display: inline-block;
+        max-width: 220px;
+        color: #606266;
+        white-space: normal;
+        word-break: break-word;
+    }
+
+    .review-modal {
+        width: 520px;
+    }
+
+    .review-modal .modal-close {
+        padding: 0 4px;
+        border: 0;
+        background: transparent;
+        line-height: 1;
+    }
+
+    .applicant-info {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 12px;
+        margin-bottom: 20px;
+        padding: 16px;
+        border: 1px solid #ebeef5;
+        border-radius: 8px;
+        background: #f8fafc;
+    }
+
+    .applicant-info-item span {
+        display: block;
+        margin-bottom: 4px;
+        color: #909399;
+        font-size: 12px;
+    }
+
+    .applicant-info-item strong {
+        color: #303133;
+        font-size: 14px;
+    }
+
+    .review-modal textarea {
+        width: 100%;
+        min-height: 96px;
+        padding: 10px 12px;
+        border: 1px solid #dcdfe6;
+        border-radius: 6px;
+        color: #303133;
+        font: inherit;
+        line-height: 1.6;
+        resize: vertical;
+        outline: none;
+    }
+
+    .review-modal .modal-footer .btn,
+    .review-table .btn-primary {
+        width: auto;
+        height: auto;
+        font-size: 14px;
+    }
+
+    .review-modal .review-action:disabled {
+        cursor: not-allowed;
+        opacity: 0.65;
+    }
+
+    @media (max-width: 768px) {
+        .review-card {
+            padding: 16px;
+        }
+
+        .review-card .card-header {
+            align-items: stretch;
+            flex-direction: column;
+        }
+
+        .review-filter {
+            justify-content: space-between;
+        }
+
+        .review-filter select {
+            flex: 1;
+        }
+
+        .applicant-info {
+            grid-template-columns: 1fr;
+        }
+
+        .review-modal .modal-footer {
+            flex-wrap: wrap;
+        }
+    }
+</style>
+
+<div class="card review-card">
+    <div class="card-header">
+        <div class="review-heading">
+            <div class="card-title">打手入驻申请</div>
+            <div class="review-description">查看申请资料并处理客户提交的打手入驻申请</div>
         </div>
-        <div class="modal-actions">
-            <button class="btn btn-danger" onclick="doReview('reject')">拒绝</button>
-            <button class="btn btn-primary" onclick="doReview('approve')">通过</button>
-            <button class="btn btn-default" onclick="closeModal()">取消</button>
+        <div class="review-filter">
+            <label for="statusFilter">审核状态</label>
+            <select id="statusFilter">
+                <option value="">全部</option>
+                <option value="pending" selected>待审核</option>
+                <option value="approved">已通过</option>
+                <option value="rejected">已拒绝</option>
+            </select>
+        </div>
+    </div>
+
+    <div class="table-container">
+        <table class="review-table">
+            <thead>
+                <tr>
+                    <th>申请人</th>
+                    <th>真实姓名</th>
+                    <th>手机号</th>
+                    <th>身份证正面</th>
+                    <th>身份证反面</th>
+                    <th>提交时间</th>
+                    <th>状态</th>
+                    <th>操作/备注</th>
+                </tr>
+            </thead>
+            <tbody id="appTableBody">
+                <tr>
+                    <td colspan="8" class="empty-state">
+                        <i class="fa-solid fa-spinner fa-spin"></i><br>加载中...
+                    </td>
+                </tr>
+            </tbody>
+        </table>
+    </div>
+</div>
+
+<div class="modal-overlay" id="reviewModal" aria-hidden="true">
+    <div class="modal review-modal" role="dialog" aria-modal="true" aria-labelledby="modalTitle">
+        <div class="modal-header">
+            <div class="modal-title" id="modalTitle">审核入驻申请</div>
+            <button type="button" class="modal-close" aria-label="关闭" onclick="closeReviewModal()">&times;</button>
+        </div>
+        <div class="modal-body">
+            <div class="applicant-info">
+                <div class="applicant-info-item">
+                    <span>真实姓名</span>
+                    <strong id="applicantName">-</strong>
+                </div>
+                <div class="applicant-info-item">
+                    <span>手机号</span>
+                    <strong id="applicantPhone">-</strong>
+                </div>
+            </div>
+            <div class="form-group">
+                <label for="reviewRemark">审核备注</label>
+                <textarea id="reviewRemark" maxlength="500" placeholder="可填写审核说明（选填）"></textarea>
+            </div>
+        </div>
+        <div class="modal-footer">
+            <button type="button" class="btn btn-default" onclick="closeReviewModal()">取消</button>
+            <button type="button" class="btn btn-danger review-action" onclick="submitReview('reject')">拒绝</button>
+            <button type="button" class="btn btn-success review-action" onclick="submitReview('approve')">通过</button>
         </div>
     </div>
 </div>
 
 <script>
-var currentAppId = null;
-var token = localStorage.getItem('admin_token') || '';
+let currentApplicationId = null;
 
-function getHeaders() {
-    return { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + token };
+function appendTextCell(row, value, className) {
+    const cell = document.createElement('td');
+    if (className) cell.className = className;
+    cell.textContent = value || '-';
+    row.appendChild(cell);
+    return cell;
 }
 
-function loadApplications() {
-    var status = document.getElementById('statusFilter').value;
-    var url = '/api/wx/dasher/applications/';
-    if (status) url += '?status=' + status;
-    fetch(url, { headers: getHeaders() })
-        .then(function(r) { return r.json(); })
-        .then(function(res) {
-            var list = res.data || [];
-            var tbody = document.getElementById('appTableBody');
-            if (list.length === 0) {
-                tbody.innerHTML = '<tr><td colspan="8" style="text-align:center;padding:40px;">暂无数据</td></tr>';
-                return;
-            }
-            tbody.innerHTML = list.map(function(a) {
-                var statusClass = a.status === 'pending' ? 'warning' : (a.status === 'approved' ? 'success' : 'danger');
-                return '<tr>' +
-                    '<td>' + (a.user_nickname || '未知') + '</td>' +
-                    '<td>' + a.real_name + '</td>' +
-                    '<td>' + a.phone + '</td>' +
-                    '<td><a href="' + a.id_card_front + '" target="_blank" class="img-link">查看</a></td>' +
-                    '<td><a href="' + a.id_card_back + '" target="_blank" class="img-link">查看</a></td>' +
-                    '<td>' + (a.created_at || '') + '</td>' +
-                    '<td><span class="badge badge-' + statusClass + '">' + a.status_display + '</span></td>' +
-                    '<td>' + (a.status === 'pending' ? '<button class="btn btn-sm btn-primary" onclick="openReview(' + a.id + ', \'' + a.real_name + '\', \'' + (a.phone || '') + '\')">审核</button>' : (a.review_remark || '-')) + '</td>' +
-                    '</tr>';
-            }).join('');
-        });
+function appendIdentityCell(row, url) {
+    const cell = document.createElement('td');
+    if (url) {
+        const link = document.createElement('a');
+        link.className = 'identity-link';
+        link.href = url;
+        link.target = '_blank';
+        link.rel = 'noopener noreferrer';
+        link.innerHTML = '<i class="fa-regular fa-image"></i> 查看';
+        cell.appendChild(link);
+    } else {
+        cell.textContent = '-';
+    }
+    row.appendChild(cell);
 }
 
-function openReview(id, name, phone) {
-    currentAppId = id;
-    document.getElementById('applicantInfo').innerHTML = '<p>申请人: ' + name + '</p><p>手机: ' + phone + '</p>';
-    document.getElementById('reviewRemark').value = '';
-    document.getElementById('reviewModal').style.display = 'flex';
-}
+function renderApplications(list) {
+    const tbody = document.getElementById('appTableBody');
+    tbody.innerHTML = '';
 
-function closeModal() {
-    document.getElementById('reviewModal').style.display = 'none';
-    currentAppId = null;
-}
+    if (!list.length) {
+        tbody.innerHTML = '<tr><td colspan="8" class="empty-state"><i class="fa-regular fa-folder-open"></i><br>暂无符合条件的申请</td></tr>';
+        return;
+    }
 
-function doReview(action) {
-    if (!currentAppId) return;
-    var remark = document.getElementById('reviewRemark').value.trim();
-    fetch('/api/wx/dasher/review/', {
-        method: 'POST',
-        headers: getHeaders(),
-        body: JSON.stringify({ id: currentAppId, action: action, remark: remark })
-    })
-    .then(function(r) { return r.json(); })
-    .then(function(res) {
-        if (res.code === 200) {
-            alert((action === 'approve' ? '已通过' : '已拒绝') + '！');
-            closeModal();
-            loadApplications();
+    list.forEach(function(application) {
+        const row = document.createElement('tr');
+        appendTextCell(row, application.user_nickname || '未知');
+        appendTextCell(row, application.real_name, 'applicant-name');
+        appendTextCell(row, application.phone);
+        appendIdentityCell(row, application.id_card_front);
+        appendIdentityCell(row, application.id_card_back);
+        appendTextCell(row, application.created_at);
+
+        const statusCell = document.createElement('td');
+        const badge = document.createElement('span');
+        const statusClass = application.status === 'pending'
+            ? 'warning'
+            : (application.status === 'approved' ? 'success' : 'danger');
+        badge.className = 'badge badge-' + statusClass;
+        badge.textContent = application.status_display || '-';
+        statusCell.appendChild(badge);
+        row.appendChild(statusCell);
+
+        const actionCell = document.createElement('td');
+        if (application.status === 'pending') {
+            const button = document.createElement('button');
+            button.type = 'button';
+            button.className = 'btn btn-sm btn-primary';
+            button.innerHTML = '<i class="fa-solid fa-check-to-slot"></i> 审核';
+            button.addEventListener('click', function() {
+                openReviewModal(application);
+            });
+            actionCell.appendChild(button);
         } else {
-            alert(res.msg || '操作失败');
+            const note = document.createElement('span');
+            note.className = 'review-note';
+            note.textContent = application.review_remark || '-';
+            actionCell.appendChild(note);
         }
-    })
-    .catch(function() { alert('网络错误'); });
+        row.appendChild(actionCell);
+        tbody.appendChild(row);
+    });
+}
+
+async function loadApplications() {
+    const tbody = document.getElementById('appTableBody');
+    tbody.innerHTML = '<tr><td colspan="8" class="empty-state"><i class="fa-solid fa-spinner fa-spin"></i><br>加载中...</td></tr>';
+
+    const status = document.getElementById('statusFilter').value;
+    try {
+        const result = await get('/wx/dasher/applications/', status ? { status: status } : {});
+        renderApplications(Array.isArray(result.data) ? result.data : []);
+    } catch (error) {
+        tbody.innerHTML = '<tr><td colspan="8" class="empty-state"><i class="fa-solid fa-circle-exclamation"></i><br>加载失败，请稍后重试</td></tr>';
+        showToast(error.message || '入驻申请加载失败', 'error');
+    }
+}
+
+function openReviewModal(application) {
+    currentApplicationId = application.id;
+    document.getElementById('applicantName').textContent = application.real_name || '-';
+    document.getElementById('applicantPhone').textContent = application.phone || '-';
+    document.getElementById('reviewRemark').value = '';
+    document.getElementById('reviewModal').setAttribute('aria-hidden', 'false');
+    showModal('reviewModal');
+}
+
+function closeReviewModal() {
+    hideModal('reviewModal');
+    document.getElementById('reviewModal').setAttribute('aria-hidden', 'true');
+    currentApplicationId = null;
+}
+
+async function submitReview(action) {
+    if (!currentApplicationId) return;
+
+    const actionButtons = document.querySelectorAll('.review-action');
+    actionButtons.forEach(function(button) { button.disabled = true; });
+
+    try {
+        const result = await post('/wx/dasher/review/', {
+            id: currentApplicationId,
+            action: action,
+            remark: document.getElementById('reviewRemark').value.trim()
+        });
+        if (result.code !== 200) throw new Error(result.msg || '审核操作失败');
+        showToast(action === 'approve' ? '申请已通过' : '申请已拒绝', 'success');
+        closeReviewModal();
+        await loadApplications();
+    } catch (error) {
+        showToast(error.message || '审核操作失败', 'error');
+    } finally {
+        actionButtons.forEach(function(button) { button.disabled = false; });
+    }
 }
 
 document.addEventListener('DOMContentLoaded', function() {
+    document.getElementById('statusFilter').addEventListener('change', loadApplications);
+    document.getElementById('reviewModal').addEventListener('click', function(event) {
+        if (event.target === event.currentTarget) closeReviewModal();
+    });
+    document.addEventListener('keydown', function(event) {
+        if (event.key === 'Escape' && currentApplicationId) closeReviewModal();
+    });
     loadApplications();
 });
 </script>
