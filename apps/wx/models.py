@@ -176,3 +176,33 @@ class GameAccount(BaseModel):
 
     def __str__(self):
         return f'{self.user_id} - {self.game_category.name}: {self.game_account}'
+
+
+class DasherApplication(BaseModel):
+    """打手入驻申请"""
+    STATUS_CHOICES = [
+        ('pending', '待审核'),
+        ('approved', '已通过'),
+        ('rejected', '已拒绝'),
+    ]
+    user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE,
+                             related_name='dasher_applications', verbose_name='申请人')
+    real_name = models.CharField(max_length=50, verbose_name='真实姓名')
+    phone = models.CharField(max_length=20, verbose_name='手机号')
+    id_card_front = models.CharField(max_length=500, verbose_name='身份证正面')
+    id_card_back = models.CharField(max_length=500, verbose_name='身份证反面')
+    status = models.CharField(max_length=20, default='pending', choices=STATUS_CHOICES, verbose_name='审核状态')
+    agree_terms = models.BooleanField(default=True, verbose_name='同意协议')
+    reviewer = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.SET_NULL,
+                                 null=True, blank=True, related_name='reviewed_applications', verbose_name='审核人')
+    review_remark = models.CharField(max_length=500, blank=True, verbose_name='审核备注')
+    reviewed_at = models.DateTimeField(null=True, blank=True, verbose_name='审核时间')
+
+    class Meta:
+        db_table = 'wx_dasher_application'
+        verbose_name = '入驻申请'
+        verbose_name_plural = verbose_name
+        ordering = ['-created_at']
+
+    def __str__(self):
+        return f'{self.real_name} - {self.get_status_display()}'

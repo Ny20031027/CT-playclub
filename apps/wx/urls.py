@@ -105,6 +105,12 @@ urlpatterns = [
     path('game-accounts/save/', views.game_account_save, name='wx-game-account-save'),
     path('game-accounts/delete/', views.game_account_delete, name='wx-game-account-delete'),
 
+    # 打手入驻
+    path('dasher/apply/', views.dasher_apply, name='wx-dasher-apply'),
+    path('dasher/application-status/', views.dasher_application_status, name='wx-dasher-status'),
+    path('dasher/applications/', views.dasher_applications, name='wx-dasher-applications'),
+    path('dasher/review/', views.dasher_review, name='wx-dasher-review'),
+
     # 排行榜
     path('game-ranking/', views.game_ranking, name='wx-game-ranking'),
 

@@ -27,7 +27,7 @@ from apps.order.comment_utils import create_order_comment_with_retry
 from apps.notice.models import Notice, UserNotice
 from apps.finance.models import Wallet, Transaction
 from apps.upload.models import UploadFile
-from .models import WxUser, Banner, Announcement, GameCategory, Gift, GameBanner, Follow, GameAccount
+from .models import WxUser, Banner, Announcement, GameCategory, Gift, GameBanner, Follow, GameAccount, DasherApplication
 from .serializers import (
     WxUserSerializer, BannerSerializer, AnnouncementSerializer,
     GameCategorySerializer, GiftSerializer, GameBannerSerializer
@@ -5426,3 +5426,160 @@ def game_account_delete(request):
         return success_response(msg='已删除')
     except GameAccount.DoesNotExist:
         return error_response(msg='账号不存在')
+
+
+# ============ 打手入驻 ============
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def dasher_apply(request):
+    """提交打手入驻申请"""
+    user = request.user
+    real_name = (request.data.get('real_name') or '').strip()
+    phone = (request.data.get('phone') or '').strip()
+    id_card_front = (request.data.get('id_card_front') or '').strip()
+    id_card_back = (request.data.get('id_card_back') or '').strip()
+    agree_terms = request.data.get('agree_terms', False)
+
+    if not real_name:
+        return error_response(msg='请输入真实姓名')
+    if not phone:
+        return error_response(msg='请输入手机号')
+    if not id_card_front or not id_card_back:
+        return error_response(msg='请上传身份证正反面')
+    if not agree_terms:
+        return error_response(msg='请阅读并勾选入驻协议')
+
+    # 检查是否有待审核的申请
+    existing = DasherApplication.objects.filter(user=user, status='pending').first()
+    if existing:
+        return error_response(msg='您已有待审核的入驻申请，请耐心等待')
+
+    # 检查是否已经是打手
+    try:
+        emp = user.get_active_employee()
+        if emp:
+            return error_response(msg='您已经是打手了')
+    except Exception:
+        pass
+
+    DasherApplication.objects.create(
+        user=user,
+        real_name=real_name,
+        phone=phone,
+        id_card_front=id_card_front,
+        id_card_back=id_card_back,
+        agree_terms=agree_terms,
+        status='pending',
+    )
+    return success_response(msg='入驻申请已提交，请等待审核')
+
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def dasher_application_status(request):
+    """查询当前用户的入驻申请状态"""
+    user = request.user
+    app = DasherApplication.objects.filter(user=user).order_by('-created_at').first()
+    if not app:
+        return success_response({'has_application': False})
+    return success_response({
+        'has_application': True,
+        'id': app.id,
+        'status': app.status,
+        'status_display': app.get_status_display(),
+        'review_remark': app.review_remark or '',
+        'created_at': app.created_at.strftime('%Y-%m-%d %H:%M'),
+    })
+
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def dasher_applications(request):
+    """管理端：获取入驻申请列表"""
+    user = request.user
+    # 简单权限：管理员或客服可查看
+    status_filter = request.GET.get('status', '')
+    qs = DasherApplication.objects.select_related('user', 'reviewer').order_by('-created_at')
+    if status_filter:
+        qs = qs.filter(status=status_filter)
+    data = [{
+        'id': a.id,
+        'user_id': a.user_id,
+        'user_nickname': (a.user.wx_user.nickname if hasattr(a.user, 'wx_user') else '') or a.user.username,
+        'real_name': a.real_name,
+        'phone': a.phone,
+        'id_card_front': a.id_card_front,
+        'id_card_back': a.id_card_back,
+        'status': a.status,
+        'status_display': a.get_status_display(),
+        'agree_terms': a.agree_terms,
+        'review_remark': a.review_remark or '',
+        'reviewer_name': (a.reviewer.wx_user.nickname if a.reviewer and hasattr(a.reviewer, 'wx_user') else ''),
+        'created_at': a.created_at.strftime('%Y-%m-%d %H:%M'),
+    } for a in qs]
+    return success_response(data)
+
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def dasher_review(request):
+    """审核入驻申请（通过/拒绝）"""
+    reviewer = request.user
+    app_id = request.data.get('id')
+    action = request.data.get('action')  # 'approve' or 'reject'
+    remark = (request.data.get('remark') or '').strip()
+
+    if not app_id or action not in ('approve', 'reject'):
+        return error_response(msg='参数错误')
+
+    try:
+        application = DasherApplication.objects.select_related('user').get(id=app_id)
+    except DasherApplication.DoesNotExist:
+        return error_response(msg='申请不存在')
+
+    if application.status != 'pending':
+        return error_response(msg='该申请已处理过')
+
+    if action == 'reject':
+        application.status = 'rejected'
+        application.reviewer = reviewer
+        application.review_remark = remark or '审核未通过'
+        application.reviewed_at = timezone.now()
+        application.save()
+        return success_response(msg='已拒绝')
+
+    # 审核通过：将客户转为打手
+    user_obj = application.user
+    from apps.customer.models import Customer
+    from apps.employee.models import Employee
+
+    # 检查是否已存在打手记录
+    existing_emp = Employee.objects.filter(user=user_obj).first()
+    if not existing_emp:
+        Employee.objects.create(
+            user=user_obj,
+            real_name=application.real_name,
+            nickname=(user_obj.wx_user.nickname if hasattr(user_obj, 'wx_user') else '') or user_obj.username or '',
+            phone=application.phone,
+            gender=user_obj.gender if hasattr(user_obj, 'wx_user') else 'unknown',
+            avatar=(user_obj.wx_user.avatar if hasattr(user_obj, 'wx_user') else '') or '',
+            level='normal',
+            status='idle',
+            online_status=False,
+        )
+
+    # 标记客户为非活跃
+    customer = Customer.objects.filter(user=user_obj).first()
+    if customer:
+        customer.status = False
+        customer.save(update_fields=['status', 'updated_at'])
+
+    # 更新申请状态
+    application.status = 'approved'
+    application.reviewer = reviewer
+    application.review_remark = remark or '审核通过'
+    application.reviewed_at = timezone.now()
+    application.save()
+
+    return success_response(msg='已通过，该用户已成为打手')
