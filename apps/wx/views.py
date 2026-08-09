@@ -37,6 +37,19 @@ import logging
 logger = logging.getLogger(__name__)
 
 
+def _generate_display_id():
+    """生成唯一的9位黑金ID"""
+    import random
+    for _ in range(10):
+        did = str(random.randint(100000000, 999999999))
+        if not User.objects.filter(display_id=did).exists():
+            return did
+    did = str(random.randint(100000000, 999999999))
+    while User.objects.filter(display_id=did).exists():
+        did = str(random.randint(100000000, 999999999))
+    return did
+
+
 class GameCategoryViewSet(BaseModelViewSet):
     """游戏分类管理（品类设置）"""
     queryset = GameCategory.objects.all()
@@ -570,6 +583,11 @@ def wx_login(request):
     user.last_login = timezone.now()
     user.save(update_fields=['last_login'])
 
+    # 自动生成黑金ID（9位数字，不存在则随机生成）
+    if not user.display_id:
+        user.display_id = _generate_display_id()
+        user.save(update_fields=['display_id'])
+
     # 判断用户类型
     is_dasher = bool(user.get_active_employee())
 
@@ -636,6 +654,7 @@ def wx_login(request):
             'gender': user.gender or 'unknown',
             'user_type': user_type,
             'customer_id': customer.id if customer else None,
+            'display_id': user.display_id or '',
         }
     })
 
@@ -5791,3 +5810,33 @@ def dasher_review(request):
     application.save()
 
     return success_response(msg='已通过，该用户已成为打手')
+
+
+@api_view(['GET'])
+@permission_classes([AllowAny])
+def search_by_display_id(request):
+    """通过黑金ID搜索打手"""
+    display_id = (request.GET.get('id') or '').strip()
+    if not display_id:
+        return error_response(msg='请输入黑金ID')
+    try:
+        user = User.objects.get(display_id=display_id)
+    except User.DoesNotExist:
+        return error_response(msg='未找到该用户')
+
+    # 只允许搜索打手
+    try:
+        employee = user.get_active_employee()
+        if not employee:
+            return error_response(msg='该用户不是打手')
+    except Exception:
+        return error_response(msg='该用户不是打手')
+
+    return success_response({
+        'id': employee.id,
+        'nickname': employee.nickname or employee.real_name or user.nickname,
+        'avatar': employee_avatar_url(employee),
+        'level': employee.level,
+        'level_num': employee.level_num,
+        'display_id': user.display_id,
+    })

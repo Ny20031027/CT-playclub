@@ -111,6 +111,9 @@ urlpatterns = [
     path('dasher/applications/', views.dasher_applications, name='wx-dasher-applications'),
     path('dasher/review/', views.dasher_review, name='wx-dasher-review'),
 
+    # 搜索
+    path('search/', views.search_by_display_id, name='wx-search'),
+
     # 排行榜
     path('game-ranking/', views.game_ranking, name='wx-game-ranking'),
 

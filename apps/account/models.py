@@ -92,6 +92,7 @@ class User(AbstractUser, BaseModel):
     roles = models.ManyToManyField(Role, blank=True, related_name='users', verbose_name='角色')
     is_online = models.BooleanField(default=False, verbose_name='是否在线')
     last_login_ip = models.CharField(max_length=50, blank=True, verbose_name='最后登录IP')
+    display_id = models.CharField(max_length=20, blank=True, unique=True, null=True, verbose_name='黑金ID')
 
     class Meta:
         db_table = 'sys_user'
