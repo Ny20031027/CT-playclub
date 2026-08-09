@@ -1,4 +1,5 @@
 from decimal import Decimal
+from unittest.mock import patch
 
 from django.test import TestCase
 from rest_framework.test import APIClient
@@ -8,7 +9,65 @@ from apps.customer.models import Customer
 from apps.employee.models import Employee, EmployeeSkill
 from apps.notice.models import UserNotice
 from apps.order.models import Order, OrderComment, OrderMember
-from apps.wx.models import GameAccount, GameCategory
+from apps.wx.models import GameAccount, GameCategory, WxUser
+
+
+class BlackGoldSearchTests(TestCase):
+    def setUp(self):
+        self.client = APIClient()
+
+    def test_search_returns_dasher_but_hides_customer(self):
+        dasher_user = User.objects.create_user(username='searchable_dasher')
+        dasher_user.display_id = '123456789'
+        dasher_user.save(update_fields=['display_id'])
+        employee = Employee.objects.create(
+            user=dasher_user,
+            employee_no='EMP-SEARCH-001',
+            real_name='可搜索打手',
+            nickname='可搜索打手',
+            status='idle',
+        )
+        customer_user = User.objects.create_user(username='hidden_customer')
+        customer_user.display_id = '987654321'
+        customer_user.save(update_fields=['display_id'])
+        Customer.objects.create(user=customer_user, nickname='不可搜索客户')
+
+        found = self.client.get('/api/wx/search/?id=123456789').json()
+        hidden = self.client.get('/api/wx/search/?id=987654321').json()
+        listed = self.client.get('/api/wx/employees/?page_size=10').json()
+
+        self.assertEqual(found['code'], 200)
+        self.assertEqual(found['data']['id'], employee.id)
+        self.assertNotEqual(hidden['code'], 200)
+        self.assertEqual(listed['data']['list'][0]['display_id'], '123456789')
+
+    def test_profile_payload_contains_fixed_display_id(self):
+        user = User.objects.create_user(username='profile_display_id')
+        user.display_id = '112233445'
+        user.save(update_fields=['display_id'])
+        Customer.objects.create(user=user, nickname='资料用户')
+        self.client.force_authenticate(user=user)
+
+        first = self.client.get('/api/wx/profile/').json()
+        second = self.client.get('/api/wx/profile/').json()
+
+        self.assertEqual(first['data']['display_id'], '112233445')
+        self.assertEqual(second['data']['display_id'], '112233445')
+
+    @patch('apps.wx.role_views.get_wx_openid')
+    def test_login_generates_display_id_once(self, get_wx_openid):
+        get_wx_openid.return_value = {'openid': 'black_gold_login_openid', 'session_key': 'session'}
+
+        first = self.client.post('/api/wx/login/', {'code': 'first'}, format='json').json()
+        second = self.client.post('/api/wx/login/', {'code': 'second'}, format='json').json()
+
+        self.assertEqual(first['code'], 200)
+        self.assertRegex(first['data']['user_info']['display_id'], r'^\d{9}$')
+        self.assertEqual(
+            first['data']['user_info']['display_id'],
+            second['data']['user_info']['display_id'],
+        )
+        self.assertEqual(WxUser.objects.filter(openid='black_gold_login_openid').count(), 1)
 
 
 class GameAccountTests(TestCase):

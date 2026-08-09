@@ -262,6 +262,7 @@ class EmployeeStatusSerializer(serializers.ModelSerializer):
 
 class EmployeeSerializer(serializers.ModelSerializer):
     username = serializers.CharField(source='user.username', read_only=True)
+    display_id = serializers.CharField(source='user.display_id', read_only=True)
     password = serializers.CharField(write_only=True, required=False)
     department_name = serializers.CharField(source='department.name', read_only=True)
     tag_names = serializers.SerializerMethodField()
@@ -278,7 +279,7 @@ class EmployeeSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = Employee
-        fields = ['id', 'user', 'username', 'password', 'employee_no', 'real_name', 'nickname',
+        fields = ['id', 'user', 'username', 'display_id', 'password', 'employee_no', 'real_name', 'nickname',
                   'phone', 'avatar', 'avatar_url', 'gender', 'age', 'birthday', 'id_card',
                   'id_card_verified', 'department', 'department_name', 'level', 'level_num', 'status',
                   'assessment_mode', 'online_status', 'work_status', 'skills', 'game_category_ids',
@@ -333,6 +334,7 @@ class EmployeeSerializer(serializers.ModelSerializer):
                     username=username,
                     password=password or '123456',
                 )
+                user.ensure_display_id()
                 validated_data['user'] = user
 
         # Auto-generate employee_no if not provided
@@ -375,10 +377,11 @@ class EmployeeSerializer(serializers.ModelSerializer):
 
 class EmployeeSimpleSerializer(serializers.ModelSerializer):
     avatar_url = serializers.SerializerMethodField()
+    display_id = serializers.CharField(source='user.display_id', read_only=True)
 
     class Meta:
         model = Employee
-        fields = ['id', 'nickname', 'avatar', 'avatar_url', 'level', 'status', 'rating']
+        fields = ['id', 'display_id', 'nickname', 'avatar', 'avatar_url', 'level', 'status', 'rating']
         read_only_fields = fields
 
     def get_avatar_url(self, obj):

@@ -37,19 +37,6 @@ import logging
 logger = logging.getLogger(__name__)
 
 
-def _generate_display_id():
-    """生成唯一的9位黑金ID"""
-    import random
-    for _ in range(10):
-        did = str(random.randint(100000000, 999999999))
-        if not User.objects.filter(display_id=did).exists():
-            return did
-    did = str(random.randint(100000000, 999999999))
-    while User.objects.filter(display_id=did).exists():
-        did = str(random.randint(100000000, 999999999))
-    return did
-
-
 class GameCategoryViewSet(BaseModelViewSet):
     """游戏分类管理（品类设置）"""
     queryset = GameCategory.objects.all()
@@ -583,10 +570,7 @@ def wx_login(request):
     user.last_login = timezone.now()
     user.save(update_fields=['last_login'])
 
-    # 自动生成黑金ID（9位数字，不存在则随机生成）
-    if not user.display_id:
-        user.display_id = _generate_display_id()
-        user.save(update_fields=['display_id'])
+    user.ensure_display_id()
 
     # 判断用户类型
     is_dasher = bool(user.get_active_employee())
@@ -814,6 +798,7 @@ def home_data(request):
 
         employee_list.append({
             'id': emp.id,
+            'display_id': emp.user.display_id or '',
             'nickname': emp.nickname or emp.real_name,
             'avatar': employee_avatar_url(emp),
             'gender': emp.gender,
@@ -1001,6 +986,7 @@ def employee_list(request):
 
         employee_list.append({
             'id': emp.id,
+            'display_id': emp.user.display_id or '',
             'nickname': fix_mojibake(emp.nickname or emp.real_name),
             'avatar': employee_avatar_url(emp),
             'gender': emp.gender if emp.gender != 'unknown' else (emp.user.gender if emp.user else 'unknown'),
@@ -1092,6 +1078,7 @@ def employee_detail(request, emp_id):
 
     return success_response({
         'id': emp.id,
+        'display_id': emp.user.display_id or '',
         'nickname': fix_mojibake(emp.nickname or emp.real_name),
         'real_name': fix_mojibake(emp.real_name),
         'avatar': employee_avatar_url(emp),
@@ -5819,18 +5806,17 @@ def search_by_display_id(request):
     display_id = (request.GET.get('id') or '').strip()
     if not display_id:
         return error_response(msg='请输入黑金ID')
+    if not display_id.isdigit() or len(display_id) > 9:
+        return error_response(msg='黑金ID格式不正确')
     try:
         user = User.objects.get(display_id=display_id)
     except User.DoesNotExist:
         return error_response(msg='未找到该用户')
 
-    # 只允许搜索打手
-    try:
-        employee = user.get_active_employee()
-        if not employee:
-            return error_response(msg='该用户不是打手')
-    except Exception:
-        return error_response(msg='该用户不是打手')
+    # 客户与客服暂不允许被搜索，只返回当前身份为打手的用户。
+    employee = user.get_active_employee()
+    if not employee or user.get_primary_identity_code(employee=employee) != 'dasher':
+        return error_response(msg='未找到该打手')
 
     return success_response({
         'id': employee.id,

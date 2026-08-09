@@ -38,6 +38,7 @@ def _build_profile_payload(user, related, nickname=None, request=None):
         'is_superuser': user.is_superuser,
         'customer_id': customer.id if customer else None,
         'employee_id': employee.id if employee else None,
+        'display_id': user.display_id or '',
     }
 
     if employee:
@@ -123,6 +124,7 @@ def wx_login(request):
     else:
         user = wx_user.user
 
+    user.ensure_display_id()
     user.last_login = timezone.now()
     user.save(update_fields=['last_login'])
 
@@ -208,6 +210,7 @@ def test_login(request):
         user = customer.user
 
     refresh = RefreshToken.for_user(user)
+    user.ensure_display_id()
     user.last_login = timezone.now()
     user.save(update_fields=['last_login'])
 

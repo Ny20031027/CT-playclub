@@ -86,10 +86,10 @@ class UserInfoSerializer(serializers.ModelSerializer):
     class Meta:
         model = User
         fields = ['id', 'username', 'nickname', 'email', 'phone', 'avatar',
-                  'gender', 'is_active', 'is_online', 'department', 'department_name',
+                  'gender', 'display_id', 'is_active', 'is_online', 'department', 'department_name',
                   'roles', 'permissions', 'user_type', 'customer_id', 'employee_id',
                   'is_superuser', 'last_login', 'last_login_ip', 'created_at']
-        read_only_fields = ['id', 'username', 'last_login', 'last_login_ip', 'created_at']
+        read_only_fields = ['id', 'username', 'display_id', 'last_login', 'last_login_ip', 'created_at']
 
     def get_roles(self, obj):
         return list(obj.roles.filter(status=True).values_list('code', flat=True))
@@ -107,7 +107,6 @@ class UserInfoSerializer(serializers.ModelSerializer):
     def get_employee_id(self, obj):
         employee = obj.get_active_employee()
         return employee.id if employee else None
-
 
 class UserSerializer(serializers.ModelSerializer):
     role_names = serializers.SerializerMethodField()
@@ -129,6 +128,9 @@ class UserSerializer(serializers.ModelSerializer):
     def get_user_type(self, obj):
         return obj.get_primary_identity_code()
 
+    def validate_display_id(self, value):
+        return validate_display_id(value)
+
     def create(self, validated_data):
         roles = validated_data.pop('roles', [])
         password = validated_data.pop('password', None)
@@ -138,6 +140,7 @@ class UserSerializer(serializers.ModelSerializer):
         else:
             user.set_password('123456')
         user.save()
+        user.ensure_display_id()
         if roles:
             user.roles.set(roles)
         return user
@@ -153,6 +156,15 @@ class UserSerializer(serializers.ModelSerializer):
         if roles is not None:
             instance.roles.set(roles)
         return instance
+
+
+def validate_display_id(value):
+    value = str(value or '').strip()
+    if not value:
+        return None
+    if not value.isdigit() or len(value) > 9:
+        raise serializers.ValidationError('黑金ID只能包含1至9位数字')
+    return value
 
 
 class RoleSerializer(serializers.ModelSerializer):

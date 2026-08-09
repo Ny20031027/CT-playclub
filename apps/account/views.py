@@ -1,6 +1,6 @@
 from rest_framework import viewsets, status
 from rest_framework.decorators import action
-from rest_framework.permissions import AllowAny, IsAuthenticated
+from rest_framework.permissions import AllowAny, IsAdminUser, IsAuthenticated
 from rest_framework_simplejwt.tokens import RefreshToken
 from django.contrib.auth import logout
 from apps.common.response import success_response, error_response
@@ -21,6 +21,7 @@ class AuthViewSet(viewsets.ViewSet):
         serializer = LoginSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         user = serializer.validated_data['user']
+        user.ensure_display_id()
 
         LoginLog.objects.create(
             user=user,
@@ -48,6 +49,7 @@ class AuthViewSet(viewsets.ViewSet):
         serializer = WxLoginSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         user = serializer.validated_data['user']
+        user.ensure_display_id()
 
         LoginLog.objects.create(
             user=user,
@@ -92,6 +94,19 @@ class AuthViewSet(viewsets.ViewSet):
 class UserViewSet(BaseModelViewSet):
     queryset = User.objects.all()
     serializer_class = UserSerializer
+    filterset_fields = ['is_active', 'is_online']
+    search_fields = ['username', 'nickname', 'phone', 'display_id']
+    ordering_fields = ['id', 'username', 'created_at', 'last_login']
+
+    @action(detail=True, methods=['patch'], url_path='display-id', permission_classes=[IsAdminUser])
+    def update_display_id(self, request, pk=None):
+        user = self.get_object()
+        serializer = self.get_serializer(
+            user, data={'display_id': request.data.get('display_id')}, partial=True
+        )
+        serializer.is_valid(raise_exception=True)
+        serializer.save()
+        return success_response(self.get_serializer(user).data, msg='黑金ID更新成功')
 
     @action(detail=False, methods=['get'], url_path='info')
     def user_info(self, request):

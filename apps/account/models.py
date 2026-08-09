@@ -1,4 +1,7 @@
-from django.db import models
+import secrets
+
+from django.core.validators import RegexValidator
+from django.db import IntegrityError, models, transaction
 from django.contrib.auth.models import AbstractUser
 from apps.common.models import BaseModel
 
@@ -92,7 +95,14 @@ class User(AbstractUser, BaseModel):
     roles = models.ManyToManyField(Role, blank=True, related_name='users', verbose_name='角色')
     is_online = models.BooleanField(default=False, verbose_name='是否在线')
     last_login_ip = models.CharField(max_length=50, blank=True, verbose_name='最后登录IP')
-    display_id = models.CharField(max_length=20, blank=True, unique=True, null=True, verbose_name='黑金ID')
+    display_id = models.CharField(
+        max_length=9,
+        blank=True,
+        unique=True,
+        null=True,
+        validators=[RegexValidator(r'^\d{1,9}$', '黑金ID只能包含1至9位数字')],
+        verbose_name='黑金ID',
+    )
 
     class Meta:
         db_table = 'sys_user'
@@ -101,6 +111,35 @@ class User(AbstractUser, BaseModel):
 
     def __str__(self):
         return self.username
+
+    @classmethod
+    def generate_display_id(cls):
+        """生成九位数字黑金ID，数据库唯一约束负责最终防重。"""
+        return str(100000000 + secrets.randbelow(900000000))
+
+    def ensure_display_id(self):
+        """缺少黑金ID时原子补齐；已有ID保持不变。"""
+        if self.display_id:
+            return self.display_id
+        if not self.pk:
+            raise ValueError('用户保存后才能生成黑金ID')
+
+        for _ in range(30):
+            candidate = self.generate_display_id()
+            try:
+                with transaction.atomic():
+                    updated = type(self).objects.filter(pk=self.pk).filter(
+                        models.Q(display_id__isnull=True) | models.Q(display_id='')
+                    ).update(display_id=candidate)
+                if updated:
+                    self.display_id = candidate
+                    return candidate
+                self.refresh_from_db(fields=['display_id'])
+                if self.display_id:
+                    return self.display_id
+            except IntegrityError:
+                continue
+        raise RuntimeError('黑金ID生成失败，请稍后重试')
 
     def get_role_codes(self):
         return list(self.roles.filter(status=True, is_deleted=False).values_list('code', flat=True))
