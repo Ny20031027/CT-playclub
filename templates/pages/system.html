@@ -33,6 +33,10 @@
     .preset-image-upload:hover { border-color: #409eff; color: #409eff; }
     .preset-image-upload img { width: 100%; height: 100%; object-fit: cover; }
     .preset-fields .form-group:last-child { margin-bottom: 0; }
+    .preset-list-editor { margin-top: 14px; }
+    .preset-list-toolbar { display:flex; justify-content:space-between; align-items:center; margin-bottom:10px; }
+    .preset-item-card { position:relative; margin-bottom:12px; }
+    .preset-item-delete { position:absolute; right:10px; top:10px; z-index:2; }
 
     .sub-section { margin-top: 16px; }
     .sub-section-title { font-weight: 600; margin-bottom: 8px; color: #303133; display: flex; justify-content: space-between; align-items: center; }
@@ -2701,6 +2705,13 @@
                     preset_content: gp.preset_content || '',
                     preset_remark: gp.preset_remark || '',
                     preset_price: Number(gp.preset_price) || 0,
+                    preset_items: (gp.preset_items || []).map(function (item) {
+                        return {
+                            id: item.id || null, name: item.name || '', display_image: item.display_image || '',
+                            content: item.content || '', remark: item.remark || '', price: Number(item.price) || 0,
+                            sort: item.sort || 0, status: item.status !== false
+                        };
+                    }),
                     difficulty_enabled: false,
                     gender_limit: gp.gender_limit || 'unlimited',
                     male_price_delta: Number(gp.male_price_delta) || 0,
@@ -2766,7 +2777,7 @@
                     '<i class="fa-solid fa-chevron-' + (gp._collapsed ? 'right' : 'down') + '" style="color:#909399;width:14px;"></i>' +
                     '<span style="color:#909399;font-size:12px;">#' + (idx + 1) + '</span>' +
                     '<span class="gameplay-mode-badge ' + mode + '">' + (mode === 'preset' ? '预制单' : '选配单') + '</span>' +
-                    '<input type="text" class="gp-name-input" value="' + escAttr(gp.name) + '" placeholder="项目名称（必填）" onclick="event.stopPropagation()" onchange="updateSelfServiceGp(' + idx + ',\'name\',this.value)">' +
+                    '<input type="text" class="gp-name-input" value="' + escAttr(gp.name) + '" placeholder="玩法名称（如：陪玩、护航）" onclick="event.stopPropagation()" onchange="updateSelfServiceGp(' + idx + ',\'name\',this.value)">' +
                     '<button class="btn btn-danger btn-sm" onclick="event.stopPropagation();removeSelfServiceGameplay(' + idx + ')"><i class="fa-solid fa-trash"></i></button>' +
                 '</div>' +
                 '<div class="gameplay-card-body">' +
@@ -2790,20 +2801,7 @@
             '<div class="form-group"><label class="checkbox-label"><input type="checkbox" ' + (gp.status !== false ? 'checked' : '') + ' onchange="updateSelfServiceGp(' + idx + ',\'status\',this.checked)"> 启用该项目</label></div>' +
         '</div>';
         if (mode === 'preset') {
-            var imageHtml = gp.display_image
-                ? '<img src="' + escAttr(gp.display_image) + '" alt="预制单图片">'
-                : '<span><i class="fa-solid fa-cloud-arrow-up" style="font-size:28px;display:block;margin-bottom:8px;"></i>点击上传显示图片</span>';
-            return commonFields +
-                '<div class="preset-editor">' +
-                    '<div><div class="preset-image-upload" onclick="document.getElementById(\'selfServicePresetImage-' + idx + '\').click()">' + imageHtml + '</div>' +
-                    '<input type="file" id="selfServicePresetImage-' + idx + '" accept="image/*" style="display:none;" onchange="uploadSelfServicePresetImage(' + idx + ',this)"></div>' +
-                    '<div class="preset-fields">' +
-                        '<div class="form-group"><label>项目名称 *</label><input type="text" value="' + escAttr(gp.name) + '" placeholder="填写小程序展示的项目名称" onchange="updateSelfServiceGp(' + idx + ',\'name\',this.value);renderSelfServiceGameplays()"></div>' +
-                        '<div class="form-group"><label>项目价格（元）*</label><input type="number" min="0" step="0.01" value="' + escAttr(gp.preset_price || 0) + '" placeholder="0.00" onchange="updateSelfServiceGp(' + idx + ',\'preset_price\',parseFloat(this.value)||0)"><p class="hint">小程序按 1 元 = 10 黑钻换算，最终黑钻数按四舍五入计算。</p></div>' +
-                        '<div class="form-group"><label>项目内容 *</label><textarea rows="4" placeholder="说明预制单包含的完整服务内容" onchange="updateSelfServiceGp(' + idx + ',\'preset_content\',this.value)">' + escHtml(gp.preset_content || '') + '</textarea></div>' +
-                        '<div class="form-group"><label>项目备注</label><textarea rows="2" maxlength="500" placeholder="补充限制、注意事项或履约说明" onchange="updateSelfServiceGp(' + idx + ',\'preset_remark\',this.value)">' + escHtml(gp.preset_remark || '') + '</textarea></div>' +
-                    '</div>' +
-                '</div>';
+            return commonFields + buildSelfServicePresetItems(idx, gp);
         }
         var showGenderPrice = (gp.gender_limit === 'optional');
         var showGenderColumn = (gp.gender_limit === 'unlimited' || gp.gender_limit === 'optional');
@@ -2827,6 +2825,31 @@
         '<div class="form-row">' +
             '<div class="form-group"><label class="checkbox-label"><input type="checkbox" ' + (gp.remark_required ? 'checked' : '') + ' onchange="updateSelfServiceGp(' + idx + ',\'remark_required\',this.checked)"> 需要备注</label></div>' +
         '</div>';
+    }
+
+    function buildSelfServicePresetItems(gpIdx, gp) {
+        var items = gp.preset_items || [];
+        var cards = items.map(function (item, itemIdx) {
+            var imageHtml = item.display_image
+                ? '<img src="' + escAttr(item.display_image) + '" alt="预制单图片">'
+                : '<span><i class="fa-solid fa-cloud-arrow-up" style="font-size:28px;display:block;margin-bottom:8px;"></i>点击上传显示图片</span>';
+            return '<div class="preset-editor preset-item-card">' +
+                '<button class="btn btn-danger btn-sm preset-item-delete" onclick="removeSelfServicePresetItem(' + gpIdx + ',' + itemIdx + ')"><i class="fa-solid fa-trash"></i></button>' +
+                '<div><div class="preset-image-upload" onclick="document.getElementById(\'selfServicePresetImage-' + gpIdx + '-' + itemIdx + '\').click()">' + imageHtml + '</div>' +
+                '<input type="file" id="selfServicePresetImage-' + gpIdx + '-' + itemIdx + '" accept="image/*" style="display:none;" onchange="uploadSelfServicePresetImage(' + gpIdx + ',' + itemIdx + ',this)"></div>' +
+                '<div class="preset-fields">' +
+                    '<div class="form-row"><div class="form-group"><label>预制单名称 *</label><input type="text" value="' + escAttr(item.name) + '" placeholder="如：单局上分护航" onchange="updateSelfServicePresetItem(' + gpIdx + ',' + itemIdx + ',\'name\',this.value)"></div>' +
+                    '<div class="form-group"><label>项目价格（元）*</label><input type="number" min="0" step="0.01" value="' + escAttr(item.price || 0) + '" onchange="updateSelfServicePresetItem(' + gpIdx + ',' + itemIdx + ',\'price\',parseFloat(this.value)||0)"></div></div>' +
+                    '<div class="form-group"><label>项目内容 *</label><textarea rows="4" placeholder="说明该预制单包含的完整服务内容" onchange="updateSelfServicePresetItem(' + gpIdx + ',' + itemIdx + ',\'content\',this.value)">' + escHtml(item.content || '') + '</textarea></div>' +
+                    '<div class="form-group"><label>项目备注</label><textarea rows="2" maxlength="500" placeholder="补充限制、注意事项或履约说明" onchange="updateSelfServicePresetItem(' + gpIdx + ',' + itemIdx + ',\'remark\',this.value)">' + escHtml(item.remark || '') + '</textarea></div>' +
+                    '<div class="form-row"><div class="form-group"><label>排序</label><input type="number" value="' + escAttr(item.sort || 0) + '" onchange="updateSelfServicePresetItem(' + gpIdx + ',' + itemIdx + ',\'sort\',parseInt(this.value)||0)"></div>' +
+                    '<div class="form-group"><label class="checkbox-label"><input type="checkbox" ' + (item.status !== false ? 'checked' : '') + ' onchange="updateSelfServicePresetItem(' + gpIdx + ',' + itemIdx + ',\'status\',this.checked)"> 启用该预制单</label></div></div>' +
+                    '<p class="hint">小程序按 1 元 = 10 黑钻换算。</p>' +
+                '</div></div>';
+        }).join('');
+        if (!cards) cards = '<div class="gp-empty">当前玩法暂无预制单，请点击“添加预制单”</div>';
+        return '<div class="preset-list-editor"><div class="preset-list-toolbar"><div><strong>预制单列表</strong><p class="hint">一个玩法可以配置多个固定内容和价格的预制单。</p></div>' +
+            '<button class="btn btn-primary btn-sm" onclick="addSelfServicePresetItem(' + gpIdx + ')">+ 添加预制单</button></div>' + cards + '</div>';
     }
 
     function buildSelfServiceSubSection(title, idx, type, gp) {
@@ -3046,14 +3069,27 @@
 
     function updateSelfServiceGp(idx, field, value) { selfServiceGameplays[idx][field] = value; }
 
-    async function uploadSelfServicePresetImage(idx, input) {
+    function updateSelfServicePresetItem(gpIdx, itemIdx, field, value) {
+        selfServiceGameplays[gpIdx].preset_items[itemIdx][field] = value;
+    }
+    function addSelfServicePresetItem(gpIdx) {
+        var items = selfServiceGameplays[gpIdx].preset_items || (selfServiceGameplays[gpIdx].preset_items = []);
+        items.push({ name: '', display_image: '', content: '', remark: '', price: 0, sort: items.length, status: true });
+        renderSelfServiceGameplays();
+    }
+    function removeSelfServicePresetItem(gpIdx, itemIdx) {
+        if (!confirm('确定删除该预制单吗？')) return;
+        selfServiceGameplays[gpIdx].preset_items.splice(itemIdx, 1);
+        renderSelfServiceGameplays();
+    }
+    async function uploadSelfServicePresetImage(gpIdx, itemIdx, input) {
         if (!input.files || !input.files[0]) return;
         var formData = new FormData();
         formData.append('file', input.files[0]);
         try {
             var result = await upload('/upload/files/image/', formData);
             if (result.code !== 200) throw new Error(result.msg || '上传失败');
-            selfServiceGameplays[idx].display_image = result.data.url;
+            selfServiceGameplays[gpIdx].preset_items[itemIdx].display_image = result.data.url;
             renderSelfServiceGameplays();
             showToast('预制单图片上传成功', 'success');
         } catch (error) {
@@ -3125,6 +3161,7 @@
         selfServiceGameplays.push({
             order_mode: 'custom', name: '', description: '',
             display_image: '', preset_content: '', preset_remark: '', preset_price: 0, difficulty_enabled: false,
+            preset_items: [],
             gender_limit: 'unlimited', male_price_delta: 0, female_price_delta: 0,
             companion_mode: 'both', settlement_unit: 'hour',
             min_quantity: 1, quantity_step: 1, base_price: 0, remark_required: false,
@@ -3253,6 +3290,15 @@
                     preset_content: gp.preset_content || '',
                     preset_remark: gp.preset_remark || '',
                     preset_price: Number(gp.preset_price) || 0,
+                    preset_items: (gp.preset_items || []).filter(function (item) {
+                        return item.name && item.name.trim();
+                    }).map(function (item) {
+                        return {
+                            id: item.id || null, name: item.name.trim(), display_image: item.display_image || '',
+                            content: item.content || '', remark: item.remark || '', price: Number(item.price) || 0,
+                            sort: parseInt(item.sort) || 0, status: item.status !== false
+                        };
+                    }),
                     difficulty_enabled: false,
                     gender_limit: gp.gender_limit || 'unlimited',
                     male_price_delta: Number(gp.male_price_delta) || 0,
@@ -3316,11 +3362,13 @@
         var unitMap = { hour: '按小时', round: '按局' };
         var gpHtml = data.gameplays.map(function (gp, i) {
             if (gp.order_mode === 'preset') {
-                return '<dt>预制单 ' + (i + 1) + '：' + escHtml(gp.name || '(未命名)') + '</dt>' +
-                    '<dd>' + (gp.display_image ? '<img src="' + escAttr(gp.display_image) + '" style="width:160px;height:90px;object-fit:cover;border-radius:6px;margin:6px 0;">' : '未上传图片') +
-                    '<br>项目价格：¥' + formatMoney(gp.preset_price) + '（' + Math.round(Number(gp.preset_price || 0) * 10) + '黑钻）' +
-                    '<br>项目内容：' + escHtml(gp.preset_content || '-') +
-                    '<br>项目备注：' + escHtml(gp.preset_remark || '-') + '</dd>';
+                var presetHtml = (gp.preset_items || []).map(function (item) {
+                    return '<div style="margin:8px 0;padding:10px;background:#fff;border-radius:6px;">' +
+                        (item.display_image ? '<img src="' + escAttr(item.display_image) + '" style="width:160px;height:90px;object-fit:cover;border-radius:6px;">' : '未上传图片') +
+                        '<br><strong>' + escHtml(item.name || '(未命名)') + '</strong> · ¥' + formatMoney(item.price) + '（' + Math.round(Number(item.price || 0) * 10) + '黑钻）' +
+                        '<br>项目内容：' + escHtml(item.content || '-') + '<br>项目备注：' + escHtml(item.remark || '-') + '</div>';
+                }).join('') || '暂无预制单';
+                return '<dt>玩法 ' + (i + 1) + '：' + escHtml(gp.name || '(未命名)') + '</dt><dd>' + presetHtml + '</dd>';
             }
             var levels = gp.levels.map(function (l) { return escHtml(l.name) + (l.is_recommended ? ' ★' : ''); }).join('、') || '-';
             var services = gp.services.map(function (s) {
@@ -3374,17 +3422,16 @@
                 showToast('第 ' + (i + 1) + ' 个项目名称不能为空', 'error');
                 return;
             }
-            if (data.gameplays[i].order_mode === 'preset' && !data.gameplays[i].display_image) {
-                showToast('预制单“' + data.gameplays[i].name + '”请上传显示图片', 'error');
-                return;
-            }
-            if (data.gameplays[i].order_mode === 'preset' && !data.gameplays[i].preset_content.trim()) {
-                showToast('预制单“' + data.gameplays[i].name + '”请填写项目内容', 'error');
-                return;
-            }
-            if (data.gameplays[i].order_mode === 'preset' && Number(data.gameplays[i].preset_price) < 0) {
-                showToast('预制单“' + data.gameplays[i].name + '”项目价格不能小于0', 'error');
-                return;
+            if (data.gameplays[i].order_mode === 'preset') {
+                if (!data.gameplays[i].preset_items.length) {
+                    showToast('玩法“' + data.gameplays[i].name + '”请至少添加一个预制单', 'error'); return;
+                }
+                for (var pi = 0; pi < data.gameplays[i].preset_items.length; pi++) {
+                    var preset = data.gameplays[i].preset_items[pi];
+                    if (!preset.display_image) { showToast('预制单“' + preset.name + '”请上传显示图片', 'error'); return; }
+                    if (!preset.content.trim()) { showToast('预制单“' + preset.name + '”请填写项目内容', 'error'); return; }
+                    if (Number(preset.price) < 0) { showToast('预制单“' + preset.name + '”价格不能小于0', 'error'); return; }
+                }
             }
         }
         try {

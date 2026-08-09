@@ -5,7 +5,7 @@ from .models import (
     Employee, EmployeeSkill, EmployeeTag, EmployeeWallet,
     EmployeeContract, EmployeeStatus, EmployeeSkillRelation, SkillLevel,
     GameRank, EmployeeGameRank,
-    SkillGameplay, GameplayDifficulty, GameplayLevelOption,
+    SkillGameplay, GameplayPresetItem, GameplayDifficulty, GameplayLevelOption,
     GameplayService, GameplayPriceRule, ValueAddedService,
     AddonValueAddedService, ServiceValueAdded
 )
@@ -55,18 +55,25 @@ class GameplayPriceRuleSerializer(serializers.ModelSerializer):
         ]
 
 
+class GameplayPresetItemSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = GameplayPresetItem
+        fields = ['id', 'name', 'display_image', 'content', 'remark', 'price', 'sort', 'status']
+
+
 class SkillGameplaySerializer(serializers.ModelSerializer):
     difficulties = serializers.SerializerMethodField()
     levels = serializers.SerializerMethodField()
     services = serializers.SerializerMethodField()
     price_rules = GameplayPriceRuleSerializer(many=True, read_only=True)
     value_added_services = serializers.SerializerMethodField()
+    preset_items = GameplayPresetItemSerializer(many=True, read_only=True)
 
     class Meta:
         model = SkillGameplay
         fields = [
             'id', 'order_mode', 'name', 'description', 'display_image',
-            'preset_content', 'preset_remark', 'preset_price',
+            'preset_content', 'preset_remark', 'preset_price', 'preset_items',
             'difficulty_enabled', 'gender_limit',
             'male_price_delta', 'female_price_delta',
             'companion_mode', 'settlement_unit', 'min_quantity', 'quantity_step',

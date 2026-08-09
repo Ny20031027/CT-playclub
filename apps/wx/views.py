@@ -19,7 +19,7 @@ from apps.common.viewsets import BaseModelViewSet
 from apps.account.models import User
 from apps.employee.models import (
     Employee, EmployeeSkill, EmployeeSkillRelation, EmployeeTag, SkillLevel,
-    SkillGameplay, GameplayDifficulty, GameplayLevelOption, GameplayService,
+    SkillGameplay, GameplayPresetItem, GameplayDifficulty, GameplayLevelOption, GameplayService,
     ValueAddedService, AddonValueAddedService, ServiceValueAdded,
 )
 from apps.order.models import Order, OrderMember, OrderComment, OrderPrice, OrderStatus, SupportTicket, OrderCandidate
@@ -1343,9 +1343,15 @@ def create_self_service_order(request):
 
     skill = gameplay.skill
     if gameplay.order_mode == 'preset':
-        if not gameplay.display_image or not gameplay.preset_content:
+        preset_item = GameplayPresetItem.objects.select_for_update().filter(
+            id=request.data.get('preset_item_id'), gameplay=gameplay,
+            status=True, is_deleted=False,
+        ).first()
+        if preset_item is None:
+            return error_response(msg='请选择有效的预制单项目')
+        if not preset_item.display_image or not preset_item.content:
             return error_response(msg='该预制单配置不完整，请联系管理员')
-        preset_price = Decimal(gameplay.preset_price).quantize(Decimal('0.01'), rounding=ROUND_HALF_UP)
+        preset_price = Decimal(preset_item.price).quantize(Decimal('0.01'), rounding=ROUND_HALF_UP)
         if preset_price < 0:
             return error_response(msg='该预制单价格配置无效，请联系管理员')
         coin_cost = int(
@@ -1361,15 +1367,17 @@ def create_self_service_order(request):
         )
         game_name = skill.game_category.name if skill.game_category else skill.name
         snapshot = {
-            'version': 3,
+            'version': 4,
             'order_mode': 'preset',
             'skill_id': skill.id,
             'skill_name': skill.name,
             'gameplay_id': gameplay.id,
             'gameplay_name': gameplay.name,
-            'display_image': build_media_url(gameplay.display_image, request),
-            'preset_content': gameplay.preset_content,
-            'preset_remark': gameplay.preset_remark,
+            'preset_item_id': preset_item.id,
+            'preset_item_name': preset_item.name,
+            'display_image': build_media_url(preset_item.display_image, request),
+            'preset_content': preset_item.content,
+            'preset_remark': preset_item.remark,
             'quantity': 1,
             'unit_price': float(preset_price),
             'total_amount': float(preset_price),
@@ -1381,7 +1389,7 @@ def create_self_service_order(request):
             customer=customer,
             skill=skill,
             status=OrderStatus.PUBLISHED,
-            title=f'{skill.name} · {gameplay.name}',
+            title=f'{skill.name} · {gameplay.name} · {preset_item.name}',
             order_type='self_service',
             duration=0,
             quantity=1,
@@ -1393,7 +1401,7 @@ def create_self_service_order(request):
             pay_amount=charged_amount,
             game_id=str(skill.game_category_id or ''),
             game_name=game_name,
-            remark=gameplay.preset_remark or gameplay.preset_content,
+            remark=preset_item.remark or preset_item.content,
             platform='mini_program',
         )
         OrderMember.objects.create(
@@ -1403,7 +1411,7 @@ def create_self_service_order(request):
             duration=0,
             amount=charged_amount,
             status='assigned',
-            remark=(gameplay.preset_content or gameplay.name)[:500],
+            remark=(preset_item.content or preset_item.name)[:500],
         )
         customer.coins = (customer.coins or 0) - coin_cost
         customer.total_amount = (customer.total_amount or Decimal('0')) + charged_amount
@@ -1421,7 +1429,7 @@ def create_self_service_order(request):
                 order_no=order_no,
                 amount=charged_amount,
                 type='order',
-                remark=f'预制单 {skill.name}·{gameplay.name}',
+                remark=f'预制单 {skill.name}·{gameplay.name}·{preset_item.name}',
             )
             wallet, _ = Wallet.objects.get_or_create(user=user, type='user')
             wallet.balance = (wallet.balance or Decimal('0')) - charged_amount
@@ -4095,6 +4103,7 @@ def get_self_service_catalog(request):
         'self_service_gameplays__level_options',
         'self_service_gameplays__services',
         'self_service_gameplays__services__value_added_services',
+        'self_service_gameplays__preset_items',
         'self_service_gameplays__price_rules',
         'self_service_gameplays__value_added_services',
         'self_service_gameplays__value_added_services__value_added_services',
@@ -4105,18 +4114,28 @@ def get_self_service_catalog(request):
         gameplays = []
         for gameplay in skill.self_service_gameplays.filter(status=True):
             if gameplay.order_mode == 'preset':
-                if not gameplay.display_image or not gameplay.preset_content:
+                preset_items = [
+                    {
+                        'id': item.id,
+                        'name': item.name,
+                        'display_image': build_media_url(item.display_image, request),
+                        'content': item.content,
+                        'remark': item.remark,
+                        'price': float(item.price),
+                        'coin_price': price_to_coins(item.price),
+                        'sort': item.sort,
+                    }
+                    for item in gameplay.preset_items.all()
+                    if item.status and not item.is_deleted and item.display_image and item.content
+                ]
+                if not preset_items:
                     continue
                 gameplays.append({
                     'id': gameplay.id,
                     'order_mode': 'preset',
                     'name': gameplay.name,
-                    'display_image': build_media_url(gameplay.display_image, request),
-                    'preset_content': gameplay.preset_content,
-                    'preset_remark': gameplay.preset_remark,
-                    'preset_price': float(gameplay.preset_price),
-                    'preset_coin_price': price_to_coins(gameplay.preset_price),
                     'description': gameplay.description,
+                    'preset_items': preset_items,
                 })
                 continue
 

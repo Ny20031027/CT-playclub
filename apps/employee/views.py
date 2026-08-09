@@ -10,7 +10,7 @@ from .models import (
     Employee, EmployeeSkill, EmployeeTag, EmployeeWallet,
     EmployeeContract, EmployeeStatus, EmployeeSkillRelation, SkillLevel,
     GameRank, EmployeeGameRank,
-    SkillGameplay, GameplayDifficulty, GameplayLevelOption,
+    SkillGameplay, GameplayPresetItem, GameplayDifficulty, GameplayLevelOption,
     GameplayService, GameplayPriceRule, ValueAddedService,
     AddonValueAddedService, ServiceValueAdded
 )
@@ -463,13 +463,16 @@ class EmployeeSkillViewSet(BaseModelViewSet):
             gameplay.sort = item.get('sort', index)
 
             if order_mode == 'preset':
-                gameplay.preset_price = self._decimal(item.get('preset_price', 0), 'preset_price')
-                if gameplay.preset_price < 0:
-                    raise serializers.ValidationError({'preset_price': f'预制单“{gameplay.name}”项目价格不能小于0'})
-                if gameplay.status and not gameplay.display_image:
-                    raise serializers.ValidationError({'display_image': f'预制单“{gameplay.name}”请上传显示图片'})
-                if gameplay.status and not gameplay.preset_content:
-                    raise serializers.ValidationError({'preset_content': f'预制单“{gameplay.name}”请填写项目内容'})
+                preset_items = item.get('preset_items', [])
+                if not isinstance(preset_items, list):
+                    raise serializers.ValidationError({'preset_items': f'玩法“{gameplay.name}”的预制单必须是数组'})
+                preset_names = [str(preset.get('name', '')).strip() for preset in preset_items]
+                if any(not name for name in preset_names):
+                    raise serializers.ValidationError({'preset_items': f'玩法“{gameplay.name}”存在未填写名称的预制单'})
+                if len(preset_names) != len(set(preset_names)):
+                    raise serializers.ValidationError({'preset_items': f'玩法“{gameplay.name}”下的预制单名称不能重复'})
+                if gameplay.status and not preset_items:
+                    raise serializers.ValidationError({'preset_items': f'玩法“{gameplay.name}”请至少添加一个预制单'})
                 # 预制单不保留选配维度，避免后台隐藏后仍携带旧价格或规格。
                 gameplay.difficulty_enabled = False
                 gameplay.male_price_delta = Decimal('0')
@@ -482,6 +485,52 @@ class EmployeeSkillViewSet(BaseModelViewSet):
                 GameplayService.objects.filter(gameplay=gameplay).delete()
                 GameplayPriceRule.objects.filter(gameplay=gameplay).delete()
                 ValueAddedService.objects.filter(gameplay=gameplay).delete()
+                provided_preset_ids = [preset.get('id') for preset in preset_items if preset.get('id')]
+                if len(provided_preset_ids) != len(set(provided_preset_ids)):
+                    raise serializers.ValidationError({'preset_items': '预制单ID不能重复'})
+                owned_preset_ids = set(GameplayPresetItem.objects.filter(
+                    gameplay=gameplay, id__in=provided_preset_ids
+                ).values_list('id', flat=True))
+                if len(owned_preset_ids) != len(set(provided_preset_ids)):
+                    raise serializers.ValidationError({'preset_items': '存在不属于当前玩法的预制单'})
+                GameplayPresetItem.objects.filter(gameplay=gameplay).exclude(
+                    id__in=provided_preset_ids
+                ).delete()
+                for existing_id in owned_preset_ids:
+                    GameplayPresetItem.objects.filter(id=existing_id).update(name=f'__sync__{existing_id}')
+                keep_preset_ids = []
+                for preset_index, preset_data in enumerate(preset_items):
+                    preset_id = preset_data.get('id')
+                    preset = None
+                    if preset_id:
+                        preset = GameplayPresetItem.objects.filter(
+                            id=preset_id, gameplay=gameplay
+                        ).first()
+                        if preset is None:
+                            raise serializers.ValidationError({'preset_items': f'预制单ID {preset_id} 不属于当前玩法'})
+                    if preset is None:
+                        preset = GameplayPresetItem.objects.filter(
+                            gameplay=gameplay, name=preset_names[preset_index]
+                        ).first()
+                    if preset is None:
+                        preset = GameplayPresetItem(gameplay=gameplay)
+                    preset.name = preset_names[preset_index]
+                    preset.display_image = str(preset_data.get('display_image', '') or '').strip()
+                    preset.content = str(preset_data.get('content', '') or '').strip()
+                    preset.remark = str(preset_data.get('remark', '') or '').strip()
+                    preset.price = self._decimal(preset_data.get('price', 0), 'preset_items.price')
+                    preset.sort = preset_data.get('sort', preset_index)
+                    preset.status = preset_data.get('status', True) is not False
+                    preset.is_deleted = False
+                    if preset.price < 0:
+                        raise serializers.ValidationError({'preset_items': f'预制单“{preset.name}”价格不能小于0'})
+                    if gameplay.status and preset.status and not preset.display_image:
+                        raise serializers.ValidationError({'preset_items': f'预制单“{preset.name}”请上传显示图片'})
+                    if gameplay.status and preset.status and not preset.content:
+                        raise serializers.ValidationError({'preset_items': f'预制单“{preset.name}”请填写项目内容'})
+                    preset.save()
+                    keep_preset_ids.append(preset.id)
+                GameplayPresetItem.objects.filter(gameplay=gameplay).exclude(id__in=keep_preset_ids).delete()
                 continue
 
             settlement_unit = item.get('settlement_unit', 'hour')
@@ -516,6 +565,7 @@ class EmployeeSkillViewSet(BaseModelViewSet):
             gameplay.female_price_delta = female_price_delta
             gameplay.sort = item.get('sort', index)
             gameplay.save()
+            GameplayPresetItem.objects.filter(gameplay=gameplay).delete()
 
             difficulties = item.get('difficulties', []) if gameplay.difficulty_enabled else []
             levels = item.get('levels', [])

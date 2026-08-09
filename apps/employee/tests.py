@@ -11,7 +11,7 @@ from apps.wx.models import GameCategory
 from .models import (
     AddonValueAddedService, Employee, EmployeeGameRank, EmployeeSkill,
     EmployeeSkillRelation, GameRank, GameplayDifficulty, GameplayLevelOption,
-    GameplayPriceRule, GameplayService, ServiceValueAdded, SkillGameplay,
+    GameplayPresetItem, GameplayPriceRule, GameplayService, ServiceValueAdded, SkillGameplay,
     ValueAddedService
 )
 from .serializers import EmployeeSkillSerializer
@@ -408,7 +408,7 @@ class SkillSystemTests(TestCase):
 
     def test_preset_order_replaces_options_and_charges_fixed_price(self):
         EmployeeSkillViewSet()._sync_gameplays(self.manual_skill, [{
-            'name': '预制护航',
+            'name': '护航',
             'settlement_unit': 'hour',
             'min_quantity': 1,
             'quantity_step': 1,
@@ -416,17 +416,33 @@ class SkillSystemTests(TestCase):
             'levels': [{'name': '标准', 'price_delta': 0}],
             'services': [{'name': '陪练', 'price_delta': 0}],
         }])
-        gameplay = SkillGameplay.objects.get(skill=self.manual_skill, name='预制护航')
+        gameplay = SkillGameplay.objects.get(skill=self.manual_skill, name='护航')
         self.assertTrue(GameplayLevelOption.objects.filter(gameplay=gameplay).exists())
 
         EmployeeSkillViewSet()._sync_gameplays(self.manual_skill, [{
             'id': gameplay.id,
             'order_mode': 'preset',
-            'name': '预制护航',
-            'display_image': '/media/preset/escort.jpg',
-            'preset_content': '一局完整护航服务，提交后等待打手接单。',
-            'preset_remark': '不支持临时更换项目内容',
-            'preset_price': '29.90',
+            'name': '护航',
+            'preset_items': [
+                {
+                    'name': '航天护航',
+                    'display_image': '/media/preset/escort.jpg',
+                    'content': '一局完整护航服务，提交后等待打手接单。',
+                    'remark': '不支持临时更换项目内容',
+                    'price': '29.90',
+                    'sort': 0,
+                    'status': True,
+                },
+                {
+                    'name': '烽火护航',
+                    'display_image': '/media/preset/beacon.jpg',
+                    'content': '一局烽火护航服务。',
+                    'remark': '',
+                    'price': '39.90',
+                    'sort': 1,
+                    'status': True,
+                },
+            ],
             'status': True,
         }])
         gameplay.refresh_from_db()
@@ -434,21 +450,26 @@ class SkillSystemTests(TestCase):
         self.assertFalse(GameplayDifficulty.objects.filter(gameplay=gameplay).exists())
         self.assertFalse(GameplayLevelOption.objects.filter(gameplay=gameplay).exists())
         self.assertFalse(GameplayService.objects.filter(gameplay=gameplay).exists())
+        self.assertEqual(GameplayPresetItem.objects.filter(gameplay=gameplay).count(), 2)
 
         self.manual_skill.self_service_enabled = True
         self.manual_skill.save(update_fields=['self_service_enabled'])
         catalog = self.client.get('/api/wx/skills/self-service/').json()['data']
         preset = catalog[0]['gameplays'][0]
         self.assertEqual(preset['order_mode'], 'preset')
-        self.assertEqual(preset['preset_remark'], '不支持临时更换项目内容')
-        self.assertEqual(preset['preset_price'], 29.9)
-        self.assertEqual(preset['preset_coin_price'], 299)
+        self.assertEqual(preset['name'], '护航')
+        self.assertEqual(len(preset['preset_items']), 2)
+        self.assertEqual(preset['preset_items'][0]['remark'], '不支持临时更换项目内容')
+        self.assertEqual(preset['preset_items'][0]['price'], 29.9)
+        self.assertEqual(preset['preset_items'][0]['coin_price'], 299)
+        preset_item_id = preset['preset_items'][0]['id']
 
         customer = Customer.objects.create(
             user=self.user, nickname='预制单客户', coins=100
         )
         insufficient = self.client.post('/api/wx/orders/create-self-service/', {
             'gameplay_id': gameplay.id,
+            'preset_item_id': preset_item_id,
         }, format='json').json()
         self.assertNotEqual(insufficient['code'], 200)
         self.assertIn('黑钻不足', insufficient['msg'])
@@ -457,10 +478,13 @@ class SkillSystemTests(TestCase):
         customer.save(update_fields=['coins'])
         response = self.client.post('/api/wx/orders/create-self-service/', {
             'gameplay_id': gameplay.id,
+            'preset_item_id': preset_item_id,
         }, format='json').json()
         self.assertEqual(response['code'], 200)
         self.assertEqual(response['data']['total_coins'], 299)
         self.assertEqual(response['data']['snapshot']['order_mode'], 'preset')
+        self.assertEqual(response['data']['snapshot']['gameplay_name'], '护航')
+        self.assertEqual(response['data']['snapshot']['preset_item_name'], '航天护航')
         order = Order.objects.get(id=response['data']['order_id'])
         self.assertEqual(order.status, 'published')
         self.assertEqual(order.total_amount, Decimal('29.90'))

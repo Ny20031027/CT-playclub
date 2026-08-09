@@ -163,6 +163,31 @@ class SkillGameplay(BaseModel):
         return f"{self.skill.name} - {self.name}"
 
 
+class GameplayPresetItem(BaseModel):
+    """A fixed-price preset order offered under one gameplay."""
+    gameplay = models.ForeignKey(
+        SkillGameplay, on_delete=models.CASCADE,
+        related_name='preset_items', verbose_name='所属玩法'
+    )
+    name = models.CharField(max_length=100, verbose_name='项目名称')
+    display_image = models.CharField(max_length=500, blank=True, verbose_name='显示图片')
+    content = models.TextField(blank=True, verbose_name='项目内容')
+    remark = models.CharField(max_length=500, blank=True, verbose_name='项目备注')
+    price = models.DecimalField(
+        max_digits=10, decimal_places=2, default=0, verbose_name='项目价格'
+    )
+    sort = models.IntegerField(default=0, verbose_name='排序')
+    status = models.BooleanField(default=True, verbose_name='状态')
+
+    class Meta:
+        db_table = 'emp_gameplay_preset_item'
+        ordering = ['sort', 'id']
+        unique_together = [('gameplay', 'name')]
+
+    def __str__(self):
+        return f"{self.gameplay.name} - {self.name}"
+
+
 class GameplayDifficulty(BaseModel):
     gameplay = models.ForeignKey(
         SkillGameplay, on_delete=models.CASCADE, related_name='difficulties', verbose_name='所属玩法'
