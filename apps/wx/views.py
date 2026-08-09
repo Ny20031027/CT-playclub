@@ -1342,6 +1342,74 @@ def create_self_service_order(request):
         return error_response(msg='该玩法不存在或已下架')
 
     skill = gameplay.skill
+    if gameplay.order_mode == 'preset':
+        if not gameplay.display_image or not gameplay.preset_content:
+            return error_response(msg='该预制单配置不完整，请联系管理员')
+        import random
+        order_no = (
+            f'SV{timezone.now().strftime("%Y%m%d%H%M%S")}'
+            f'{str(user.id).zfill(4)}{random.randint(1000, 9999)}'
+        )
+        game_name = skill.game_category.name if skill.game_category else skill.name
+        snapshot = {
+            'version': 3,
+            'order_mode': 'preset',
+            'skill_id': skill.id,
+            'skill_name': skill.name,
+            'gameplay_id': gameplay.id,
+            'gameplay_name': gameplay.name,
+            'display_image': build_media_url(gameplay.display_image, request),
+            'preset_content': gameplay.preset_content,
+            'preset_remark': gameplay.preset_remark,
+            'quantity': 1,
+            'unit_price': 0,
+            'total_amount': 0,
+            'pay_amount': 0,
+            'total_coins': 0,
+        }
+        order = Order.objects.create(
+            order_no=order_no,
+            customer=customer,
+            skill=skill,
+            status=OrderStatus.PUBLISHED,
+            title=f'{skill.name} · {gameplay.name}',
+            order_type='self_service',
+            duration=0,
+            quantity=1,
+            purchase_quantity=1,
+            settlement_unit='',
+            self_service_snapshot=snapshot,
+            unit_price=Decimal('0'),
+            total_amount=Decimal('0'),
+            pay_amount=Decimal('0'),
+            game_id=str(skill.game_category_id or ''),
+            game_name=game_name,
+            remark=gameplay.preset_remark or gameplay.preset_content,
+            platform='mini_program',
+        )
+        OrderMember.objects.create(
+            order=order,
+            skill=skill,
+            unit_price=Decimal('0'),
+            duration=0,
+            amount=Decimal('0'),
+            status='assigned',
+            remark=(gameplay.preset_content or gameplay.name)[:500],
+        )
+        customer.total_orders = (customer.total_orders or 0) + 1
+        customer.last_order_date = timezone.now()
+        if not customer.first_order_date:
+            customer.first_order_date = timezone.now()
+        customer.save(update_fields=['total_orders', 'last_order_date', 'first_order_date'])
+        return success_response({
+            'order_id': order.id,
+            'order_no': order.order_no,
+            'total_amount': 0,
+            'pay_amount': 0,
+            'total_coins': 0,
+            'snapshot': snapshot,
+        })
+
     difficulty = None
     if gameplay.difficulty_enabled:
         difficulty = GameplayDifficulty.objects.filter(
@@ -1565,7 +1633,8 @@ def create_self_service_order(request):
     game_name = skill.game_category.name if skill.game_category else skill.name
 
     snapshot = {
-        'version': 2,
+        'version': 3,
+        'order_mode': 'custom',
         'skill_id': skill.id,
         'skill_name': skill.name,
         'gameplay_id': gameplay.id,
@@ -3999,6 +4068,20 @@ def get_self_service_catalog(request):
     for skill in skills:
         gameplays = []
         for gameplay in skill.self_service_gameplays.filter(status=True):
+            if gameplay.order_mode == 'preset':
+                if not gameplay.display_image or not gameplay.preset_content:
+                    continue
+                gameplays.append({
+                    'id': gameplay.id,
+                    'order_mode': 'preset',
+                    'name': gameplay.name,
+                    'display_image': build_media_url(gameplay.display_image, request),
+                    'preset_content': gameplay.preset_content,
+                    'preset_remark': gameplay.preset_remark,
+                    'description': gameplay.description,
+                })
+                continue
+
             difficulties = [
                 {
                     'id': item.id,
@@ -4084,6 +4167,7 @@ def get_self_service_catalog(request):
             ]
             gameplays.append({
                 'id': gameplay.id,
+                'order_mode': 'custom',
                 'name': gameplay.name,
                 'description': gameplay.description,
                 'difficulty_enabled': gameplay.difficulty_enabled,

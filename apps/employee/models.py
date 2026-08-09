@@ -113,12 +113,24 @@ class SkillLevel(BaseModel):
 
 class SkillGameplay(BaseModel):
     """A sellable gameplay under a skill."""
+    ORDER_MODE_CHOICES = [
+        ('custom', '选配单'),
+        ('preset', '预制单'),
+    ]
+
     skill = models.ForeignKey(
         EmployeeSkill, on_delete=models.CASCADE,
         related_name='self_service_gameplays', verbose_name='所属技能'
     )
+    order_mode = models.CharField(
+        max_length=20, choices=ORDER_MODE_CHOICES, default='custom',
+        verbose_name='下单模式'
+    )
     name = models.CharField(max_length=100, verbose_name='玩法名称')
     description = models.CharField(max_length=500, blank=True, verbose_name='玩法说明')
+    display_image = models.CharField(max_length=500, blank=True, verbose_name='预制单显示图片')
+    preset_content = models.TextField(blank=True, verbose_name='预制单项目内容')
+    preset_remark = models.CharField(max_length=500, blank=True, verbose_name='预制单项目备注')
     difficulty_enabled = models.BooleanField(default=False, verbose_name='启用难度')
     gender_limit = models.CharField(max_length=20, default='unlimited', choices=[
         ('unlimited', '不限（不加价）'), ('male_only', '只男（固定）'), ('female_only', '只女（固定）'),

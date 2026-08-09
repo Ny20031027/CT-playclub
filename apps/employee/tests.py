@@ -5,11 +5,13 @@ from rest_framework.test import APIClient
 
 from apps.account.models import User
 from apps.customer.models import Customer
+from apps.order.models import Order
 from apps.wx.models import GameCategory
 from .models import (
     AddonValueAddedService, Employee, EmployeeGameRank, EmployeeSkill,
-    EmployeeSkillRelation, GameRank, GameplayLevelOption, GameplayPriceRule, GameplayService,
-    ServiceValueAdded, ValueAddedService
+    EmployeeSkillRelation, GameRank, GameplayDifficulty, GameplayLevelOption,
+    GameplayPriceRule, GameplayService, ServiceValueAdded, SkillGameplay,
+    ValueAddedService
 )
 from .serializers import EmployeeSkillSerializer
 from .views import EmployeeSkillViewSet
@@ -402,3 +404,55 @@ class SkillSystemTests(TestCase):
         self.assertEqual(customer.coins, 5581)
         self.assertEqual(customer.total_orders, 5)
         self.assertEqual(customer.total_amount, Decimal('441.90'))
+
+    def test_preset_order_replaces_options_and_creates_free_published_order(self):
+        EmployeeSkillViewSet()._sync_gameplays(self.manual_skill, [{
+            'name': '预制护航',
+            'settlement_unit': 'hour',
+            'min_quantity': 1,
+            'quantity_step': 1,
+            'base_price': 50,
+            'levels': [{'name': '标准', 'price_delta': 0}],
+            'services': [{'name': '陪练', 'price_delta': 0}],
+        }])
+        gameplay = SkillGameplay.objects.get(skill=self.manual_skill, name='预制护航')
+        self.assertTrue(GameplayLevelOption.objects.filter(gameplay=gameplay).exists())
+
+        EmployeeSkillViewSet()._sync_gameplays(self.manual_skill, [{
+            'id': gameplay.id,
+            'order_mode': 'preset',
+            'name': '预制护航',
+            'display_image': '/media/preset/escort.jpg',
+            'preset_content': '一局完整护航服务，提交后等待打手接单。',
+            'preset_remark': '不支持临时更换项目内容',
+            'status': True,
+        }])
+        gameplay.refresh_from_db()
+        self.assertEqual(gameplay.order_mode, 'preset')
+        self.assertFalse(GameplayDifficulty.objects.filter(gameplay=gameplay).exists())
+        self.assertFalse(GameplayLevelOption.objects.filter(gameplay=gameplay).exists())
+        self.assertFalse(GameplayService.objects.filter(gameplay=gameplay).exists())
+
+        self.manual_skill.self_service_enabled = True
+        self.manual_skill.save(update_fields=['self_service_enabled'])
+        catalog = self.client.get('/api/wx/skills/self-service/').json()['data']
+        preset = catalog[0]['gameplays'][0]
+        self.assertEqual(preset['order_mode'], 'preset')
+        self.assertEqual(preset['preset_remark'], '不支持临时更换项目内容')
+
+        customer = Customer.objects.create(
+            user=self.user, nickname='预制单客户', coins=888
+        )
+        response = self.client.post('/api/wx/orders/create-self-service/', {
+            'gameplay_id': gameplay.id,
+        }, format='json').json()
+        self.assertEqual(response['code'], 200)
+        self.assertEqual(response['data']['total_coins'], 0)
+        self.assertEqual(response['data']['snapshot']['order_mode'], 'preset')
+        order = Order.objects.get(id=response['data']['order_id'])
+        self.assertEqual(order.status, 'published')
+        self.assertEqual(order.total_amount, Decimal('0.00'))
+        self.assertEqual(order.self_service_snapshot['preset_content'], '一局完整护航服务，提交后等待打手接单。')
+        customer.refresh_from_db()
+        self.assertEqual(customer.coins, 888)
+        self.assertEqual(customer.total_orders, 1)

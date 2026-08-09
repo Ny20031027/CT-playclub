@@ -25,6 +25,14 @@
     .gameplay-card-header .gp-name-input { flex: 1; padding: 6px 10px; border: 1px solid #dcdfe6; border-radius: 4px; font-size: 14px; }
     .gameplay-card-body { padding: 14px; }
     .gameplay-card.collapsed .gameplay-card-body { display: none; }
+    .gameplay-mode-badge { padding: 3px 9px; border-radius: 999px; font-size: 12px; white-space: nowrap; }
+    .gameplay-mode-badge.custom { color: #409eff; background: #ecf5ff; }
+    .gameplay-mode-badge.preset { color: #7a4dd8; background: #f3efff; }
+    .preset-editor { display: grid; grid-template-columns: 220px minmax(0, 1fr); gap: 18px; margin-top: 14px; padding: 16px; border: 1px solid #ebeef5; border-radius: 8px; background: #fafbfc; }
+    .preset-image-upload { height: 150px; border: 1px dashed #c0c4cc; border-radius: 8px; overflow: hidden; background: #fff; cursor: pointer; display: flex; align-items: center; justify-content: center; color: #909399; text-align: center; }
+    .preset-image-upload:hover { border-color: #409eff; color: #409eff; }
+    .preset-image-upload img { width: 100%; height: 100%; object-fit: cover; }
+    .preset-fields .form-group:last-child { margin-bottom: 0; }
 
     .sub-section { margin-top: 16px; }
     .sub-section-title { font-weight: 600; margin-bottom: 8px; color: #303133; display: flex; justify-content: space-between; align-items: center; }
@@ -42,6 +50,7 @@
     .preview-box dt { font-weight: 600; color: #606266; margin-top: 10px; }
     .preview-box dt:first-child { margin-top: 0; }
     .preview-box dd { margin: 4px 0 0 0; color: #303133; line-height: 1.7; }
+    @media (max-width: 768px) { .preset-editor { grid-template-columns: 1fr; } }
 </style>
 <script>
     document.getElementById('pageTitle').textContent = '系统设置';
@@ -892,7 +901,7 @@
             <input type="hidden" id="selfServiceSkillId">
             <div class="tabs" id="selfServiceEditTabs">
                 <div class="tab-item active" onclick="switchSelfServiceEditTab('basic', this)">基础信息</div>
-                <div class="tab-item" onclick="switchSelfServiceEditTab('gameplay', this)">玩法配置</div>
+                <div class="tab-item" onclick="switchSelfServiceEditTab('gameplay', this)">下单项目</div>
                 <div class="tab-item" onclick="switchSelfServiceEditTab('preview', this)">预览</div>
             </div>
 
@@ -937,10 +946,10 @@
 
             <div id="selfServiceTabGameplay" class="edit-tab" style="display:none;">
                 <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;">
-                    <strong>玩法列表</strong>
-                    <button class="btn btn-primary btn-sm" onclick="addSelfServiceGameplay()"><i class="fa-solid fa-plus"></i> 添加玩法</button>
+                    <strong>玩法与下单模式</strong>
+                    <button class="btn btn-primary btn-sm" onclick="addSelfServiceGameplay()"><i class="fa-solid fa-plus"></i> 添加项目</button>
                 </div>
-                <p class="hint">每个玩法下可配置等级、服务和附加项；每个附加项可独立维护“附加项增值服务（附加增值）”。点击卡片头部可折叠展开。</p>
+                <p class="hint">选配单保留现有规格和价格配置；预制单只需上传图片并填写项目名称、内容和备注。</p>
                 <div id="selfServiceGameplayList"></div>
             </div>
 
@@ -2685,8 +2694,12 @@
                 });
                 return {
                     id: gp.id || null,
+                    order_mode: gp.order_mode || 'custom',
                     name: gp.name || '',
                     description: gp.description || '',
+                    display_image: gp.display_image || '',
+                    preset_content: gp.preset_content || '',
+                    preset_remark: gp.preset_remark || '',
                     difficulty_enabled: false,
                     gender_limit: gp.gender_limit || 'unlimited',
                     male_price_delta: Number(gp.male_price_delta) || 0,
@@ -2746,33 +2759,57 @@
             return;
         }
         container.innerHTML = selfServiceGameplays.map(function (gp, idx) {
+            var mode = gp.order_mode === 'preset' ? 'preset' : 'custom';
             return '<div class="gameplay-card' + (gp._collapsed ? ' collapsed' : '') + '" id="selfServiceGpCard-' + idx + '">' +
                 '<div class="gameplay-card-header" onclick="toggleSelfServiceGameplay(' + idx + ')">' +
                     '<i class="fa-solid fa-chevron-' + (gp._collapsed ? 'right' : 'down') + '" style="color:#909399;width:14px;"></i>' +
                     '<span style="color:#909399;font-size:12px;">#' + (idx + 1) + '</span>' +
-                    '<input type="text" class="gp-name-input" value="' + escAttr(gp.name) + '" placeholder="玩法名称（必填）" onclick="event.stopPropagation()" onchange="updateSelfServiceGp(' + idx + ',\'name\',this.value)">' +
+                    '<span class="gameplay-mode-badge ' + mode + '">' + (mode === 'preset' ? '预制单' : '选配单') + '</span>' +
+                    '<input type="text" class="gp-name-input" value="' + escAttr(gp.name) + '" placeholder="项目名称（必填）" onclick="event.stopPropagation()" onchange="updateSelfServiceGp(' + idx + ',\'name\',this.value)">' +
                     '<button class="btn btn-danger btn-sm" onclick="event.stopPropagation();removeSelfServiceGameplay(' + idx + ')"><i class="fa-solid fa-trash"></i></button>' +
                 '</div>' +
                 '<div class="gameplay-card-body">' +
                     buildSelfServiceGameplayFields(idx, gp) +
-                    buildSelfServiceSubSection('等级设置', idx, 'levels', gp) +
-                    buildSelfServiceAddonSection(idx, gp) +
-                    buildSelfServiceServicesSection(idx, gp) +
-                    buildSelfServicePriceRulesSection(idx, gp) +
+                    (mode === 'custom' ? buildSelfServiceSubSection('等级设置', idx, 'levels', gp) : '') +
+                    (mode === 'custom' ? buildSelfServiceAddonSection(idx, gp) : '') +
+                    (mode === 'custom' ? buildSelfServiceServicesSection(idx, gp) : '') +
+                    (mode === 'custom' ? buildSelfServicePriceRulesSection(idx, gp) : '') +
                 '</div>' +
             '</div>';
         }).join('');
     }
 
     function buildSelfServiceGameplayFields(idx, gp) {
+        var mode = gp.order_mode === 'preset' ? 'preset' : 'custom';
+        var commonFields = '<div class="form-row">' +
+            '<div class="form-group"><label>下单模式</label><select onchange="updateSelfServiceGp(' + idx + ',\'order_mode\',this.value);renderSelfServiceGameplays()">' +
+                selectOpts(['custom', 'preset'], ['选配单（用户自行选择规格）', '预制单（管理员预设内容）'], mode) +
+            '</select></div>' +
+            '<div class="form-group"><label>排序</label><input type="number" value="' + escAttr(gp.sort) + '" onchange="updateSelfServiceGp(' + idx + ',\'sort\',parseInt(this.value)||0)"></div>' +
+            '<div class="form-group"><label class="checkbox-label"><input type="checkbox" ' + (gp.status !== false ? 'checked' : '') + ' onchange="updateSelfServiceGp(' + idx + ',\'status\',this.checked)"> 启用该项目</label></div>' +
+        '</div>';
+        if (mode === 'preset') {
+            var imageHtml = gp.display_image
+                ? '<img src="' + escAttr(gp.display_image) + '" alt="预制单图片">'
+                : '<span><i class="fa-solid fa-cloud-arrow-up" style="font-size:28px;display:block;margin-bottom:8px;"></i>点击上传显示图片</span>';
+            return commonFields +
+                '<div class="preset-editor">' +
+                    '<div><div class="preset-image-upload" onclick="document.getElementById(\'selfServicePresetImage-' + idx + '\').click()">' + imageHtml + '</div>' +
+                    '<input type="file" id="selfServicePresetImage-' + idx + '" accept="image/*" style="display:none;" onchange="uploadSelfServicePresetImage(' + idx + ',this)"></div>' +
+                    '<div class="preset-fields">' +
+                        '<div class="form-group"><label>项目名称 *</label><input type="text" value="' + escAttr(gp.name) + '" placeholder="填写小程序展示的项目名称" onchange="updateSelfServiceGp(' + idx + ',\'name\',this.value);renderSelfServiceGameplays()"></div>' +
+                        '<div class="form-group"><label>项目内容 *</label><textarea rows="4" placeholder="说明预制单包含的完整服务内容" onchange="updateSelfServiceGp(' + idx + ',\'preset_content\',this.value)">' + escHtml(gp.preset_content || '') + '</textarea></div>' +
+                        '<div class="form-group"><label>项目备注</label><textarea rows="2" maxlength="500" placeholder="补充限制、注意事项或履约说明" onchange="updateSelfServiceGp(' + idx + ',\'preset_remark\',this.value)">' + escHtml(gp.preset_remark || '') + '</textarea></div>' +
+                    '</div>' +
+                '</div>';
+        }
         var showGenderPrice = (gp.gender_limit === 'optional');
         var showGenderColumn = (gp.gender_limit === 'unlimited' || gp.gender_limit === 'optional');
-        return '<div class="form-row">' +
+        return commonFields + '<div class="form-row">' +
             '<div class="form-group"><label>描述</label><input type="text" value="' + escAttr(gp.description) + '" onchange="updateSelfServiceGp(' + idx + ',\'description\',this.value)"></div>' +
             '<div class="form-group"><label>基础价格</label><input type="number" step="0.01" min="0" value="' + escAttr(gp.base_price) + '" onchange="updateSelfServiceGp(' + idx + ',\'base_price\',parseFloat(this.value)||0)"></div>' +
             '<div class="form-group"><label>最低数量</label><input type="number" step="0.5" min="0" value="' + escAttr(gp.min_quantity) + '" onchange="updateSelfServiceGp(' + idx + ',\'min_quantity\',parseFloat(this.value)||0)"></div>' +
             '<div class="form-group"><label>数量步进</label><input type="number" step="0.5" min="0" value="' + escAttr(gp.quantity_step) + '" onchange="updateSelfServiceGp(' + idx + ',\'quantity_step\',parseFloat(this.value)||0)"></div>' +
-            '<div class="form-group"><label>排序</label><input type="number" value="' + escAttr(gp.sort) + '" onchange="updateSelfServiceGp(' + idx + ',\'sort\',parseInt(this.value)||0)"></div>' +
         '</div>' +
         '<div class="form-row">' +
             '<div class="form-group"><label>服务者性别</label><select onchange="updateSelfServiceGp(' + idx + ',\'gender_limit\',this.value);renderSelfServiceGameplays()">' +
@@ -2787,7 +2824,6 @@
         '</div>' +
         '<div class="form-row">' +
             '<div class="form-group"><label class="checkbox-label"><input type="checkbox" ' + (gp.remark_required ? 'checked' : '') + ' onchange="updateSelfServiceGp(' + idx + ',\'remark_required\',this.checked)"> 需要备注</label></div>' +
-            '<div class="form-group"><label class="checkbox-label"><input type="checkbox" ' + (gp.status !== false ? 'checked' : '') + ' onchange="updateSelfServiceGp(' + idx + ',\'status\',this.checked)"> 启用该玩法</label></div>' +
         '</div>';
     }
 
@@ -3007,6 +3043,22 @@
     }
 
     function updateSelfServiceGp(idx, field, value) { selfServiceGameplays[idx][field] = value; }
+
+    async function uploadSelfServicePresetImage(idx, input) {
+        if (!input.files || !input.files[0]) return;
+        var formData = new FormData();
+        formData.append('file', input.files[0]);
+        try {
+            var result = await upload('/upload/files/image/', formData);
+            if (result.code !== 200) throw new Error(result.msg || '上传失败');
+            selfServiceGameplays[idx].display_image = result.data.url;
+            renderSelfServiceGameplays();
+            showToast('预制单图片上传成功', 'success');
+        } catch (error) {
+            input.value = '';
+            showToast(error.message || '图片上传失败', 'error');
+        }
+    }
     function updateSelfServiceOption(gpIdx, type, oi, field, value) { selfServiceGameplays[gpIdx][type][oi][field] = value; }
     function updateSelfServicePriceRule(gpIdx, ri, field, value) { selfServiceGameplays[gpIdx].price_rules[ri][field] = value; }
     function updateSelfServiceAddon(gpIdx, oi, field, value) { selfServiceGameplays[gpIdx].value_added_services[oi][field] = value; }
@@ -3069,7 +3121,8 @@
 
     function addSelfServiceGameplay() {
         selfServiceGameplays.push({
-            name: '', description: '', difficulty_enabled: false,
+            order_mode: 'custom', name: '', description: '',
+            display_image: '', preset_content: '', preset_remark: '', difficulty_enabled: false,
             gender_limit: 'unlimited', male_price_delta: 0, female_price_delta: 0,
             companion_mode: 'both', settlement_unit: 'hour',
             min_quantity: 1, quantity_step: 1, base_price: 0, remark_required: false,
@@ -3191,8 +3244,12 @@
             gameplays: selfServiceGameplays.map(function (gp) {
                 return {
                     id: gp.id || null,
+                    order_mode: gp.order_mode || 'custom',
                     name: (gp.name || '').trim(),
                     description: gp.description || '',
+                    display_image: gp.display_image || '',
+                    preset_content: gp.preset_content || '',
+                    preset_remark: gp.preset_remark || '',
                     difficulty_enabled: false,
                     gender_limit: gp.gender_limit || 'unlimited',
                     male_price_delta: Number(gp.male_price_delta) || 0,
@@ -3255,6 +3312,12 @@
         var trialMap = { disabled: '不支持', optional: '可选', required: '必须' };
         var unitMap = { hour: '按小时', round: '按局' };
         var gpHtml = data.gameplays.map(function (gp, i) {
+            if (gp.order_mode === 'preset') {
+                return '<dt>预制单 ' + (i + 1) + '：' + escHtml(gp.name || '(未命名)') + '</dt>' +
+                    '<dd>' + (gp.display_image ? '<img src="' + escAttr(gp.display_image) + '" style="width:160px;height:90px;object-fit:cover;border-radius:6px;margin:6px 0;">' : '未上传图片') +
+                    '<br>项目内容：' + escHtml(gp.preset_content || '-') +
+                    '<br>项目备注：' + escHtml(gp.preset_remark || '-') + '</dd>';
+            }
             var levels = gp.levels.map(function (l) { return escHtml(l.name) + (l.is_recommended ? ' ★' : ''); }).join('、') || '-';
             var services = gp.services.map(function (s) {
                 var svcStr = escHtml(s.name) + (s.is_recommended ? ' ★' : '');
@@ -3304,7 +3367,15 @@
         if (data.gameplays.length === 0) { showToast('请至少添加一个玩法', 'error'); return; }
         for (var i = 0; i < data.gameplays.length; i++) {
             if (!data.gameplays[i].name) {
-                showToast('第 ' + (i + 1) + ' 个玩法名称不能为空', 'error');
+                showToast('第 ' + (i + 1) + ' 个项目名称不能为空', 'error');
+                return;
+            }
+            if (data.gameplays[i].order_mode === 'preset' && !data.gameplays[i].display_image) {
+                showToast('预制单“' + data.gameplays[i].name + '”请上传显示图片', 'error');
+                return;
+            }
+            if (data.gameplays[i].order_mode === 'preset' && !data.gameplays[i].preset_content.trim()) {
+                showToast('预制单“' + data.gameplays[i].name + '”请填写项目内容', 'error');
                 return;
             }
         }

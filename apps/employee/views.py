@@ -429,10 +429,57 @@ class EmployeeSkillViewSet(BaseModelViewSet):
             existing_gameplays.delete()
 
         gameplay_fields = [
-            'name', 'description', 'difficulty_enabled', 'gender_limit',
+            'order_mode', 'name', 'description', 'display_image',
+            'preset_content', 'preset_remark', 'difficulty_enabled', 'gender_limit',
             'companion_mode', 'settlement_unit', 'remark_required', 'sort', 'status'
         ]
         for index, item in enumerate(gameplays_data):
+            order_mode = item.get('order_mode', 'custom')
+            if order_mode not in ('custom', 'preset'):
+                raise serializers.ValidationError({'order_mode': '不支持的下单模式'})
+
+            gameplay_id = item.get('id')
+            gameplay = None
+            if gameplay_id:
+                gameplay = SkillGameplay.objects.filter(id=gameplay_id, skill=skill).first()
+                if gameplay is None:
+                    raise serializers.ValidationError({'gameplays': f'玩法ID {gameplay_id} 不属于当前技能'})
+            if gameplay is None:
+                # id 未传或不可用时，按 (skill, name) 唯一键匹配现有玩法，避免重复创建
+                gameplay = SkillGameplay.objects.filter(skill=skill, name=names[index]).first()
+            if gameplay is None:
+                gameplay = SkillGameplay(skill=skill)
+
+            for field in gameplay_fields:
+                if field in item:
+                    setattr(gameplay, field, item[field])
+            gameplay.order_mode = order_mode
+            gameplay.name = names[index]
+            gameplay.description = str(item.get('description', '') or '').strip()
+            gameplay.display_image = str(item.get('display_image', '') or '').strip()
+            gameplay.preset_content = str(item.get('preset_content', '') or '').strip()
+            gameplay.preset_remark = str(item.get('preset_remark', '') or '').strip()
+            gameplay.sort = item.get('sort', index)
+
+            if order_mode == 'preset':
+                if gameplay.status and not gameplay.display_image:
+                    raise serializers.ValidationError({'display_image': f'预制单“{gameplay.name}”请上传显示图片'})
+                if gameplay.status and not gameplay.preset_content:
+                    raise serializers.ValidationError({'preset_content': f'预制单“{gameplay.name}”请填写项目内容'})
+                # 预制单不保留选配维度，避免后台隐藏后仍携带旧价格或规格。
+                gameplay.difficulty_enabled = False
+                gameplay.male_price_delta = Decimal('0')
+                gameplay.female_price_delta = Decimal('0')
+                gameplay.base_price = Decimal('0')
+                gameplay.remark_required = False
+                gameplay.save()
+                GameplayDifficulty.objects.filter(gameplay=gameplay).delete()
+                GameplayLevelOption.objects.filter(gameplay=gameplay).delete()
+                GameplayService.objects.filter(gameplay=gameplay).delete()
+                GameplayPriceRule.objects.filter(gameplay=gameplay).delete()
+                ValueAddedService.objects.filter(gameplay=gameplay).delete()
+                continue
+
             settlement_unit = item.get('settlement_unit', 'hour')
             gender_limit = {
                 'male': 'male_only',
@@ -457,24 +504,7 @@ class EmployeeSkillViewSet(BaseModelViewSet):
             else:
                 raise serializers.ValidationError({'settlement_unit': '不支持的结算单位'})
 
-            gameplay_id = item.get('id')
-            gameplay = None
-            if gameplay_id:
-                gameplay = SkillGameplay.objects.filter(id=gameplay_id, skill=skill).first()
-                if gameplay is None:
-                    raise serializers.ValidationError({'gameplays': f'玩法ID {gameplay_id} 不属于当前技能'})
-            if gameplay is None:
-                # id 未传或不可用时，按 (skill, name) 唯一键匹配现有玩法，避免重复创建
-                gameplay = SkillGameplay.objects.filter(skill=skill, name=names[index]).first()
-            if gameplay is None:
-                gameplay = SkillGameplay(skill=skill)
-
-            for field in gameplay_fields:
-                if field in item:
-                    setattr(gameplay, field, item[field])
             gameplay.gender_limit = gender_limit
-            gameplay.name = names[index]
-            gameplay.description = str(item.get('description', '')).strip()
             gameplay.min_quantity = min_quantity
             gameplay.quantity_step = quantity_step
             gameplay.base_price = base_price
