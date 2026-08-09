@@ -4,7 +4,8 @@ from django.test import TestCase
 from rest_framework.test import APIClient
 
 from apps.account.models import User
-from apps.customer.models import Customer
+from apps.customer.models import Customer, CustomerConsumeRecord
+from apps.finance.models import Transaction
 from apps.order.models import Order
 from apps.wx.models import GameCategory
 from .models import (
@@ -405,7 +406,7 @@ class SkillSystemTests(TestCase):
         self.assertEqual(customer.total_orders, 5)
         self.assertEqual(customer.total_amount, Decimal('441.90'))
 
-    def test_preset_order_replaces_options_and_creates_free_published_order(self):
+    def test_preset_order_replaces_options_and_charges_fixed_price(self):
         EmployeeSkillViewSet()._sync_gameplays(self.manual_skill, [{
             'name': '预制护航',
             'settlement_unit': 'hour',
@@ -425,6 +426,7 @@ class SkillSystemTests(TestCase):
             'display_image': '/media/preset/escort.jpg',
             'preset_content': '一局完整护航服务，提交后等待打手接单。',
             'preset_remark': '不支持临时更换项目内容',
+            'preset_price': '29.90',
             'status': True,
         }])
         gameplay.refresh_from_db()
@@ -439,20 +441,39 @@ class SkillSystemTests(TestCase):
         preset = catalog[0]['gameplays'][0]
         self.assertEqual(preset['order_mode'], 'preset')
         self.assertEqual(preset['preset_remark'], '不支持临时更换项目内容')
+        self.assertEqual(preset['preset_price'], 29.9)
+        self.assertEqual(preset['preset_coin_price'], 299)
 
         customer = Customer.objects.create(
-            user=self.user, nickname='预制单客户', coins=888
+            user=self.user, nickname='预制单客户', coins=100
         )
+        insufficient = self.client.post('/api/wx/orders/create-self-service/', {
+            'gameplay_id': gameplay.id,
+        }, format='json').json()
+        self.assertNotEqual(insufficient['code'], 200)
+        self.assertIn('黑钻不足', insufficient['msg'])
+
+        customer.coins = 888
+        customer.save(update_fields=['coins'])
         response = self.client.post('/api/wx/orders/create-self-service/', {
             'gameplay_id': gameplay.id,
         }, format='json').json()
         self.assertEqual(response['code'], 200)
-        self.assertEqual(response['data']['total_coins'], 0)
+        self.assertEqual(response['data']['total_coins'], 299)
         self.assertEqual(response['data']['snapshot']['order_mode'], 'preset')
         order = Order.objects.get(id=response['data']['order_id'])
         self.assertEqual(order.status, 'published')
-        self.assertEqual(order.total_amount, Decimal('0.00'))
+        self.assertEqual(order.total_amount, Decimal('29.90'))
         self.assertEqual(order.self_service_snapshot['preset_content'], '一局完整护航服务，提交后等待打手接单。')
         customer.refresh_from_db()
-        self.assertEqual(customer.coins, 888)
+        self.assertEqual(customer.coins, 589)
         self.assertEqual(customer.total_orders, 1)
+        self.assertEqual(customer.total_amount, Decimal('29.90'))
+        self.assertEqual(
+            CustomerConsumeRecord.objects.get(order_no=order.order_no).amount,
+            Decimal('29.90'),
+        )
+        self.assertEqual(
+            Transaction.objects.get(order_no=order.order_no).amount,
+            Decimal('29.90'),
+        )

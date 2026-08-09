@@ -66,7 +66,8 @@ class SkillGameplaySerializer(serializers.ModelSerializer):
         model = SkillGameplay
         fields = [
             'id', 'order_mode', 'name', 'description', 'display_image',
-            'preset_content', 'preset_remark', 'difficulty_enabled', 'gender_limit',
+            'preset_content', 'preset_remark', 'preset_price',
+            'difficulty_enabled', 'gender_limit',
             'male_price_delta', 'female_price_delta',
             'companion_mode', 'settlement_unit', 'min_quantity', 'quantity_step',
             'base_price', 'remark_required', 'sort', 'status', 'difficulties',

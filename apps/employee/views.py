@@ -430,7 +430,8 @@ class EmployeeSkillViewSet(BaseModelViewSet):
 
         gameplay_fields = [
             'order_mode', 'name', 'description', 'display_image',
-            'preset_content', 'preset_remark', 'difficulty_enabled', 'gender_limit',
+            'preset_content', 'preset_remark', 'preset_price',
+            'difficulty_enabled', 'gender_limit',
             'companion_mode', 'settlement_unit', 'remark_required', 'sort', 'status'
         ]
         for index, item in enumerate(gameplays_data):
@@ -462,6 +463,9 @@ class EmployeeSkillViewSet(BaseModelViewSet):
             gameplay.sort = item.get('sort', index)
 
             if order_mode == 'preset':
+                gameplay.preset_price = self._decimal(item.get('preset_price', 0), 'preset_price')
+                if gameplay.preset_price < 0:
+                    raise serializers.ValidationError({'preset_price': f'预制单“{gameplay.name}”项目价格不能小于0'})
                 if gameplay.status and not gameplay.display_image:
                     raise serializers.ValidationError({'display_image': f'预制单“{gameplay.name}”请上传显示图片'})
                 if gameplay.status and not gameplay.preset_content:

@@ -1345,6 +1345,15 @@ def create_self_service_order(request):
     if gameplay.order_mode == 'preset':
         if not gameplay.display_image or not gameplay.preset_content:
             return error_response(msg='该预制单配置不完整，请联系管理员')
+        preset_price = Decimal(gameplay.preset_price).quantize(Decimal('0.01'), rounding=ROUND_HALF_UP)
+        if preset_price < 0:
+            return error_response(msg='该预制单价格配置无效，请联系管理员')
+        coin_cost = int(
+            (preset_price * Decimal('10')).quantize(Decimal('1'), rounding=ROUND_HALF_UP)
+        )
+        charged_amount = (Decimal(coin_cost) / Decimal('10')).quantize(Decimal('0.01'))
+        if coin_cost > 0 and (customer.coins or 0) < coin_cost:
+            return error_response(msg=f'黑钻不足，需要{coin_cost}黑钻，当前仅有{customer.coins or 0}黑钻')
         import random
         order_no = (
             f'SV{timezone.now().strftime("%Y%m%d%H%M%S")}'
@@ -1362,10 +1371,10 @@ def create_self_service_order(request):
             'preset_content': gameplay.preset_content,
             'preset_remark': gameplay.preset_remark,
             'quantity': 1,
-            'unit_price': 0,
-            'total_amount': 0,
-            'pay_amount': 0,
-            'total_coins': 0,
+            'unit_price': float(preset_price),
+            'total_amount': float(preset_price),
+            'pay_amount': float(charged_amount),
+            'total_coins': coin_cost,
         }
         order = Order.objects.create(
             order_no=order_no,
@@ -1379,9 +1388,9 @@ def create_self_service_order(request):
             purchase_quantity=1,
             settlement_unit='',
             self_service_snapshot=snapshot,
-            unit_price=Decimal('0'),
-            total_amount=Decimal('0'),
-            pay_amount=Decimal('0'),
+            unit_price=preset_price,
+            total_amount=preset_price,
+            pay_amount=charged_amount,
             game_id=str(skill.game_category_id or ''),
             game_name=game_name,
             remark=gameplay.preset_remark or gameplay.preset_content,
@@ -1390,23 +1399,51 @@ def create_self_service_order(request):
         OrderMember.objects.create(
             order=order,
             skill=skill,
-            unit_price=Decimal('0'),
+            unit_price=preset_price,
             duration=0,
-            amount=Decimal('0'),
+            amount=charged_amount,
             status='assigned',
             remark=(gameplay.preset_content or gameplay.name)[:500],
         )
+        customer.coins = (customer.coins or 0) - coin_cost
+        customer.total_amount = (customer.total_amount or Decimal('0')) + charged_amount
         customer.total_orders = (customer.total_orders or 0) + 1
         customer.last_order_date = timezone.now()
         if not customer.first_order_date:
             customer.first_order_date = timezone.now()
-        customer.save(update_fields=['total_orders', 'last_order_date', 'first_order_date'])
+        customer.save(update_fields=[
+            'coins', 'total_amount', 'total_orders', 'last_order_date', 'first_order_date'
+        ])
+        if coin_cost > 0:
+            from apps.customer.models import CustomerConsumeRecord
+            CustomerConsumeRecord.objects.create(
+                customer=customer,
+                order_no=order_no,
+                amount=charged_amount,
+                type='order',
+                remark=f'预制单 {skill.name}·{gameplay.name}',
+            )
+            wallet, _ = Wallet.objects.get_or_create(user=user, type='user')
+            wallet.balance = (wallet.balance or Decimal('0')) - charged_amount
+            wallet.total_expense = (wallet.total_expense or Decimal('0')) + charged_amount
+            wallet.save(update_fields=['balance', 'total_expense'])
+            Transaction.objects.create(
+                wallet=wallet,
+                order_no=order_no,
+                transaction_no=f'TXN{timezone.now().strftime("%Y%m%d%H%M%S")}{user.id:04d}{order.id:04d}',
+                type='expense',
+                category='self_service_order',
+                amount=charged_amount,
+                balance_after=wallet.balance,
+                remark=f'预制单扣减 {coin_cost}黑钻',
+                operator=request.user,
+            )
         return success_response({
             'order_id': order.id,
             'order_no': order.order_no,
-            'total_amount': 0,
-            'pay_amount': 0,
-            'total_coins': 0,
+            'total_amount': float(preset_price),
+            'pay_amount': float(charged_amount),
+            'total_coins': coin_cost,
             'snapshot': snapshot,
         })
 
@@ -1729,7 +1766,6 @@ def create_self_service_order(request):
         )
 
         # 财务流水
-        from apps.finance.models import Wallet, Transaction
         wallet, _ = Wallet.objects.get_or_create(user=user, type='user')
         wallet.balance = (wallet.balance or Decimal('0')) - charged_amount
         wallet.total_expense = (wallet.total_expense or Decimal('0')) + charged_amount
@@ -4078,6 +4114,8 @@ def get_self_service_catalog(request):
                     'display_image': build_media_url(gameplay.display_image, request),
                     'preset_content': gameplay.preset_content,
                     'preset_remark': gameplay.preset_remark,
+                    'preset_price': float(gameplay.preset_price),
+                    'preset_coin_price': price_to_coins(gameplay.preset_price),
                     'description': gameplay.description,
                 })
                 continue

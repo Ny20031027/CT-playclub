@@ -131,6 +131,9 @@ class SkillGameplay(BaseModel):
     display_image = models.CharField(max_length=500, blank=True, verbose_name='预制单显示图片')
     preset_content = models.TextField(blank=True, verbose_name='预制单项目内容')
     preset_remark = models.CharField(max_length=500, blank=True, verbose_name='预制单项目备注')
+    preset_price = models.DecimalField(
+        max_digits=10, decimal_places=2, default=0, verbose_name='预制单项目价格'
+    )
     difficulty_enabled = models.BooleanField(default=False, verbose_name='启用难度')
     gender_limit = models.CharField(max_length=20, default='unlimited', choices=[
         ('unlimited', '不限（不加价）'), ('male_only', '只男（固定）'), ('female_only', '只女（固定）'),
