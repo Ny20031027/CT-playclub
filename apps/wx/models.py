@@ -1,4 +1,5 @@
 from django.db import models
+from django.conf import settings
 from apps.common.models import BaseModel
 from apps.account.models import User
 from apps.employee.models import Employee
@@ -152,3 +153,26 @@ class Gift(BaseModel):
 
     def __str__(self):
         return self.name
+
+
+class GameAccount(BaseModel):
+    """小程序用户的游戏账号，客户和打手身份共用。"""
+    user = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.CASCADE,
+        related_name='game_accounts', verbose_name='用户'
+    )
+    game_category = models.ForeignKey(
+        GameCategory, on_delete=models.CASCADE,
+        related_name='game_accounts', verbose_name='游戏品类'
+    )
+    game_account = models.CharField(max_length=200, verbose_name='游戏账号')
+
+    class Meta:
+        db_table = 'wx_game_account'
+        verbose_name = '游戏账号'
+        verbose_name_plural = verbose_name
+        ordering = ['id']
+        unique_together = [['user', 'game_category']]
+
+    def __str__(self):
+        return f'{self.user_id} - {self.game_category.name}: {self.game_account}'

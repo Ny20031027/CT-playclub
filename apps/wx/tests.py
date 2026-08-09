@@ -8,6 +8,68 @@ from apps.customer.models import Customer
 from apps.employee.models import Employee, EmployeeSkill
 from apps.notice.models import UserNotice
 from apps.order.models import Order, OrderComment, OrderMember
+from apps.wx.models import GameAccount, GameCategory
+
+
+class GameAccountTests(TestCase):
+    def setUp(self):
+        self.client = APIClient()
+        self.game = GameCategory.objects.create(name='王者荣耀', status=True)
+        self.customer_user = User.objects.create_user(username='game_customer')
+        Customer.objects.create(user=self.customer_user, nickname='游戏客户')
+        self.dasher_user = User.objects.create_user(username='game_dasher')
+        Employee.objects.create(
+            user=self.dasher_user,
+            employee_no='EMP-GAME-001',
+            real_name='游戏打手',
+        )
+
+    def save_as(self, user, account):
+        self.client.force_authenticate(user=user)
+        return self.client.post('/api/wx/game-accounts/save/', {
+            'game_category_id': self.game.id,
+            'game_account': account,
+        }, format='json').json()
+
+    def test_customer_and_dasher_can_save_game_accounts(self):
+        customer_result = self.save_as(self.customer_user, 'customer-1001')
+        dasher_result = self.save_as(self.dasher_user, 'dasher-2002')
+
+        self.assertEqual(customer_result['code'], 200)
+        self.assertEqual(dasher_result['code'], 200)
+        self.assertTrue(GameAccount.objects.filter(
+            user=self.customer_user, game_account='customer-1001', is_deleted=False
+        ).exists())
+        self.assertTrue(GameAccount.objects.filter(
+            user=self.dasher_user, game_account='dasher-2002', is_deleted=False
+        ).exists())
+
+    def test_save_updates_existing_account_and_list_returns_database_value(self):
+        self.save_as(self.customer_user, 'old-account')
+        updated = self.save_as(self.customer_user, 'new-account')
+        self.assertEqual(updated['code'], 200)
+        self.assertEqual(GameAccount.objects.filter(
+            user=self.customer_user, game_category=self.game
+        ).count(), 1)
+
+        listed = self.client.get('/api/wx/game-accounts/').json()
+        self.assertEqual(listed['code'], 200)
+        self.assertEqual(listed['data'][0]['game_account'], 'new-account')
+
+    def test_deleted_account_is_hidden_and_can_be_added_again(self):
+        saved = self.save_as(self.customer_user, 'first-account')
+        account_id = saved['data']['id']
+        deleted = self.client.post(
+            '/api/wx/game-accounts/delete/', {'id': account_id}, format='json'
+        ).json()
+        self.assertEqual(deleted['code'], 200)
+        self.assertEqual(self.client.get('/api/wx/game-accounts/').json()['data'], [])
+
+        restored = self.save_as(self.customer_user, 'restored-account')
+        self.assertEqual(restored['code'], 200)
+        account = GameAccount.objects.get(id=account_id)
+        self.assertFalse(account.is_deleted)
+        self.assertEqual(account.game_account, 'restored-account')
 
 
 class MultiPersonOrderFlowTests(TestCase):

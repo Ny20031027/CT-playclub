@@ -100,6 +100,11 @@ urlpatterns = [
     # 周星榜单
     path('ranking/', views.ranking_list, name='wx-ranking-list'),
 
+    # 游戏账号
+    path('game-accounts/', views.game_account_list, name='wx-game-account-list'),
+    path('game-accounts/save/', views.game_account_save, name='wx-game-account-save'),
+    path('game-accounts/delete/', views.game_account_delete, name='wx-game-account-delete'),
+
     # 排行榜
     path('game-ranking/', views.game_ranking, name='wx-game-ranking'),
 

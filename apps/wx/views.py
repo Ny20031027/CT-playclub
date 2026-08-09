@@ -27,7 +27,7 @@ from apps.order.comment_utils import create_order_comment_with_retry
 from apps.notice.models import Notice, UserNotice
 from apps.finance.models import Wallet, Transaction
 from apps.upload.models import UploadFile
-from .models import WxUser, Banner, Announcement, GameCategory, Gift, GameBanner, Follow
+from .models import WxUser, Banner, Announcement, GameCategory, Gift, GameBanner, Follow, GameAccount
 from .serializers import (
     WxUserSerializer, BannerSerializer, AnnouncementSerializer,
     GameCategorySerializer, GiftSerializer, GameBannerSerializer
@@ -5354,3 +5354,75 @@ def employee_followers(request, emp_id):
         'page_size': page_size,
         'list': followers,
     })
+
+
+# ============ 游戏账号管理 ============
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def game_account_list(request):
+    """获取当前客户或打手的游戏账号列表。"""
+    user = request.user
+    accounts = GameAccount.objects.filter(
+        user=user, is_deleted=False
+    ).select_related('game_category')
+    data = [{
+        'id': a.id,
+        'game_category_id': a.game_category_id,
+        'game_category_name': a.game_category.name,
+        'game_account': a.game_account,
+    } for a in accounts]
+    return success_response(data)
+
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def game_account_save(request):
+    """保存或更新当前客户或打手的游戏账号。"""
+    user = request.user
+    game_category_id = request.data.get('game_category_id')
+    game_account = (request.data.get('game_account') or '').strip()
+
+    if not game_category_id:
+        return error_response(msg='请选择游戏品类')
+    if not game_account:
+        return error_response(msg='请输入游戏账号')
+    if len(game_account) > 200:
+        return error_response(msg='游戏账号不能超过200个字符')
+
+    try:
+        game_category = GameCategory.objects.get(
+            id=game_category_id, status=True, is_deleted=False
+        )
+    except GameCategory.DoesNotExist:
+        return error_response(msg='游戏品类不存在')
+
+    obj, _ = GameAccount.objects.update_or_create(
+        user=user,
+        game_category=game_category,
+        defaults={'game_account': game_account, 'is_deleted': False},
+    )
+    return success_response({
+        'id': obj.id,
+        'game_category_id': obj.game_category_id,
+        'game_category_name': game_category.name,
+        'game_account': obj.game_account,
+    }, msg='保存成功')
+
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def game_account_delete(request):
+    """删除游戏账号"""
+    user = request.user
+    account_id = request.data.get('id')
+    if not account_id:
+        return error_response(msg='参数错误')
+    try:
+        obj = GameAccount.objects.get(
+            id=account_id, user=user, is_deleted=False
+        )
+        obj.delete()
+        return success_response(msg='已删除')
+    except GameAccount.DoesNotExist:
+        return error_response(msg='账号不存在')
