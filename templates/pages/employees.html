@@ -54,81 +54,36 @@
         </div>
         <div class="modal-body">
             <input type="hidden" id="editEmpId">
-            <div class="form-group">
-                <label>昵称</label>
-                <input type="text" id="editEmpNickname" placeholder="请输入昵称">
+            <div class="employee-edit-heading">
+                <div class="employee-edit-mark"><i class="fa-solid fa-user-shield"></i></div>
+                <div><strong id="editEmpSummaryName">打手资料</strong><small>维护身份资料、榜单状态与服务能力</small></div>
             </div>
-            <div class="form-group">
-                <label>真实姓名</label>
-                <input type="text" id="editEmpRealName" placeholder="请输入真实姓名">
-            </div>
-            <div class="form-group">
-                <label>等级</label>
-                <select id="editEmpLevel">
-                    <option value="0">0 - 默认</option>
-                    <option value="1">1</option>
-                    <option value="2">2</option>
-                    <option value="3">3</option>
-                    <option value="4">4</option>
-                    <option value="5">5</option>
-                    <option value="6">6</option>
-                    <option value="7">7</option>
-                    <option value="8">8</option>
-                    <option value="9">9</option>
-                    <option value="10">10</option>
-                </select>
-            </div>
-            <div class="form-group">
-                <label>考核模式</label>
-                <select id="editEmpAssessmentMode">
-                    <option value="single">单考</option>
-                    <option value="double">双考</option>
-                </select>
-            </div>
-            <div class="form-group">
-                <label>联系电话</label>
-                <input type="text" id="editEmpPhone" placeholder="请输入联系电话">
-            </div>
-            <div class="form-group">
-                <label>个人简介</label>
-                <textarea id="editEmpIntro" rows="3" placeholder="请输入个人简介"></textarea>
-            </div>
-            <div class="form-group">
-                <label>佣金余额(元)</label>
-                <input type="number" id="editEmpCommission" min="0" step="0.01" value="0" placeholder="打手可提现的佣金余额">
-            </div>
-            <div class="form-group star-settings">
-                <label class="star-toggle-row" for="editEmpIsStar">
-                    <span>
-                        <strong>明星打手</strong>
-                        <small>开启后，该打手会进入小程序明星榜单</small>
-                    </span>
-                    <input type="checkbox" id="editEmpIsStar" onchange="toggleStarSortState()">
-                </label>
-                <div class="star-sort-row" id="editEmpStarSortRow">
-                    <label for="editEmpStarSort">明星榜单排序</label>
-                    <input type="number" id="editEmpStarSort" min="0" step="1" value="0" inputmode="numeric">
-                    <small>数字越小越靠前，0 为最高优先级</small>
+            <section class="employee-form-section">
+                <div class="employee-section-title"><i class="fa-solid fa-address-card"></i><span>身份资料</span></div>
+                <div class="employee-form-grid">
+                    <div class="form-group"><label>昵称</label><input type="text" id="editEmpNickname" placeholder="请输入昵称"></div>
+                    <div class="form-group"><label>真实姓名</label><input type="text" id="editEmpRealName" placeholder="请输入真实姓名"></div>
+                    <div class="form-group employee-display-id"><label>黑金ID</label><span class="employee-id-prefix">ID</span><input type="text" id="editEmpDisplayId" inputmode="numeric" maxlength="9" placeholder="1至9位数字"><small>全站唯一，可用于客户搜索</small></div>
+                    <div class="form-group"><label>联系电话</label><input type="text" id="editEmpPhone" placeholder="请输入联系电话"></div>
+                    <div class="form-group"><label>等级</label><select id="editEmpLevel"><option value="0">0 - 默认</option><option value="1">1</option><option value="2">2</option><option value="3">3</option><option value="4">4</option><option value="5">5</option><option value="6">6</option><option value="7">7</option><option value="8">8</option><option value="9">9</option><option value="10">10</option></select></div>
+                    <div class="form-group"><label>考核模式</label><select id="editEmpAssessmentMode"><option value="single">单考</option><option value="double">双考</option></select></div>
+                    <div class="form-group"><label>佣金余额（元）</label><input type="number" id="editEmpCommission" min="0" step="0.01" value="0" placeholder="可提现佣金余额"></div>
                 </div>
-            </div>
-            <div class="form-group">
-                <label>游戏分类（可多选）</label>
-                <div id="editEmpGameCategories" class="game-category-checkboxes">
-                    <div class="empty-hint">加载游戏分类中...</div>
+                <div class="form-group employee-intro-field"><label>个人简介</label><textarea id="editEmpIntro" rows="3" placeholder="简要介绍擅长内容和服务特点"></textarea></div>
+            </section>
+            <section class="employee-form-section">
+                <div class="employee-section-title"><i class="fa-solid fa-star"></i><span>展示设置</span></div>
+                <div class="form-group star-settings">
+                    <label class="star-toggle-row" for="editEmpIsStar"><span><strong>明星打手</strong><small>开启后，该打手会进入小程序明星榜单</small></span><input type="checkbox" id="editEmpIsStar" onchange="toggleStarSortState()"></label>
+                    <div class="star-sort-row" id="editEmpStarSortRow"><label for="editEmpStarSort">明星榜单排序</label><input type="number" id="editEmpStarSort" min="0" step="1" value="0" inputmode="numeric"><small>数字越小越靠前，0 为最高优先级</small></div>
                 </div>
-            </div>
-            <div class="form-group">
-                <label>游戏段位（由管理员设定）</label>
-                <div id="editEmpGameRanks" class="skill-system-panel">
-                    <div class="empty-hint">加载段位设置中...</div>
-                </div>
-            </div>
-            <div class="form-group">
-                <label>人工授予技能与专属价格</label>
-                <div id="editEmpManualSkills" class="skill-system-panel">
-                    <div class="empty-hint">加载人工技能中...</div>
-                </div>
-            </div>
+            </section>
+            <section class="employee-form-section">
+                <div class="employee-section-title"><i class="fa-solid fa-gamepad"></i><span>游戏与服务能力</span></div>
+                <div class="form-group"><label>游戏分类（可多选）</label><div id="editEmpGameCategories" class="game-category-checkboxes"><div class="empty-hint">加载游戏分类中...</div></div></div>
+                <div class="form-group"><label>游戏段位（由管理员设定）</label><div id="editEmpGameRanks" class="skill-system-panel"><div class="empty-hint">加载段位设置中...</div></div></div>
+                <div class="form-group"><label>人工授予技能与专属价格</label><div id="editEmpManualSkills" class="skill-system-panel"><div class="empty-hint">加载人工技能中...</div></div></div>
+            </section>
         </div>
         <div class="modal-footer">
             <button class="btn btn-default" onclick="hideModal('editEmployeeModal')">取消</button>
@@ -338,11 +293,33 @@
         background: #fafbfc;
     }
     .employee-edit-modal {
+        width: 820px;
+        max-width: calc(100vw - 32px);
         max-height: calc(100vh - 40px);
         display: flex;
         flex-direction: column;
+        overflow: hidden;
     }
-    .employee-edit-modal .modal-body { overflow-y: auto; }
+    .employee-edit-modal .modal-header { padding:20px 24px; border-bottom:1px solid #edf0f5; }
+    .employee-edit-modal .modal-body { padding:20px 24px; overflow-y:auto; background:#f7f8fb; }
+    .employee-edit-modal .modal-footer { padding:16px 24px; border-top:1px solid #edf0f5; background:#fff; }
+    .employee-edit-heading { display:flex; align-items:center; gap:14px; margin-bottom:16px; padding:15px 17px; border:1px solid #e5e9f2; border-radius:14px; background:linear-gradient(135deg,#fff,#f4f7ff); }
+    .employee-edit-mark { width:44px; height:44px; display:flex; align-items:center; justify-content:center; flex-shrink:0; border-radius:13px; color:#fff; background:linear-gradient(135deg,#6979e8,#7559cf); box-shadow:0 8px 18px rgba(105,121,232,.22); }
+    .employee-edit-heading strong,.employee-edit-heading small { display:block; }
+    .employee-edit-heading strong { color:#293044; font-size:16px; }
+    .employee-edit-heading small { margin-top:4px; color:#929bad; font-size:12px; }
+    .employee-form-section { display:block; margin-top:14px; padding:18px; border:1px solid #e6eaf1; border-radius:14px; background:#fff; }
+    .employee-section-title { display:flex; align-items:center; gap:8px; margin-bottom:16px; color:#343b4f; font-size:14px; font-weight:700; }
+    .employee-section-title i { color:#6979e8; }
+    .employee-form-grid { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:14px 16px; }
+    .employee-form-grid .form-group { margin:0; }
+    .employee-form-section input,.employee-form-section select,.employee-form-section textarea { width:100%; box-sizing:border-box; border:1px solid #dfe3eb; border-radius:9px; background:#fbfcfe; transition:border-color .2s,box-shadow .2s,background .2s; }
+    .employee-form-section input:focus,.employee-form-section select:focus,.employee-form-section textarea:focus { border-color:#6979e8; background:#fff; box-shadow:0 0 0 3px rgba(105,121,232,.1); outline:none; }
+    .employee-intro-field { margin-top:15px; }
+    .employee-display-id { position:relative; }
+    .employee-display-id input { padding-left:54px; color:#5b4517; font-weight:700; letter-spacing:1px; background:#fffdf5; border-color:#e6d39d; }
+    .employee-id-prefix { position:absolute; left:10px; top:33px; padding:3px 7px; border-radius:999px; color:#f4d77f; background:#17140f; font-size:10px; font-weight:800; }
+    .employee-display-id small { display:block; margin-top:5px; color:#9aa2b2; font-size:11px; }
     .employee-edit-modal .form-group > select {
         width: 100%;
         min-height: 38px;
@@ -363,6 +340,7 @@
     .skill-system-row:last-child { border-bottom: 0; }
     .manual-skill-price { display: flex; align-items: center; gap: 8px; }
     .manual-skill-price input { min-width: 0; }
+    @media (max-width:680px) { .employee-form-grid{grid-template-columns:1fr}.employee-edit-modal{max-width:calc(100vw - 20px)}.employee-edit-modal .modal-body{padding:15px}.star-sort-row{grid-template-columns:1fr} }
 </style>
 
 <script>
@@ -682,6 +660,8 @@
                 const emp = result.data;
                 document.getElementById('editEmpId').value = emp.id;
                 document.getElementById('editEmpNickname').value = emp.nickname || '';
+                document.getElementById('editEmpSummaryName').textContent = emp.nickname || emp.real_name || '打手资料';
+                document.getElementById('editEmpDisplayId').value = emp.display_id || '';
                 document.getElementById('editEmpRealName').value = emp.real_name || '';
                 document.getElementById('editEmpLevel').value = emp.level_num || 0;
                 document.getElementById('editEmpAssessmentMode').value = emp.assessment_mode || 'single';
@@ -707,6 +687,7 @@
         const id = document.getElementById('editEmpId').value;
         const game_category_ids = getCheckedGameCategories('editEmpGameCategories');
         const data = {
+            edit_display_id: document.getElementById('editEmpDisplayId').value.trim(),
             nickname: document.getElementById('editEmpNickname').value,
             real_name: document.getElementById('editEmpRealName').value,
             level_num: parseInt(document.getElementById('editEmpLevel').value),
@@ -718,6 +699,11 @@
             star_sort: Math.max(0, parseInt(document.getElementById('editEmpStarSort').value, 10) || 0),
             game_category_ids: game_category_ids,
         };
+
+        if (!/^\d{1,9}$/.test(data.edit_display_id)) {
+            showToast('黑金ID只能填写1至9位数字', 'error');
+            return;
+        }
 
         try {
             const result = await put(`/employee/employees/${id}/`, data);

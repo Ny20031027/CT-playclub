@@ -15,7 +15,38 @@ from .models import (
     ValueAddedService
 )
 from .serializers import EmployeeSkillSerializer
+from .serializers import EmployeeSerializer
 from .views import EmployeeSkillViewSet
+
+
+class EmployeeDisplayIdEditTests(TestCase):
+    def test_employee_serializer_updates_display_id(self):
+        user = User.objects.create_user(username='employee_display_edit')
+        user.display_id = '333333333'
+        user.save(update_fields=['display_id'])
+        employee = Employee.objects.create(
+            user=user, employee_no='EMP-ID-EDIT', real_name='ID编辑打手'
+        )
+
+        serializer = EmployeeSerializer(
+            employee, data={'edit_display_id': '87654321'}, partial=True
+        )
+        self.assertTrue(serializer.is_valid(), serializer.errors)
+        serializer.save()
+        user.refresh_from_db()
+        self.assertEqual(user.display_id, '87654321')
+
+    def test_employee_serializer_rejects_non_numeric_display_id(self):
+        user = User.objects.create_user(username='employee_display_invalid')
+        employee = Employee.objects.create(
+            user=user, employee_no='EMP-ID-INVALID', real_name='无效ID打手'
+        )
+
+        serializer = EmployeeSerializer(
+            employee, data={'edit_display_id': '12AB'}, partial=True
+        )
+        self.assertFalse(serializer.is_valid())
+        self.assertIn('edit_display_id', serializer.errors)
 from .skill_services import sync_employee_rank_skills
 
 

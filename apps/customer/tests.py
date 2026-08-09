@@ -4,6 +4,7 @@ from django.test import TestCase
 from rest_framework.test import APIClient
 
 from apps.account.models import User
+from .serializers import CustomerSerializer
 from .models import Customer
 
 
@@ -40,3 +41,32 @@ class CustomerRechargeTests(TestCase):
         self.customer.refresh_from_db()
         self.assertEqual(self.customer.coins, 850)
         self.assertEqual(self.customer.balance, Decimal('15.00'))
+
+
+class CustomerDisplayIdEditTests(TestCase):
+    def test_customer_serializer_updates_unique_display_id(self):
+        user = User.objects.create_user(username='customer_display_edit')
+        user.display_id = '111111111'
+        user.save(update_fields=['display_id'])
+        customer = Customer.objects.create(user=user, nickname='客户ID编辑')
+
+        serializer = CustomerSerializer(
+            customer, data={'edit_display_id': '12345678'}, partial=True
+        )
+        self.assertTrue(serializer.is_valid(), serializer.errors)
+        serializer.save()
+        user.refresh_from_db()
+        self.assertEqual(user.display_id, '12345678')
+
+    def test_customer_serializer_rejects_duplicate_display_id(self):
+        owner = User.objects.create_user(username='customer_display_owner')
+        owner.display_id = '222222222'
+        owner.save(update_fields=['display_id'])
+        target_user = User.objects.create_user(username='customer_display_target')
+        customer = Customer.objects.create(user=target_user, nickname='目标客户')
+
+        serializer = CustomerSerializer(
+            customer, data={'edit_display_id': '222222222'}, partial=True
+        )
+        self.assertFalse(serializer.is_valid())
+        self.assertIn('edit_display_id', serializer.errors)

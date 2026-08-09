@@ -1,4 +1,6 @@
 from rest_framework import serializers
+from apps.account.models import User
+from apps.account.serializers import validate_display_id
 from apps.common.media import build_media_url
 from apps.wx.models import GameCategory
 from .models import (
@@ -263,6 +265,7 @@ class EmployeeStatusSerializer(serializers.ModelSerializer):
 class EmployeeSerializer(serializers.ModelSerializer):
     username = serializers.CharField(source='user.username', read_only=True)
     display_id = serializers.SerializerMethodField()
+    edit_display_id = serializers.CharField(write_only=True, required=False)
     password = serializers.CharField(write_only=True, required=False)
     department_name = serializers.CharField(source='department.name', read_only=True)
     tag_names = serializers.SerializerMethodField()
@@ -279,7 +282,7 @@ class EmployeeSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = Employee
-        fields = ['id', 'user', 'username', 'display_id', 'password', 'employee_no', 'real_name', 'nickname',
+        fields = ['id', 'user', 'username', 'display_id', 'edit_display_id', 'password', 'employee_no', 'real_name', 'nickname',
                   'phone', 'avatar', 'avatar_url', 'gender', 'age', 'birthday', 'id_card',
                   'id_card_verified', 'department', 'department_name', 'level', 'level_num', 'status',
                   'assessment_mode', 'online_status', 'work_status', 'skills', 'game_category_ids',
@@ -312,13 +315,16 @@ class EmployeeSerializer(serializers.ModelSerializer):
         except Exception:
             return ''
 
-    def update(self, instance, validated_data):
-        display_id_val = self.initial_data.get('display_id')
-        instance = super().update(instance, validated_data)
-        if display_id_val is not None and instance.user:
-            instance.user.display_id = str(display_id_val) if display_id_val else ''
-            instance.user.save(update_fields=['display_id'])
-        return instance
+    def validate_edit_display_id(self, value):
+        value = validate_display_id(value)
+        if not value:
+            raise serializers.ValidationError('黑金ID不能为空')
+        queryset = User.objects.filter(display_id=value)
+        if self.instance and self.instance.user_id:
+            queryset = queryset.exclude(pk=self.instance.user_id)
+        if queryset.exists():
+            raise serializers.ValidationError('该黑金ID已被其他用户使用')
+        return value
 
     def get_game_categories_list(self, obj):
         return [{
@@ -332,6 +338,7 @@ class EmployeeSerializer(serializers.ModelSerializer):
         return EmployeeSkillRelationSerializer(relations, many=True).data
 
     def create(self, validated_data):
+        display_id_val = validated_data.pop('edit_display_id', None)
         # pop password before it reaches Employee.objects.create
         password = validated_data.pop('password', None)
         skills = validated_data.pop('skills', [])
@@ -350,6 +357,10 @@ class EmployeeSerializer(serializers.ModelSerializer):
                 )
                 user.ensure_display_id()
                 validated_data['user'] = user
+
+        if display_id_val and validated_data.get('user'):
+            validated_data['user'].display_id = display_id_val
+            validated_data['user'].save(update_fields=['display_id'])
 
         # Auto-generate employee_no if not provided
         if not validated_data.get('employee_no'):
@@ -376,6 +387,7 @@ class EmployeeSerializer(serializers.ModelSerializer):
         return employee
 
     def update(self, instance, validated_data):
+        display_id_val = validated_data.pop('edit_display_id', None)
         tags = validated_data.pop('tags', None)
         skills = validated_data.pop('skills', None)
         game_categories = validated_data.pop('game_categories', None)
@@ -386,6 +398,9 @@ class EmployeeSerializer(serializers.ModelSerializer):
             instance.tags.set(tags)
         if game_categories is not None:
             instance.game_categories.set(game_categories)
+        if display_id_val and instance.user:
+            instance.user.display_id = display_id_val
+            instance.user.save(update_fields=['display_id'])
         return instance
 
 

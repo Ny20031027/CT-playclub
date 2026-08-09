@@ -1,4 +1,6 @@
 from rest_framework import serializers
+from apps.account.models import User
+from apps.account.serializers import validate_display_id
 from apps.common.media import build_media_url
 from .models import (
     Customer, CustomerLevel, CustomerTag, Blacklist, CustomerConsumeRecord
@@ -27,11 +29,11 @@ class CustomerSerializer(serializers.ModelSerializer):
     is_blacklisted = serializers.SerializerMethodField()
     avatar_url = serializers.SerializerMethodField()
     display_id = serializers.SerializerMethodField()
-    edit_display_id = serializers.CharField(write_only=True, required=False, allow_blank=True)
+    edit_display_id = serializers.CharField(write_only=True, required=False)
 
     class Meta:
         model = Customer
-        fields = ['id', 'user', 'display_id', 'nickname', 'avatar', 'avatar_url', 'phone', 'email', 'gender',
+        fields = ['id', 'user', 'display_id', 'edit_display_id', 'nickname', 'avatar', 'avatar_url', 'phone', 'email', 'gender',
                   'age', 'wechat', 'qq', 'level', 'level_name', 'level_color',
                   'tags', 'tag_names', 'total_amount', 'total_orders', 'balance', 'coins',
                   'status', 'source', 'first_order_date', 'last_order_date',
@@ -54,22 +56,37 @@ class CustomerSerializer(serializers.ModelSerializer):
         except Exception:
             return ''
 
+    def validate_edit_display_id(self, value):
+        value = validate_display_id(value)
+        if not value:
+            raise serializers.ValidationError('黑金ID不能为空')
+        queryset = User.objects.filter(display_id=value)
+        if self.instance and self.instance.user_id:
+            queryset = queryset.exclude(pk=self.instance.user_id)
+        if queryset.exists():
+            raise serializers.ValidationError('该黑金ID已被其他用户使用')
+        return value
+
     def create(self, validated_data):
+        display_id_val = validated_data.pop('edit_display_id', None)
         tags = validated_data.pop('tags', [])
         customer = Customer.objects.create(**validated_data)
+        if display_id_val and customer.user:
+            customer.user.display_id = display_id_val
+            customer.user.save(update_fields=['display_id'])
         if tags:
             customer.tags.set(tags)
         return customer
 
     def update(self, instance, validated_data):
-        display_id_val = self.initial_data.get('display_id')
+        display_id_val = validated_data.pop('edit_display_id', None)
         tags = validated_data.pop('tags', None)
         for attr, value in validated_data.items():
             setattr(instance, attr, value)
         instance.save()
         if tags is not None:
             instance.tags.set(tags)
-        if display_id_val is not None and instance.user:
+        if display_id_val and instance.user:
             instance.user.display_id = display_id_val
             instance.user.save(update_fields=['display_id'])
         return instance

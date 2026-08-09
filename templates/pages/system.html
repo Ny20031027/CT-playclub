@@ -73,7 +73,6 @@
     <div class="tab-item" onclick="switchTab('logs')">操作日志</div>
     <div class="tab-item" onclick="switchTab('gameBanner')">游戏轮播</div>
     <div class="tab-item" onclick="switchTab('selfService')">自助下单</div>
-    <div class="tab-item" onclick="switchTab('user')">用户管理</div>
 </div>
 
 <div id="configTab" style="display: block;">
@@ -101,25 +100,6 @@
                 </tbody>
             </table>
         </div>
-    </div>
-</div>
-
-<div id="userTab" style="display: none;">
-    <div class="card">
-        <div class="card-header">
-            <div class="card-title">用户与黑金ID</div>
-            <div class="card-actions">
-                <input type="text" class="search-input" id="userKeyword" maxlength="50" placeholder="搜索账号、昵称、手机号或黑金ID">
-                <button class="btn btn-primary" onclick="loadUsers(1)">搜索</button>
-            </div>
-        </div>
-        <div class="table-container">
-            <table>
-                <thead><tr><th>账号</th><th>昵称</th><th>黑金ID</th><th>角色</th><th>状态</th><th>操作</th></tr></thead>
-                <tbody id="userList"><tr><td colspan="6" class="empty-state"><i class="fa-solid fa-spinner fa-spin"></i><br>加载中...</td></tr></tbody>
-            </table>
-        </div>
-        <div id="userPager" style="display:flex;justify-content:flex-end;align-items:center;gap:10px;padding:14px 20px;"></div>
     </div>
 </div>
 
@@ -988,31 +968,6 @@
     </div>
 </div>
 
-<div class="modal-overlay" id="displayIdModal">
-    <div class="modal" style="max-width:460px;">
-        <div class="modal-header">
-            <div class="modal-title">设置黑金ID</div>
-            <div class="modal-close" onclick="hideModal('displayIdModal')">&times;</div>
-        </div>
-        <div class="modal-body">
-            <input type="hidden" id="displayIdUserId">
-            <div class="form-group">
-                <label>用户</label>
-                <input type="text" id="displayIdUserName" readonly>
-            </div>
-            <div class="form-group">
-                <label>黑金ID</label>
-                <input type="text" id="displayIdValue" inputmode="numeric" maxlength="9" placeholder="请输入1至9位数字">
-                <p class="hint">黑金ID全站唯一，保存后用户可使用该ID被搜索。</p>
-            </div>
-        </div>
-        <div class="modal-footer">
-            <button class="btn btn-default" onclick="hideModal('displayIdModal')">取消</button>
-            <button class="btn btn-primary" onclick="saveDisplayId()">保存</button>
-        </div>
-    </div>
-</div>
-
 <script>
     document.addEventListener('DOMContentLoaded', async function() {
         await loadConfigs();
@@ -1027,7 +982,7 @@
         document.getElementById('selfServiceSkillSearchInput').addEventListener('input', debounce(renderSelfServiceSkillTable, 200));
 
         var hash = window.location.hash.substring(1);
-        if (hash === 'gameBanner' || hash === 'selfService' || hash === 'user') {
+        if (hash === 'gameBanner' || hash === 'selfService') {
             switchTab(hash);
         }
     });
@@ -1035,7 +990,7 @@
     function switchTab(tab) {
         document.querySelectorAll('.tab-item').forEach(t => t.classList.remove('active'));
         var tabItems = document.querySelectorAll('.tab-item');
-        var tabIndexMap = { config: 0, banner: 1, announcement: 2, gameCategory: 3, dictionary: 4, skill: 5, tag: 6, cs: 7, welcomeKeyword: 8, logs: 9, gameBanner: 10, selfService: 11, user: 12 };
+        var tabIndexMap = { config: 0, banner: 1, announcement: 2, gameCategory: 3, dictionary: 4, skill: 5, tag: 6, cs: 7, welcomeKeyword: 8, logs: 9, gameBanner: 10, selfService: 11 };
         var idx = tabIndexMap[tab];
         if (idx !== undefined && tabItems[idx]) {
             tabItems[idx].classList.add('active');
@@ -1053,7 +1008,6 @@
         document.getElementById('logsTab').style.display = tab === 'logs' ? 'block' : 'none';
         document.getElementById('gameBannerTab').style.display = tab === 'gameBanner' ? 'block' : 'none';
         document.getElementById('selfServiceTab').style.display = tab === 'selfService' ? 'block' : 'none';
-        document.getElementById('userTab').style.display = tab === 'user' ? 'block' : 'none';
 
         if (tab === 'cs') loadCSConfig();
         if (tab === 'welcomeKeyword') { loadWelcomeConfig(); loadKeywordRules(); }
@@ -1066,76 +1020,6 @@
         if (tab === 'selfService' && !window._selfServiceLoaded) {
             loadSelfServiceSkills();
             window._selfServiceLoaded = true;
-        }
-        if (tab === 'user') loadUsers(1);
-    }
-
-    let currentUserPage = 1;
-    let currentUsersById = {};
-    async function loadUsers(page = currentUserPage) {
-        currentUserPage = Math.max(1, Number(page) || 1);
-        const tbody = document.getElementById('userList');
-        tbody.innerHTML = '<tr><td colspan="6" class="empty-state"><i class="fa-solid fa-spinner fa-spin"></i><br>加载中...</td></tr>';
-        try {
-            const keyword = document.getElementById('userKeyword').value.trim();
-            const result = await get('/account/users/', { page: currentUserPage, page_size: 50, search: keyword, ordering: '-id' });
-            const users = (result.data && result.data.results) || [];
-            const total = Number((result.data && result.data.count) || 0);
-            currentUsersById = Object.fromEntries(users.map(user => [String(user.id), user]));
-            if (!users.length) {
-                tbody.innerHTML = '<tr><td colspan="6" class="empty-state"><i class="fa-solid fa-inbox"></i><br>暂无用户</td></tr>';
-                document.getElementById('userPager').innerHTML = '';
-                return;
-            }
-            const roleLabels = { customer: '客户', dasher: '打手', cs: '客服' };
-            tbody.innerHTML = users.map(user => `
-                <tr>
-                    <td>${escapeHtmlAttr(user.username)}</td>
-                    <td>${escapeHtmlAttr(user.nickname || '-')}</td>
-                    <td><span class="badge badge-warning">${escapeHtmlAttr(user.display_id || '未分配')}</span></td>
-                    <td>${roleLabels[user.user_type] || escapeHtmlAttr((user.role_names || []).join('、') || '-')}</td>
-                    <td><span class="badge ${user.is_active ? 'badge-success' : 'badge-danger'}">${user.is_active ? '正常' : '禁用'}</span></td>
-                    <td><button class="btn btn-default btn-sm" onclick="openDisplayIdModal(${user.id})">设置黑金ID</button></td>
-                </tr>`).join('');
-            const totalPages = Math.max(1, Math.ceil(total / 50));
-            document.getElementById('userPager').innerHTML = `
-                <button class="btn btn-default btn-sm" ${currentUserPage <= 1 ? 'disabled' : ''} onclick="loadUsers(${currentUserPage - 1})">上一页</button>
-                <span style="color:#606266;font-size:13px;">第 ${currentUserPage} / ${totalPages} 页，共 ${total} 人</span>
-                <button class="btn btn-default btn-sm" ${currentUserPage >= totalPages ? 'disabled' : ''} onclick="loadUsers(${currentUserPage + 1})">下一页</button>`;
-        } catch (error) {
-            tbody.innerHTML = '<tr><td colspan="6" class="empty-state">加载失败，请稍后重试</td></tr>';
-            showToast(error.message || '用户列表加载失败', 'error');
-        }
-    }
-
-    function openDisplayIdModal(id) {
-        const user = currentUsersById[String(id)];
-        if (!user) return;
-        document.getElementById('displayIdUserId').value = id;
-        document.getElementById('displayIdUserName').value = user.username || '';
-        document.getElementById('displayIdValue').value = user.display_id || '';
-        showModal('displayIdModal');
-    }
-
-    async function saveDisplayId() {
-        const userId = document.getElementById('displayIdUserId').value;
-        const displayId = document.getElementById('displayIdValue').value.trim();
-        if (!/^\d{1,9}$/.test(displayId)) {
-            showToast('黑金ID只能包含1至9位数字', 'error');
-            return;
-        }
-        try {
-            const result = await request(`/account/users/${userId}/display-id/`, {
-                method: 'PATCH',
-                body: JSON.stringify({ display_id: displayId })
-            });
-            if (result.code === 200) {
-                hideModal('displayIdModal');
-                showToast('黑金ID已更新', 'success');
-                await loadUsers(currentUserPage);
-            }
-        } catch (error) {
-            showToast(error.message || '黑金ID更新失败，请检查是否重复', 'error');
         }
     }
 
