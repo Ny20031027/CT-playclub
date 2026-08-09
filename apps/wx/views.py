@@ -921,7 +921,11 @@ def employee_list(request):
     ).select_related('user', 'user__wx_user').prefetch_related('skills', 'tags', 'game_categories')
 
     if skill_id:
-        queryset = queryset.filter(skill_relations__skill_id=skill_id)
+        queryset = queryset.filter(
+            skill_relations__skill_id=skill_id,
+            skill_relations__is_enabled=True,
+            skill_relations__is_deleted=False,
+        )
     if game_id:
         # 只显示直接绑定了该游戏分类的打手
         queryset = queryset.filter(game_categories__id=game_id).distinct()
@@ -1342,6 +1346,40 @@ def create_self_service_order(request):
         return error_response(msg='该玩法不存在或已下架')
 
     skill = gameplay.skill
+    assigned_employee = None
+    assigned_employee_id = request.data.get('assigned_employee_id')
+    if assigned_employee_id:
+        assigned_employee = Employee.objects.filter(
+            id=assigned_employee_id,
+            status__in=['idle', 'busy'],
+            is_deleted=False,
+            skill_relations__skill=skill,
+            skill_relations__is_enabled=True,
+            skill_relations__is_deleted=False,
+        ).distinct().first()
+        if assigned_employee is None:
+            return error_response(msg='指定的打手当前无法接取该服务')
+
+    game_account = None
+    game_account_id = request.data.get('game_account_id')
+    if game_account_id:
+        game_account = GameAccount.objects.filter(
+            id=game_account_id, user=user, is_deleted=False,
+        ).select_related('game_category').first()
+        if game_account is None:
+            return error_response(msg='请选择有效的游戏账号')
+        if skill.game_category_id and game_account.game_category_id != skill.game_category_id:
+            return error_response(msg='所选游戏账号与当前游戏不匹配')
+
+    choice_snapshot = {
+        'game_account_id': game_account.id if game_account else None,
+        'game_account_name': game_account.game_account if game_account else '',
+        'game_account_category': game_account.game_category.name if game_account else '',
+        'assigned_employee_id': assigned_employee.id if assigned_employee else None,
+        'assigned_employee_name': (
+            assigned_employee.nickname or assigned_employee.real_name
+        ) if assigned_employee else '',
+    }
     if gameplay.order_mode == 'preset':
         preset_item = GameplayPresetItem.objects.select_for_update().filter(
             id=request.data.get('preset_item_id'), gameplay=gameplay,
@@ -1395,6 +1433,7 @@ def create_self_service_order(request):
             'total_amount': float(total_price),
             'pay_amount': float(charged_amount),
             'total_coins': coin_cost,
+            **choice_snapshot,
         }
         order = Order.objects.create(
             order_no=order_no,
@@ -1415,6 +1454,7 @@ def create_self_service_order(request):
             game_name=game_name,
             remark=preset_item.remark or preset_item.content,
             platform='mini_program',
+            assigned_employee=assigned_employee,
         )
         OrderMember.objects.create(
             order=order,
@@ -1722,6 +1762,7 @@ def create_self_service_order(request):
         'addon_value_added_services': selected_addon_values,
         'service_value_added_services': selected_service_values,
         'extra_price_delta': float(extra_price_delta),
+        **choice_snapshot,
     }
 
     # === 扣费前置校验：黑钻是否充足 ===
@@ -1752,6 +1793,7 @@ def create_self_service_order(request):
         game_name=game_name,
         remark=remark,
         platform='mini_program',
+        assigned_employee=assigned_employee,
     )
     OrderMember.objects.create(
         order=order,
@@ -2070,7 +2112,7 @@ def order_detail(request, order_id):
             # 客服可以查看任何未删除的订单
             order = Order.objects.filter(
                 id=order_id, is_deleted=False
-            ).select_related('skill', 'customer').prefetch_related(
+            ).select_related('skill', 'customer', 'assigned_employee').prefetch_related(
                 'order_members__employee', 'comments'
             ).first()
         elif is_dasher:
@@ -2085,7 +2127,7 @@ def order_detail(request, order_id):
                 ),
                 is_deleted=False
             ).distinct()
-            order = order_qs.select_related('skill', 'customer').prefetch_related(
+            order = order_qs.select_related('skill', 'customer', 'assigned_employee').prefetch_related(
                 'order_members__employee', 'comments'
             ).first()
         else:
@@ -2093,7 +2135,7 @@ def order_detail(request, order_id):
             customer = user.customer
             order = Order.objects.filter(
                 id=order_id, customer=customer, is_deleted=False
-            ).select_related('skill', 'customer').prefetch_related(
+            ).select_related('skill', 'customer', 'assigned_employee').prefetch_related(
                 'order_members__employee', 'comments'
             ).first()
     except Order.DoesNotExist:
@@ -2184,6 +2226,14 @@ def order_detail(request, order_id):
     action_flags = build_dasher_order_flags(order, employee if is_dasher else None)
     remaining_slots = get_remaining_slots(order)
     my_booking_slots = parse_member_slots(my_booking) if my_booking else 0
+    visible_snapshot = dict(order.self_service_snapshot or {})
+    if is_dasher:
+        is_active_member = any(member['employee_id'] == employee.id for member in members)
+        can_view_account = is_active_member or order.assigned_employee_id == employee.id
+        if not can_view_account:
+            visible_snapshot.pop('game_account_id', None)
+            visible_snapshot.pop('game_account_name', None)
+            visible_snapshot.pop('game_account_category', None)
 
     return success_response({
         'id': order.id,
@@ -2196,7 +2246,12 @@ def order_detail(request, order_id):
         'quantity': order.quantity,
         'purchase_quantity': float(order.purchase_quantity),
         'settlement_unit': order.settlement_unit,
-        'self_service_snapshot': order.self_service_snapshot,
+        'self_service_snapshot': visible_snapshot,
+        'assigned_employee_id': order.assigned_employee_id,
+        'assigned_employee_name': (
+            order.assigned_employee.nickname or order.assigned_employee.real_name
+        ) if order.assigned_employee else '',
+        'assigned_employee_avatar': employee_avatar_url(order.assigned_employee) if order.assigned_employee else '',
         'locked_slots': order.locked_slots,
         'remaining_slots': remaining_slots,
         'leader_id': leader_id,
@@ -2349,7 +2404,7 @@ def claim_order(request, order_id):
     my_membership = TeamMember.objects.filter(
         employee=employee, status='active'
     ).select_related('team').first()
-    if my_membership and my_membership.team.status:
+    if not order.assigned_employee_id and my_membership and my_membership.team.status:
         teammate_ids = list(
             TeamMember.objects.filter(
                 team=my_membership.team, status='active'

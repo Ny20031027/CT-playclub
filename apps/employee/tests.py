@@ -7,7 +7,7 @@ from apps.account.models import User
 from apps.customer.models import Customer, CustomerConsumeRecord
 from apps.finance.models import Transaction
 from apps.order.models import Order
-from apps.wx.models import GameCategory
+from apps.wx.models import GameAccount, GameCategory
 from .models import (
     AddonValueAddedService, Employee, EmployeeGameRank, EmployeeSkill,
     EmployeeSkillRelation, GameRank, GameplayDifficulty, GameplayLevelOption,
@@ -407,6 +407,14 @@ class SkillSystemTests(TestCase):
         self.assertEqual(customer.total_amount, Decimal('441.90'))
 
     def test_preset_order_replaces_options_and_charges_fixed_price(self):
+        self.employee.game_categories.add(self.game)
+        EmployeeSkillRelation.objects.create(
+            employee=self.employee, skill=self.manual_skill,
+            assignment_source='manual', unit_price=Decimal('29.90'), is_enabled=True,
+        )
+        game_account = GameAccount.objects.create(
+            user=self.user, game_category=self.game, game_account='玩家-测试账号'
+        )
         EmployeeSkillViewSet()._sync_gameplays(self.manual_skill, [{
             'name': '护航',
             'settlement_unit': 'hour',
@@ -471,6 +479,8 @@ class SkillSystemTests(TestCase):
             'gameplay_id': gameplay.id,
             'preset_item_id': preset_item_id,
             'quantity': 2,
+            'game_account_id': game_account.id,
+            'assigned_employee_id': self.employee.id,
         }, format='json').json()
         self.assertNotEqual(insufficient['code'], 200)
         self.assertIn('黑钻不足', insufficient['msg'])
@@ -489,6 +499,8 @@ class SkillSystemTests(TestCase):
             'gameplay_id': gameplay.id,
             'preset_item_id': preset_item_id,
             'quantity': 2,
+            'game_account_id': game_account.id,
+            'assigned_employee_id': self.employee.id,
         }, format='json').json()
         self.assertEqual(response['code'], 200)
         self.assertEqual(response['data']['total_coins'], 598)
@@ -496,8 +508,11 @@ class SkillSystemTests(TestCase):
         self.assertEqual(response['data']['snapshot']['gameplay_name'], '护航')
         self.assertEqual(response['data']['snapshot']['preset_item_name'], '航天护航')
         self.assertEqual(response['data']['snapshot']['quantity'], 2)
+        self.assertEqual(response['data']['snapshot']['game_account_name'], '玩家-测试账号')
+        self.assertEqual(response['data']['snapshot']['assigned_employee_id'], self.employee.id)
         order = Order.objects.get(id=response['data']['order_id'])
         self.assertEqual(order.status, 'published')
+        self.assertEqual(order.assigned_employee, self.employee)
         self.assertEqual(order.purchase_quantity, Decimal('2'))
         self.assertEqual(order.total_amount, Decimal('59.80'))
         self.assertEqual(order.self_service_snapshot['preset_content'], '一局完整护航服务，提交后等待打手接单。')
@@ -513,3 +528,21 @@ class SkillSystemTests(TestCase):
             Transaction.objects.get(order_no=order.order_no).amount,
             Decimal('59.80'),
         )
+
+        outsider_user = User.objects.create_user(username='outsider_dasher')
+        outsider = Employee.objects.create(
+            user=outsider_user, employee_no='EMP-OUTSIDER', real_name='其他打手'
+        )
+        outsider_client = APIClient()
+        outsider_client.force_authenticate(user=outsider_user)
+        denied = outsider_client.post(
+            f'/api/wx/orders/{order.id}/claim/', {}, format='json'
+        ).json()
+        self.assertNotEqual(denied['code'], 200)
+        self.assertIn('仅被预约的打手', denied['msg'])
+        hidden_detail = outsider_client.get(f'/api/wx/orders/{order.id}/').json()['data']
+        self.assertNotIn('game_account_name', hidden_detail['self_service_snapshot'])
+
+        target_detail = self.client.get(f'/api/wx/orders/{order.id}/').json()['data']
+        self.assertEqual(target_detail['self_service_snapshot']['game_account_name'], '玩家-测试账号')
+        self.assertEqual(target_detail['assigned_employee_name'], '测试打手')
