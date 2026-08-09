@@ -26,7 +26,8 @@ class CustomerSerializer(serializers.ModelSerializer):
     tag_names = serializers.SerializerMethodField()
     is_blacklisted = serializers.SerializerMethodField()
     avatar_url = serializers.SerializerMethodField()
-    display_id = serializers.CharField(source='user.display_id', required=False, allow_blank=True)
+    display_id = serializers.SerializerMethodField()
+    edit_display_id = serializers.CharField(write_only=True, required=False, allow_blank=True)
 
     class Meta:
         model = Customer
@@ -47,6 +48,12 @@ class CustomerSerializer(serializers.ModelSerializer):
     def get_avatar_url(self, obj):
         return build_media_url(obj.avatar, self.context.get('request'))
 
+    def get_display_id(self, obj):
+        try:
+            return obj.user.display_id
+        except Exception:
+            return ''
+
     def create(self, validated_data):
         tags = validated_data.pop('tags', [])
         customer = Customer.objects.create(**validated_data)
@@ -55,15 +62,15 @@ class CustomerSerializer(serializers.ModelSerializer):
         return customer
 
     def update(self, instance, validated_data):
-        display_id = validated_data.pop('display_id', None)
+        display_id_val = self.initial_data.get('display_id')
         tags = validated_data.pop('tags', None)
         for attr, value in validated_data.items():
             setattr(instance, attr, value)
         instance.save()
         if tags is not None:
             instance.tags.set(tags)
-        if display_id is not None and instance.user:
-            instance.user.display_id = display_id
+        if display_id_val is not None and instance.user:
+            instance.user.display_id = display_id_val
             instance.user.save(update_fields=['display_id'])
         return instance
 

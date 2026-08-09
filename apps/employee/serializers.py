@@ -262,7 +262,7 @@ class EmployeeStatusSerializer(serializers.ModelSerializer):
 
 class EmployeeSerializer(serializers.ModelSerializer):
     username = serializers.CharField(source='user.username', read_only=True)
-    display_id = serializers.CharField(source='user.display_id', required=False, allow_blank=True)
+    display_id = serializers.SerializerMethodField()
     password = serializers.CharField(write_only=True, required=False)
     department_name = serializers.CharField(source='department.name', read_only=True)
     tag_names = serializers.SerializerMethodField()
@@ -305,6 +305,20 @@ class EmployeeSerializer(serializers.ModelSerializer):
 
     def get_tag_names(self, obj):
         return list(obj.tags.filter(status=True).values_list('name', flat=True))
+
+    def get_display_id(self, obj):
+        try:
+            return obj.user.display_id
+        except Exception:
+            return ''
+
+    def update(self, instance, validated_data):
+        display_id_val = self.initial_data.get('display_id')
+        instance = super().update(instance, validated_data)
+        if display_id_val is not None and instance.user:
+            instance.user.display_id = str(display_id_val) if display_id_val else ''
+            instance.user.save(update_fields=['display_id'])
+        return instance
 
     def get_game_categories_list(self, obj):
         return [{
