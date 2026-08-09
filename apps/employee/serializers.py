@@ -262,7 +262,7 @@ class EmployeeStatusSerializer(serializers.ModelSerializer):
 
 class EmployeeSerializer(serializers.ModelSerializer):
     username = serializers.CharField(source='user.username', read_only=True)
-    display_id = serializers.CharField(source='user.display_id', read_only=True)
+    display_id = serializers.CharField(source='user.display_id', required=False, allow_blank=True)
     password = serializers.CharField(write_only=True, required=False)
     department_name = serializers.CharField(source='department.name', read_only=True)
     tag_names = serializers.SerializerMethodField()

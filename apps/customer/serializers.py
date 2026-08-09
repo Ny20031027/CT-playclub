@@ -26,10 +26,11 @@ class CustomerSerializer(serializers.ModelSerializer):
     tag_names = serializers.SerializerMethodField()
     is_blacklisted = serializers.SerializerMethodField()
     avatar_url = serializers.SerializerMethodField()
+    display_id = serializers.CharField(source='user.display_id', required=False, allow_blank=True)
 
     class Meta:
         model = Customer
-        fields = ['id', 'user', 'nickname', 'avatar', 'avatar_url', 'phone', 'email', 'gender',
+        fields = ['id', 'user', 'display_id', 'nickname', 'avatar', 'avatar_url', 'phone', 'email', 'gender',
                   'age', 'wechat', 'qq', 'level', 'level_name', 'level_color',
                   'tags', 'tag_names', 'total_amount', 'total_orders', 'balance', 'coins',
                   'status', 'source', 'first_order_date', 'last_order_date',
@@ -54,12 +55,16 @@ class CustomerSerializer(serializers.ModelSerializer):
         return customer
 
     def update(self, instance, validated_data):
+        display_id = validated_data.pop('display_id', None)
         tags = validated_data.pop('tags', None)
         for attr, value in validated_data.items():
             setattr(instance, attr, value)
         instance.save()
         if tags is not None:
             instance.tags.set(tags)
+        if display_id is not None and instance.user:
+            instance.user.display_id = display_id
+            instance.user.save(update_fields=['display_id'])
         return instance
 
 
