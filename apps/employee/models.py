@@ -1,4 +1,7 @@
+from decimal import Decimal
+
 from django.db import models
+from django.core.validators import MaxValueValidator, MinValueValidator
 from apps.common.models import BaseModel
 from apps.account.models import User, Department
 
@@ -399,6 +402,14 @@ class Employee(BaseModel):
     fans_count = models.IntegerField(default=0, verbose_name='粉丝数')
     commission_balance = models.DecimalField(max_digits=12, decimal_places=2, default=0,
                                              verbose_name='佣金余额(可提现)')
+    platform_commission_rate = models.DecimalField(
+        max_digits=5, decimal_places=2, default=20,
+        validators=[
+            MinValueValidator(Decimal('0.00')),
+            MaxValueValidator(Decimal('100.00')),
+        ],
+        verbose_name='平台抽成比例(%)'
+    )
     join_date = models.DateField(null=True, blank=True, verbose_name='入职日期')
     bank_name = models.CharField(max_length=100, blank=True, verbose_name='开户行')
     bank_card = models.CharField(max_length=50, blank=True, verbose_name='银行卡号')

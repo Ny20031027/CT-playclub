@@ -28,13 +28,14 @@
                     <th>接单状态</th>
                     <th>上下班</th>
                     <th>明星榜单</th>
+                    <th>平台抽成</th>
                     <th>评分</th>
                     <th>接单数</th>
                     <th>操作</th>
                 </tr>
             </thead>
             <tbody id="employeeList">
-                <tr><td colspan="12" class="empty-state"><i class="fa-solid fa-spinner fa-spin"></i><br>加载中...</td></tr>
+                <tr><td colspan="13" class="empty-state"><i class="fa-solid fa-spinner fa-spin"></i><br>加载中...</td></tr>
             </tbody>
         </table>
     </div>
@@ -67,9 +68,24 @@
                     <div class="form-group"><label>联系电话</label><input type="text" id="editEmpPhone" placeholder="请输入联系电话"></div>
                     <div class="form-group"><label>等级</label><select id="editEmpLevel"><option value="0">0 - 默认</option><option value="1">1</option><option value="2">2</option><option value="3">3</option><option value="4">4</option><option value="5">5</option><option value="6">6</option><option value="7">7</option><option value="8">8</option><option value="9">9</option><option value="10">10</option></select></div>
                     <div class="form-group"><label>考核模式</label><select id="editEmpAssessmentMode"><option value="single">单考</option><option value="double">双考</option></select></div>
-                    <div class="form-group"><label>佣金余额（元）</label><input type="number" id="editEmpCommission" min="0" step="0.01" value="0" placeholder="可提现佣金余额"></div>
                 </div>
                 <div class="form-group employee-intro-field"><label>个人简介</label><textarea id="editEmpIntro" rows="3" placeholder="简要介绍擅长内容和服务特点"></textarea></div>
+            </section>
+            <section class="employee-form-section settlement-settings-section">
+                <div class="employee-section-title"><i class="fa-solid fa-percent"></i><span>佣金结算</span></div>
+                <div class="settlement-settings-grid">
+                    <div class="form-group commission-rate-field">
+                        <label>平台抽成比例</label>
+                        <div class="rate-input-wrap"><input type="number" id="editEmpPlatformRate" min="0" max="100" step="0.01" value="20" inputmode="decimal" oninput="updateCommissionPreview()"><span>%</span></div>
+                        <small>百分制设置，默认平台抽成20%</small>
+                    </div>
+                    <div class="commission-preview">
+                        <div><span>订单金额示例</span><strong>¥100.00</strong></div>
+                        <div class="platform-share"><span>平台获得</span><strong id="platformRatePreview">¥20.00</strong></div>
+                        <div class="employee-share"><span>打手获得</span><strong id="employeeRatePreview">¥80.00</strong></div>
+                    </div>
+                    <div class="form-group"><label>可提现佣金余额（元）</label><input type="number" id="editEmpCommission" min="0" step="0.01" value="0" placeholder="当前可提现余额"><small>手工调整会直接影响个人中心展示，请谨慎修改</small></div>
+                </div>
             </section>
             <section class="employee-form-section">
                 <div class="employee-section-title"><i class="fa-solid fa-star"></i><span>展示设置</span></div>
@@ -320,6 +336,22 @@
     .employee-display-id input { padding-left:54px; color:#5b4517; font-weight:700; letter-spacing:1px; background:#fffdf5; border-color:#e6d39d; }
     .employee-id-prefix { position:absolute; left:10px; top:33px; padding:3px 7px; border-radius:999px; color:#f4d77f; background:#17140f; font-size:10px; font-weight:800; }
     .employee-display-id small { display:block; margin-top:5px; color:#9aa2b2; font-size:11px; }
+    .settlement-settings-section { border-color:#dfe7fb; background:linear-gradient(145deg,#fff,#f8faff); }
+    .settlement-settings-grid { display:grid; grid-template-columns:minmax(190px,.85fr) minmax(260px,1.25fr) minmax(190px,.9fr); gap:16px; align-items:end; }
+    .rate-input-wrap { display:flex; align-items:center; overflow:hidden; border:1px solid #dfe3eb; border-radius:9px; background:#fff; }
+    .rate-input-wrap:focus-within { border-color:#6979e8; box-shadow:0 0 0 3px rgba(105,121,232,.1); }
+    .rate-input-wrap input { border:0!important; box-shadow:none!important; background:transparent!important; }
+    .rate-input-wrap span { padding:0 14px; color:#526075; font-weight:700; }
+    .commission-rate-field small,.settlement-settings-grid .form-group small { display:block; margin-top:6px; color:#8d96a8; font-size:11px; }
+    .commission-preview { display:grid; grid-template-columns:repeat(3,1fr); gap:8px; padding:11px; border:1px solid #e6eaf2; border-radius:12px; background:#fff; }
+    .commission-preview div { min-width:0; padding:9px 10px; border-radius:9px; background:#f6f7fa; }
+    .commission-preview span,.commission-preview strong { display:block; white-space:nowrap; }
+    .commission-preview span { color:#929aab; font-size:11px; }
+    .commission-preview strong { margin-top:5px; color:#30374a; font-size:14px; }
+    .commission-preview .platform-share { background:#fff7e8; }
+    .commission-preview .platform-share strong { color:#d88916; }
+    .commission-preview .employee-share { background:#ecfaf2; }
+    .commission-preview .employee-share strong { color:#279461; }
     .employee-edit-modal .form-group > select {
         width: 100%;
         min-height: 38px;
@@ -340,7 +372,8 @@
     .skill-system-row:last-child { border-bottom: 0; }
     .manual-skill-price { display: flex; align-items: center; gap: 8px; }
     .manual-skill-price input { min-width: 0; }
-    @media (max-width:680px) { .employee-form-grid{grid-template-columns:1fr}.employee-edit-modal{max-width:calc(100vw - 20px)}.employee-edit-modal .modal-body{padding:15px}.star-sort-row{grid-template-columns:1fr} }
+    @media (max-width:900px) { .settlement-settings-grid{grid-template-columns:1fr 1fr}.commission-preview{grid-column:1/-1;grid-row:2} }
+    @media (max-width:680px) { .employee-form-grid,.settlement-settings-grid{grid-template-columns:1fr}.employee-edit-modal{max-width:calc(100vw - 20px)}.employee-edit-modal .modal-body{padding:15px}.star-sort-row{grid-template-columns:1fr}.commission-preview{grid-column:auto;grid-row:auto} }
 </style>
 
 <script>
@@ -478,6 +511,21 @@
         return Array.from(inputs).map(i => parseInt(i.value, 10)).filter(v => !isNaN(v));
     }
 
+    function formatRate(value, fallback = 20) {
+        const number = Number(value);
+        if (!Number.isFinite(number)) return fallback;
+        return Number(number.toFixed(2));
+    }
+
+    function updateCommissionPreview() {
+        const input = document.getElementById('editEmpPlatformRate');
+        if (!input) return;
+        const rawRate = Number(input.value);
+        const platformRate = Number.isFinite(rawRate) ? Math.min(100, Math.max(0, rawRate)) : 20;
+        document.getElementById('platformRatePreview').textContent = `¥${platformRate.toFixed(2)}`;
+        document.getElementById('employeeRatePreview').textContent = `¥${(100 - platformRate).toFixed(2)}`;
+    }
+
     async function loadEmployees() {
         const keyword = document.getElementById('searchInput').value;
         try {
@@ -487,7 +535,7 @@
                 const tbody = document.getElementById('employeeList');
                 
                 if (employees.length === 0) {
-                    tbody.innerHTML = '<tr><td colspan="12" class="empty-state"><i class="fa-solid fa-inbox"></i><br>暂无数据</td></tr>';
+                    tbody.innerHTML = '<tr><td colspan="13" class="empty-state"><i class="fa-solid fa-inbox"></i><br>暂无数据</td></tr>';
                     return;
                 }
 
@@ -523,6 +571,7 @@
                         <td><span class="badge ${status.class}">${status.text}</span></td>
                         <td><span class="badge ${workStatusClass}">${workStatusText}</span></td>
                         <td>${starBadge}</td>
+                        <td><span class="badge badge-info">${formatRate(emp.platform_commission_rate, 20)}%</span></td>
                         <td>${emp.rating || 0.0}</td>
                         <td>${emp.order_count || 0}</td>
                         <td>
@@ -537,7 +586,7 @@
             }
         } catch (error) {
                 console.error('加载打手数据失败:', error);
-                document.getElementById('employeeList').innerHTML = '<tr><td colspan="12" class="empty-state"><i class="fa-solid fa-exclamation-triangle"></i><br>加载失败</td></tr>';
+                document.getElementById('employeeList').innerHTML = '<tr><td colspan="13" class="empty-state"><i class="fa-solid fa-exclamation-triangle"></i><br>加载失败</td></tr>';
             }
     }
 
@@ -668,6 +717,8 @@
                 document.getElementById('editEmpPhone').value = emp.phone || '';
                 document.getElementById('editEmpIntro').value = emp.intro || '';
                 document.getElementById('editEmpCommission').value = emp.commission_balance || 0;
+                document.getElementById('editEmpPlatformRate').value = formatRate(emp.platform_commission_rate, 20);
+                updateCommissionPreview();
                 document.getElementById('editEmpIsStar').checked = Boolean(emp.is_star);
                 document.getElementById('editEmpStarSort').value = Number(emp.star_sort) || 0;
                 toggleStarSortState();
@@ -686,6 +737,11 @@
     async function saveEmployee() {
         const id = document.getElementById('editEmpId').value;
         const game_category_ids = getCheckedGameCategories('editEmpGameCategories');
+        const platformRate = parseFloat(document.getElementById('editEmpPlatformRate').value);
+        if (!Number.isFinite(platformRate) || platformRate < 0 || platformRate > 100) {
+            showToast('平台抽成比例必须是0至100之间的数字', 'error');
+            return;
+        }
         const data = {
             edit_display_id: document.getElementById('editEmpDisplayId').value.trim(),
             nickname: document.getElementById('editEmpNickname').value,
@@ -695,6 +751,7 @@
             phone: document.getElementById('editEmpPhone').value,
             intro: document.getElementById('editEmpIntro').value,
             commission_balance: parseFloat(document.getElementById('editEmpCommission').value) || 0,
+            platform_commission_rate: platformRate,
             is_star: document.getElementById('editEmpIsStar').checked,
             star_sort: Math.max(0, parseInt(document.getElementById('editEmpStarSort').value, 10) || 0),
             game_category_ids: game_category_ids,

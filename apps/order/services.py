@@ -1,17 +1,16 @@
 from decimal import Decimal, ROUND_HALF_UP
 
 from django.db import transaction
-from django.db.models import Q
 from django.utils import timezone
 
-from apps.employee.models import Employee, EmployeeContract, EmployeeWallet
-from apps.finance.models import Transaction
+from apps.employee.models import Employee, EmployeeWallet
+from apps.finance.models import Transaction, Wallet
 
 from .models import Order, OrderStatus
 
 
 MONEY_STEP = Decimal('0.01')
-DEFAULT_COMMISSION_RATE = Decimal('50.00')
+DEFAULT_PLATFORM_COMMISSION_RATE = Decimal('20.00')
 
 
 class OrderCompletionError(Exception):
@@ -22,17 +21,12 @@ def _money(value):
     return Decimal(str(value or 0)).quantize(MONEY_STEP, rounding=ROUND_HALF_UP)
 
 
-def _commission_rate(employee, completed_at):
-    completed_date = completed_at.date()
-    contract = EmployeeContract.objects.filter(
-        employee=employee,
-        status='active',
-        is_deleted=False,
-        start_date__lte=completed_date,
-    ).filter(
-        Q(end_date__isnull=True) | Q(end_date__gte=completed_date)
-    ).order_by('-start_date', '-id').first()
-    rate = _money(contract.commission_rate if contract else DEFAULT_COMMISSION_RATE)
+def _platform_commission_rate(employee):
+    rate = _money(
+        employee.platform_commission_rate
+        if employee.platform_commission_rate is not None
+        else DEFAULT_PLATFORM_COMMISSION_RATE
+    )
     return min(max(rate, Decimal('0.00')), Decimal('100.00'))
 
 
@@ -60,61 +54,105 @@ def settle_order_commission(order):
         .order_by('id')
     )
     if not members:
-        return {'settled_count': 0, 'commission_total': Decimal('0.00')}
+        return {
+            'settled_count': 0,
+            'commission_total': Decimal('0.00'),
+            'platform_commission_total': Decimal('0.00'),
+        }
 
     gross_total = max(_money(locked_order.pay_amount), Decimal('0.00'))
     gross_shares = _split_evenly(gross_total, len(members))
-    completed_at = locked_order.complete_time or timezone.now()
     settled_count = 0
     commission_total = Decimal('0.00')
+    platform_commission_total = Decimal('0.00')
+    platform_wallet = Wallet.objects.select_for_update().filter(
+        type='platform', is_deleted=False
+    ).order_by('id').first()
+    if platform_wallet is None:
+        platform_wallet = Wallet.objects.create(type='platform')
 
     for member, gross_share in zip(members, gross_shares):
-        # 老数据可能只完成了一部分结算，因此按“订单 + 打手”逐人判断。
-        if Transaction.objects.filter(
+        employee_tx_exists = Transaction.objects.filter(
             order_no=locked_order.order_no,
             employee_id=member.employee_id,
             category='order_settle',
-        ).exists():
-            continue
+        ).exists()
+        platform_tx_exists = Transaction.objects.filter(
+            order_no=locked_order.order_no,
+            employee_id=member.employee_id,
+            category='platform_commission',
+        ).exists()
 
         employee = Employee.objects.select_for_update().get(pk=member.employee_id)
-        rate = _commission_rate(employee, completed_at)
-        commission = (gross_share * rate / Decimal('100')).quantize(
+        platform_rate = _platform_commission_rate(employee)
+        employee_rate = Decimal('100.00') - platform_rate
+        employee_commission = (gross_share * employee_rate / Decimal('100')).quantize(
             MONEY_STEP, rounding=ROUND_HALF_UP
         )
-        member.commission_amount = commission
-        member.save(update_fields=['commission_amount', 'updated_at'])
+        platform_commission = gross_share - employee_commission
+        if member.commission_amount != employee_commission:
+            member.commission_amount = employee_commission
+            member.save(update_fields=['commission_amount', 'updated_at'])
 
-        employee.commission_balance = _money(employee.commission_balance) + commission
-        employee.save(update_fields=['commission_balance', 'updated_at'])
+        if not employee_tx_exists:
+            employee.commission_balance = (
+                _money(employee.commission_balance) + employee_commission
+            )
+            employee.save(update_fields=['commission_balance', 'updated_at'])
 
-        employee_wallet, _ = EmployeeWallet.objects.select_for_update().get_or_create(
-            employee=employee
-        )
-        employee_wallet.balance = _money(employee_wallet.balance) + commission
-        employee_wallet.total_income = _money(employee_wallet.total_income) + commission
-        employee_wallet.save(update_fields=['balance', 'total_income', 'updated_at'])
+            employee_wallet, _ = EmployeeWallet.objects.select_for_update().get_or_create(
+                employee=employee
+            )
+            employee_wallet.balance = _money(employee_wallet.balance) + employee_commission
+            employee_wallet.total_income = (
+                _money(employee_wallet.total_income) + employee_commission
+            )
+            employee_wallet.save(update_fields=['balance', 'total_income', 'updated_at'])
 
-        Transaction.objects.create(
-            employee=employee,
-            order_no=locked_order.order_no,
-            transaction_no=f'OSC{locked_order.id:010d}{member.id:010d}',
-            type='income',
-            category='order_settle',
-            amount=commission,
-            balance_after=employee.commission_balance,
-            remark=(
-                f'订单 {locked_order.order_no} 佣金结算：'
-                f'订单分摊¥{gross_share} × {rate}%'
-            ),
-            source='order',
-        )
-        settled_count += 1
-        commission_total += commission
+            Transaction.objects.create(
+                employee=employee,
+                order_no=locked_order.order_no,
+                transaction_no=f'OSC{locked_order.id:010d}{member.id:010d}',
+                type='income',
+                category='order_settle',
+                amount=employee_commission,
+                balance_after=employee.commission_balance,
+                remark=(
+                    f'订单 {locked_order.order_no} 打手结算：订单分摊¥{gross_share} × '
+                    f'{employee_rate}%（平台抽成{platform_rate}%）'
+                ),
+                source='order',
+            )
+            settled_count += 1
+            commission_total += employee_commission
+
+        if not platform_tx_exists:
+            platform_wallet.balance = _money(platform_wallet.balance) + platform_commission
+            platform_wallet.total_income = (
+                _money(platform_wallet.total_income) + platform_commission
+            )
+            platform_wallet.save(update_fields=['balance', 'total_income', 'updated_at'])
+            Transaction.objects.create(
+                wallet=platform_wallet,
+                employee=employee,
+                order_no=locked_order.order_no,
+                transaction_no=f'OPC{locked_order.id:010d}{member.id:010d}',
+                type='income',
+                category='platform_commission',
+                amount=platform_commission,
+                balance_after=platform_wallet.balance,
+                remark=(
+                    f'订单 {locked_order.order_no} 平台抽成：订单分摊¥{gross_share} × '
+                    f'{platform_rate}%'
+                ),
+                source='order',
+            )
+            platform_commission_total += platform_commission
 
     return {
         'settled_count': settled_count,
         'commission_total': _money(commission_total),
+        'platform_commission_total': _money(platform_commission_total),
     }
 
 

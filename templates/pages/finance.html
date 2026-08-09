@@ -1,559 +1,102 @@
 {% extends 'layout.html' %}
 
 {% block content %}
-<script>
-    document.getElementById('pageTitle').textContent = '财务管理';
-</script>
+<script>document.getElementById('pageTitle').textContent = '财务管理';</script>
 
-<div class="stat-cards">
-    <div class="stat-card blue">
-        <div class="stat-icon">
-            <i class="fa-solid fa-wallet"></i>
+<div class="finance-page">
+    <section class="finance-hero">
+        <div>
+            <span class="finance-kicker">FINANCE CENTER</span>
+            <h2>资金与结算中心</h2>
+            <p>订单收入、平台抽成、打手结算和提现进度集中核对。</p>
         </div>
-        <div class="stat-value" id="totalRevenue">0.00</div>
-        <div class="stat-label">总收入</div>
-    </div>
-    <div class="stat-card green">
-        <div class="stat-icon">
-            <i class="fa-solid fa-hand-holding-dollar"></i>
-        </div>
-        <div class="stat-value" id="totalWithdraw">0.00</div>
-        <div class="stat-label">总提现</div>
-    </div>
-    <div class="stat-card orange">
-        <div class="stat-icon">
-            <i class="fa-solid fa-coins"></i>
-        </div>
-        <div class="stat-value" id="balance">0.00</div>
-        <div class="stat-label">余额</div>
-    </div>
-    <div class="stat-card red">
-        <div class="stat-icon">
-            <i class="fa-solid fa-file-invoice-dollar"></i>
-        </div>
-        <div class="stat-value" id="pendingWithdraw">0.00</div>
-        <div class="stat-label">待处理提现</div>
-    </div>
+        <button class="finance-refresh" onclick="refreshFinance()"><i class="fa-solid fa-rotate"></i> 刷新数据</button>
+    </section>
+
+    <section class="finance-stats">
+        <article class="finance-stat stat-revenue"><div class="finance-stat-icon"><i class="fa-solid fa-receipt"></i></div><div><span>已完成订单收入</span><strong id="orderRevenue">¥0.00</strong><small><b id="settledOrderCount">0</b> 笔已完成订单</small></div></article>
+        <article class="finance-stat stat-platform"><div class="finance-stat-icon"><i class="fa-solid fa-building-columns"></i></div><div><span>平台累计抽成</span><strong id="platformIncome">¥0.00</strong><small>本月 <b id="monthPlatformIncome">¥0.00</b></small></div></article>
+        <article class="finance-stat stat-employee"><div class="finance-stat-icon"><i class="fa-solid fa-hand-holding-dollar"></i></div><div><span>打手累计结算</span><strong id="employeeCommission">¥0.00</strong><small>本月 <b id="monthEmployeeCommission">¥0.00</b></small></div></article>
+        <article class="finance-stat stat-pending"><div class="finance-stat-icon"><i class="fa-solid fa-hourglass-half"></i></div><div><span>待处理提现</span><strong id="pendingWithdraw">¥0.00</strong><small>需审核或待打款</small></div></article>
+    </section>
+
+    <section class="finance-balance-strip">
+        <div><span>平台可用余额</span><strong id="platformBalance">¥0.00</strong></div>
+        <div><span>打手钱包余额合计</span><strong id="employeeWalletBalance">¥0.00</strong></div>
+        <div><span>累计完成提现</span><strong id="completedWithdraw">¥0.00</strong></div>
+        <div><span>累计充值</span><strong id="rechargeTotal">¥0.00</strong></div>
+        <div><span>今日平台收入</span><strong id="todayPlatformIncome">¥0.00</strong></div>
+    </section>
+
+    <nav class="finance-tabs" aria-label="财务分类">
+        <button class="finance-tab active" data-tab="platform" onclick="switchFinanceTab('platform', this)"><i class="fa-solid fa-landmark"></i><span>平台流水</span></button>
+        <button class="finance-tab" data-tab="employee" onclick="switchFinanceTab('employee', this)"><i class="fa-solid fa-user-shield"></i><span>打手流水</span></button>
+        <button class="finance-tab" data-tab="withdraw" onclick="switchFinanceTab('withdraw', this)"><i class="fa-solid fa-money-bill-transfer"></i><span>提现管理</span></button>
+        <button class="finance-tab" data-tab="recharge" onclick="switchFinanceTab('recharge', this)"><i class="fa-solid fa-gem"></i><span>充值记录</span></button>
+    </nav>
+
+    <section class="finance-panel active" id="platformPanel">
+        <header class="finance-panel-header"><div><h3>平台流水</h3><p>记录每笔订单按打手抽成比例计入平台的收入。</p></div><div class="finance-filters"><input id="platformSearch" placeholder="搜索订单号、流水号"><select id="platformType"><option value="">全部类型</option><option value="income">收入</option><option value="expense">支出</option></select></div></header>
+        <div class="finance-table-wrap"><table><thead><tr><th>流水号</th><th>订单号</th><th>关联打手</th><th>类型</th><th>平台金额</th><th>余额</th><th>说明</th><th>时间</th></tr></thead><tbody id="platformList"></tbody></table></div>
+        <div class="finance-pagination" id="platformPagination"></div>
+    </section>
+
+    <section class="finance-panel" id="employeePanel">
+        <header class="finance-panel-header"><div><h3>打手流水</h3><p>查看订单结算到账和提现扣款，便于逐笔对账。</p></div><div class="finance-filters"><input id="employeeSearch" placeholder="搜索打手、订单号、流水号"><select id="employeeType"><option value="">全部收支</option><option value="income">收入</option><option value="expense">支出</option></select></div></header>
+        <div class="finance-table-wrap"><table><thead><tr><th>流水号</th><th>打手</th><th>订单号</th><th>业务</th><th>收支</th><th>金额</th><th>余额</th><th>时间</th></tr></thead><tbody id="employeeList"></tbody></table></div>
+        <div class="finance-pagination" id="employeePagination"></div>
+    </section>
+
+    <section class="finance-panel" id="withdrawPanel">
+        <header class="finance-panel-header"><div><h3>提现管理</h3><p>申请时冻结余额，拒绝后自动解冻，完成打款后计入打手支出流水。</p></div><div class="finance-filters"><input id="withdrawSearch" placeholder="搜索打手或提现单号"><select id="withdrawStatus"><option value="">全部状态</option><option value="pending">待审核</option><option value="approved">待打款</option><option value="completed">已完成</option><option value="rejected">已拒绝</option></select><button class="btn btn-primary" onclick="showModal('addWithdrawModal')"><i class="fa-solid fa-plus"></i> 新建提现</button></div></header>
+        <div class="finance-table-wrap"><table><thead><tr><th>提现单号</th><th>打手</th><th>申请金额</th><th>实际到账</th><th>方式</th><th>状态</th><th>申请时间</th><th>操作</th></tr></thead><tbody id="withdrawList"></tbody></table></div>
+        <div class="finance-pagination" id="withdrawPagination"></div>
+    </section>
+
+    <section class="finance-panel" id="rechargePanel">
+        <header class="finance-panel-header"><div><h3>充值记录</h3><p>管理客户人民币充值与黑钻到账记录。</p></div><div class="finance-filters"><input id="rechargeSearch" placeholder="搜索客户或充值单号"><select id="rechargeStatus"><option value="">全部状态</option><option value="completed">已完成</option><option value="pending">待完成</option><option value="cancelled">已取消</option></select><button class="btn btn-primary" onclick="showModal('addRechargeModal')"><i class="fa-solid fa-plus"></i> 新增充值</button></div></header>
+        <div class="finance-table-wrap"><table><thead><tr><th>充值单号</th><th>客户</th><th>金额</th><th>黑钻</th><th>支付方式</th><th>状态</th><th>操作人</th><th>时间</th><th>操作</th></tr></thead><tbody id="rechargeList"></tbody></table></div>
+        <div class="finance-pagination" id="rechargePagination"></div>
+    </section>
 </div>
 
-<div class="tabs">
-    <div class="tab-item active" onclick="switchTab('revenue')">收入记录</div>
-    <div class="tab-item" onclick="switchTab('withdraw')">提现记录</div>
-    <div class="tab-item" onclick="switchTab('recharge')">充值记录</div>
-</div>
+<div class="modal-overlay" id="addWithdrawModal"><div class="modal finance-modal"><div class="modal-header"><div class="modal-title">新建提现申请</div><div class="modal-close" onclick="hideModal('addWithdrawModal')">&times;</div></div><div class="modal-body"><div class="modal-tip"><i class="fa-solid fa-circle-info"></i><span>提交后立即冻结对应余额，防止重复提现。</span></div><form id="addWithdrawForm"><div class="form-group"><label>打手</label><select id="withdrawEmployee" required onchange="updateWithdrawBalanceHint()"><option value="">请选择打手</option></select><small id="withdrawBalanceHint">选择后显示可提现余额</small></div><div class="form-row"><div class="form-group"><label>提现金额</label><input type="number" id="withdrawAmount" step="0.01" min="0.01" required></div><div class="form-group"><label>手续费</label><input type="number" id="withdrawFee" step="0.01" min="0" value="0"></div></div><div class="form-group"><label>提现方式</label><select id="withdrawMethod"><option value="alipay">支付宝</option><option value="wechat">微信</option><option value="bank">银行卡</option></select></div><div class="form-row"><div class="form-group"><label>账户名称</label><input type="text" id="withdrawAccountName" required></div><div class="form-group"><label>收款账号</label><input type="text" id="withdrawAccountNo" required></div></div></form></div><div class="modal-footer"><button class="btn btn-default" onclick="hideModal('addWithdrawModal')">取消</button><button class="btn btn-primary" onclick="addWithdraw()">提交申请</button></div></div></div>
 
-<div id="revenueTab" style="display: block;">
-    <div class="card">
-        <div class="card-header">
-            <div class="card-title">收入记录</div>
-        </div>
-        <div class="table-container">
-            <table>
-                <thead>
-                    <tr>
-                        <th>ID</th>
-                        <th>订单号</th>
-                        <th>客户</th>
-                        <th>金额</th>
-                        <th>类型</th>
-                        <th>时间</th>
-                    </tr>
-                </thead>
-                <tbody id="revenueList">
-                    <tr><td colspan="6" class="empty-state"><i class="fa-solid fa-spinner fa-spin"></i><br>加载中...</td></tr>
-                </tbody>
-            </table>
-        </div>
-    </div>
-</div>
+<div class="modal-overlay" id="addRechargeModal"><div class="modal finance-modal"><div class="modal-header"><div class="modal-title">新增客户充值</div><div class="modal-close" onclick="hideModal('addRechargeModal')">&times;</div></div><div class="modal-body"><form id="addRechargeForm"><div class="form-group"><label>客户</label><select id="rechargeCustomer" required><option value="">请选择客户</option></select></div><div class="form-row"><div class="form-group"><label>充值金额（元）</label><input type="number" id="rechargeAmount" step="0.01" min="0.01" oninput="calculateCoins()"></div><div class="form-group"><label>兑换比例</label><input type="number" id="rechargeRatio" step="1" min="1" value="10" oninput="calculateCoins()"></div></div><div class="form-group"><label>到账黑钻</label><input type="number" id="rechargeCoins" readonly></div><div class="form-group"><label>支付方式</label><select id="rechargeMethod"><option value="balance">余额充值</option><option value="alipay">支付宝</option><option value="wechat">微信</option><option value="bank">银行卡</option></select></div><div class="form-group"><label>备注</label><input type="text" id="rechargeRemark" placeholder="选填"></div></form></div><div class="modal-footer"><button class="btn btn-default" onclick="hideModal('addRechargeModal')">取消</button><button class="btn btn-primary" onclick="addRecharge()">确认充值</button></div></div></div>
 
-<div id="withdrawTab" style="display: none;">
-    <div class="card">
-        <div class="card-header">
-            <div class="card-title">提现记录</div>
-            <div class="card-actions">
-                <button class="btn btn-primary" onclick="showModal('addWithdrawModal')">
-                    <i class="fa-solid fa-plus"></i> 申请提现
-                </button>
-            </div>
-        </div>
-        <div class="table-container">
-            <table>
-                <thead>
-                    <tr>
-                        <th>ID</th>
-                        <th>陪玩师</th>
-                        <th>金额</th>
-                        <th>状态</th>
-                        <th>申请时间</th>
-                        <th>操作</th>
-                    </tr>
-                </thead>
-                <tbody id="withdrawList">
-                    <tr><td colspan="6" class="empty-state"><i class="fa-solid fa-spinner fa-spin"></i><br>加载中...</td></tr>
-                </tbody>
-            </table>
-        </div>
-    </div>
-</div>
-
-<div id="rechargeTab" style="display: none;">
-    <div class="card">
-        <div class="card-header">
-            <div class="card-title">充值记录</div>
-            <div class="card-actions">
-                <input type="text" class="search-input" id="rechargeSearch" placeholder="搜索客户昵称/充值单号">
-                <button class="btn btn-primary" onclick="showModal('addRechargeModal')">
-                    <i class="fa-solid fa-plus"></i> 新增充值
-                </button>
-            </div>
-        </div>
-        <div class="table-container">
-            <table>
-                <thead>
-                    <tr>
-                        <th>ID</th>
-                        <th>充值单号</th>
-                        <th>客户</th>
-                        <th>金额</th>
-                        <th>黑钻</th>
-                        <th>支付方式</th>
-                        <th>状态</th>
-                        <th>操作人</th>
-                        <th>时间</th>
-                        <th>操作</th>
-                    </tr>
-                </thead>
-                <tbody id="rechargeList">
-                    <tr><td colspan="10" class="empty-state"><i class="fa-solid fa-spinner fa-spin"></i><br>加载中...</td></tr>
-                </tbody>
-            </table>
-        </div>
-    </div>
-</div>
-
-<div class="modal-overlay" id="addWithdrawModal">
-    <div class="modal">
-        <div class="modal-header">
-            <div class="modal-title">申请提现</div>
-            <div class="modal-close" onclick="hideModal('addWithdrawModal')">&times;</div>
-        </div>
-        <div class="modal-body">
-            <form id="addWithdrawForm">
-                <div class="form-group">
-                    <label>陪玩师</label>
-                    <select id="withdrawEmployee" required>
-                        <option value="">请选择陪玩师</option>
-                    </select>
-                </div>
-                <div class="form-group">
-                    <label>金额</label>
-                    <input type="number" id="withdrawAmount" step="0.01" min="0.01" required>
-                </div>
-                <div class="form-group">
-                    <label>提现方式</label>
-                    <select id="withdrawMethod">
-                        <option value="alipay">支付宝</option>
-                        <option value="wechat">微信</option>
-                        <option value="bank">银行卡</option>
-                    </select>
-                </div>
-                <div class="form-group">
-                    <label>账户名称</label>
-                    <input type="text" id="withdrawAccountName" required>
-                </div>
-                <div class="form-group">
-                    <label>账号</label>
-                    <input type="text" id="withdrawAccountNo" required>
-                </div>
-            </form>
-        </div>
-        <div class="modal-footer">
-            <button class="btn btn-default" onclick="hideModal('addWithdrawModal')">取消</button>
-            <button class="btn btn-primary" onclick="addWithdraw()">确定</button>
-        </div>
-    </div>
-</div>
-
-<div class="modal-overlay" id="addRechargeModal">
-    <div class="modal">
-        <div class="modal-header">
-            <div class="modal-title">新增充值</div>
-            <div class="modal-close" onclick="hideModal('addRechargeModal')">&times;</div>
-        </div>
-        <div class="modal-body">
-            <form id="addRechargeForm">
-                <div class="form-group">
-                    <label>客户</label>
-                    <select id="rechargeCustomer" required>
-                        <option value="">请选择客户</option>
-                    </select>
-                </div>
-                <div class="form-group">
-                    <label>充值金额（元）</label>
-                    <input type="number" id="rechargeAmount" step="0.01" min="0.01" required oninput="calculateCoins()">
-                </div>
-                <div class="form-group">
-                    <label>兑换比例（1元 = X黑钻）</label>
-                    <input type="number" id="rechargeRatio" step="1" min="1" value="10" required oninput="calculateCoins()">
-                </div>
-                <div class="form-group">
-                    <label>黑钻数量</label>
-                    <input type="number" id="rechargeCoins" readonly>
-                </div>
-                <div class="form-group">
-                    <label>支付方式</label>
-                    <select id="rechargeMethod">
-                        <option value="balance">余额充值</option>
-                        <option value="alipay">支付宝</option>
-                        <option value="wechat">微信</option>
-                        <option value="bank">银行卡</option>
-                    </select>
-                </div>
-                <div class="form-group">
-                    <label>备注</label>
-                    <input type="text" id="rechargeRemark">
-                </div>
-            </form>
-        </div>
-        <div class="modal-footer">
-            <button class="btn btn-default" onclick="hideModal('addRechargeModal')">取消</button>
-            <button class="btn btn-primary" onclick="addRecharge()">确定</button>
-        </div>
-    </div>
-</div>
+<style>
+.finance-page{--ink:#263044;--muted:#8993a6;--line:#e8ecf3;--purple:#6758d9;display:flex;flex-direction:column;gap:18px}.finance-hero{display:flex;align-items:center;justify-content:space-between;gap:20px;padding:25px 28px;border:1px solid #e6e9f2;border-radius:18px;color:#fff;background:radial-gradient(circle at 88% 18%,rgba(255,255,255,.18),transparent 24%),linear-gradient(125deg,#2c3452,#5948be 62%,#7563df);box-shadow:0 14px 34px rgba(55,48,112,.16)}.finance-kicker{font-size:11px;letter-spacing:2px;color:#cbc7ff}.finance-hero h2{margin:7px 0 5px;font-size:24px}.finance-hero p{margin:0;color:#d8d6f5;font-size:13px}.finance-refresh{height:40px;padding:0 17px;border:1px solid rgba(255,255,255,.26);border-radius:11px;color:#fff;background:rgba(255,255,255,.13);cursor:pointer}.finance-refresh:hover{background:rgba(255,255,255,.2)}.finance-stats{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:14px}.finance-stat{display:flex;align-items:flex-start;gap:14px;min-width:0;padding:19px;border:1px solid var(--line);border-radius:16px;background:#fff;box-shadow:0 7px 22px rgba(42,52,79,.055)}.finance-stat-icon{display:flex;align-items:center;justify-content:center;flex:0 0 43px;height:43px;border-radius:12px;font-size:17px}.finance-stat span,.finance-stat strong,.finance-stat small{display:block}.finance-stat span{color:var(--muted);font-size:12px}.finance-stat strong{margin-top:6px;color:var(--ink);font-size:22px}.finance-stat small{margin-top:5px;color:#a1a8b6;font-size:11px}.finance-stat small b{color:#6f7889}.stat-revenue .finance-stat-icon{color:#4d73d9;background:#edf3ff}.stat-platform .finance-stat-icon{color:#d99124;background:#fff5df}.stat-employee .finance-stat-icon{color:#28a36a;background:#eaf9f1}.stat-pending .finance-stat-icon{color:#df6170;background:#fff0f2}.finance-balance-strip{display:grid;grid-template-columns:repeat(5,1fr);overflow:hidden;border:1px solid var(--line);border-radius:14px;background:#fff}.finance-balance-strip div{padding:14px 18px;border-right:1px solid var(--line)}.finance-balance-strip div:last-child{border-right:0}.finance-balance-strip span,.finance-balance-strip strong{display:block}.finance-balance-strip span{color:var(--muted);font-size:11px}.finance-balance-strip strong{margin-top:5px;color:#35405a;font-size:15px}.finance-tabs{display:flex;gap:6px;padding:6px;border:1px solid var(--line);border-radius:14px;background:#fff}.finance-tab{display:flex;align-items:center;justify-content:center;gap:8px;min-width:130px;padding:11px 18px;border:0;border-radius:10px;color:#7d8698;background:transparent;cursor:pointer;font-weight:600}.finance-tab.active{color:#fff;background:linear-gradient(135deg,#6474e8,#7654c8);box-shadow:0 7px 17px rgba(100,92,214,.22)}.finance-panel{display:none;overflow:hidden;border:1px solid var(--line);border-radius:16px;background:#fff;box-shadow:0 7px 22px rgba(42,52,79,.05)}.finance-panel.active{display:block}.finance-panel-header{display:flex;align-items:center;justify-content:space-between;gap:20px;padding:20px 22px;border-bottom:1px solid var(--line)}.finance-panel-header h3{margin:0;color:var(--ink);font-size:16px}.finance-panel-header p{margin:5px 0 0;color:var(--muted);font-size:12px}.finance-filters{display:flex;align-items:center;justify-content:flex-end;gap:9px;flex-wrap:wrap}.finance-filters input,.finance-filters select{height:37px;padding:0 12px;border:1px solid #dde2eb;border-radius:9px;background:#fafbfc;box-sizing:border-box}.finance-filters input{width:220px}.finance-filters input:focus,.finance-filters select:focus{outline:none;border-color:#6c68dc;box-shadow:0 0 0 3px rgba(108,104,220,.1)}.finance-table-wrap{overflow-x:auto}.finance-table-wrap table{min-width:920px}.finance-table-wrap th{white-space:nowrap;color:#7b8495;background:#f7f8fb;font-size:12px}.finance-table-wrap td{color:#4a5366;vertical-align:middle}.finance-amount{font-weight:700}.finance-amount.income{color:#209563}.finance-amount.expense{color:#d75a67}.flow-no{font-family:ui-monospace,SFMono-Regular,Consolas,monospace;color:#667085;font-size:11px}.flow-remark{display:block;max-width:280px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:#7d8698}.finance-empty{padding:48px!important;text-align:center;color:#a4abba}.finance-empty i{display:block;margin-bottom:9px;font-size:25px;color:#c8cdd7}.finance-pagination{display:flex;align-items:center;justify-content:flex-end;gap:10px;min-height:38px;padding:12px 20px;border-top:1px solid var(--line);color:#8a93a5;font-size:12px}.finance-pagination button{padding:6px 12px;border:1px solid #dfe3eb;border-radius:7px;color:#596174;background:#fff;cursor:pointer}.finance-pagination button:disabled{opacity:.45;cursor:not-allowed}.finance-modal{width:560px;max-width:calc(100vw - 28px)}.finance-modal .modal-body{background:#f8f9fb}.finance-modal .form-row{display:grid;grid-template-columns:1fr 1fr;gap:13px}.finance-modal small{display:block;margin-top:6px;color:#8993a6}.modal-tip{display:flex;gap:8px;margin-bottom:15px;padding:11px 13px;border:1px solid #dce6fb;border-radius:9px;color:#58709f;background:#f1f6ff;font-size:12px}
+@media(max-width:1180px){.finance-stats{grid-template-columns:repeat(2,1fr)}.finance-balance-strip{grid-template-columns:repeat(3,1fr)}.finance-balance-strip div{border-bottom:1px solid var(--line)}}@media(max-width:760px){.finance-hero,.finance-panel-header{align-items:flex-start;flex-direction:column}.finance-refresh{width:100%}.finance-stats{grid-template-columns:1fr}.finance-balance-strip{grid-template-columns:1fr 1fr}.finance-tabs{overflow-x:auto;justify-content:flex-start}.finance-tab{min-width:118px}.finance-filters{justify-content:flex-start;width:100%}.finance-filters input{width:100%;flex:1 1 100%}.finance-modal .form-row{grid-template-columns:1fr}}
+</style>
 
 <script>
-    document.addEventListener('DOMContentLoaded', async function() {
-        await loadOverview();
-        await loadRevenue();
-        await loadWithdraws();
-        await loadEmployeeOptions();
-        await loadCustomerOptions();
-        await loadRecharges();
-        
-        document.getElementById('rechargeSearch').addEventListener('input', debounce(async function() {
-            await loadRecharges();
-        }, 300));
-    });
-
-    async function loadOverview() {
-        try {
-            const result = await get('/finance/overview/');
-            if (result.code === 200) {
-                const data = result.data;
-                document.getElementById('totalRevenue').textContent = formatMoney(data.monthIncome);
-                document.getElementById('totalWithdraw').textContent = formatMoney(data.monthExpense);
-                document.getElementById('balance').textContent = formatMoney(data.balance);
-                document.getElementById('pendingWithdraw').textContent = formatMoney(data.pendingSettlement);
-            }
-        } catch (error) {
-            console.error('加载财务概览失败:', error);
-        }
-    }
-
-    async function loadEmployeeOptions() {
-        try {
-            const result = await get('/employee/employees/', { page_size: 100 });
-            if (result.code === 200) {
-                const list = result.data.results || [];
-                const select = document.getElementById('withdrawEmployee');
-                select.innerHTML = '<option value="">请选择陪玩师</option>' +
-                    list.map(e => `<option value="${e.id}">${e.nickname || e.real_name}</option>`).join('');
-            }
-        } catch (error) { console.error('加载陪玩师列表失败:', error); }
-    }
-
-    async function loadRevenue() {
-        try {
-            const result = await get('/finance/transactions/', { type: 'income' });
-            if (result.code === 200) {
-                const transactions = result.data.results || [];
-                const tbody = document.getElementById('revenueList');
-                
-                if (transactions.length === 0) {
-                    tbody.innerHTML = '<tr><td colspan="6" class="empty-state"><i class="fa-solid fa-inbox"></i><br>暂无数据</td></tr>';
-                    return;
-                }
-                
-                tbody.innerHTML = transactions.map(t => `
-                    <tr>
-                        <td>${t.id}</td>
-                        <td>${t.order_no || '-'}</td>
-                        <td>${t.employee_name || '-'}</td>
-                        <td>¥${formatMoney(t.amount)}</td>
-                        <td><span class="badge badge-success">${t.type_text || '收入'}</span></td>
-                        <td>${formatDate(t.created_at)}</td>
-                    </tr>
-                `).join('');
-            }
-        } catch (error) {
-            console.error('加载收入记录失败:', error);
-        }
-    }
-
-    async function loadWithdraws() {
-        try {
-            const result = await get('/finance/withdraws/');
-            if (result.code === 200) {
-                const withdraws = result.data.results || [];
-                const tbody = document.getElementById('withdrawList');
-                
-                if (withdraws.length === 0) {
-                    tbody.innerHTML = '<tr><td colspan="6" class="empty-state"><i class="fa-solid fa-inbox"></i><br>暂无数据</td></tr>';
-                    return;
-                }
-                
-                tbody.innerHTML = withdraws.map(w => `
-                    <tr>
-                        <td>${w.id}</td>
-                        <td>${w.employee_name || '-'}</td>
-                        <td>¥${formatMoney(w.amount)}</td>
-                        <td><span class="badge ${getWithdrawStatusBadge(w.status)}">${getWithdrawStatusText(w.status)}</span></td>
-                        <td>${formatDate(w.created_at)}</td>
-                        <td>
-                            ${w.status === 'pending' ? `<button class="btn btn-success" onclick="approveWithdraw(${w.id})">审核通过</button>` : ''}
-                            ${w.status === 'pending' ? `<button class="btn btn-danger" onclick="rejectWithdraw(${w.id})">拒绝</button>` : ''}
-                        </td>
-                    </tr>
-                `).join('');
-            }
-        } catch (error) {
-            console.error('加载提现记录失败:', error);
-        }
-    }
-
-    function getWithdrawStatusText(status) {
-        const map = {
-            'pending': '待审核',
-            'approved': '已通过',
-            'paid': '已打款',
-            'rejected': '已拒绝'
-        };
-        return map[status] || status;
-    }
-
-    function getWithdrawStatusBadge(status) {
-        const map = {
-            'pending': 'badge-warning',
-            'approved': 'badge-info',
-            'paid': 'badge-success',
-            'rejected': 'badge-danger'
-        };
-        return map[status] || 'badge-info';
-    }
-
-    function switchTab(tab) {
-        document.querySelectorAll('.tab-item').forEach(t => t.classList.remove('active'));
-        event.target.classList.add('active');
-        
-        document.getElementById('revenueTab').style.display = tab === 'revenue' ? 'block' : 'none';
-        document.getElementById('withdrawTab').style.display = tab === 'withdraw' ? 'block' : 'none';
-        document.getElementById('rechargeTab').style.display = tab === 'recharge' ? 'block' : 'none';
-    }
-
-    async function addWithdraw() {
-        const employeeId = document.getElementById('withdrawEmployee').value;
-        const amount = document.getElementById('withdrawAmount').value;
-        const method = document.getElementById('withdrawMethod').value;
-        const accountName = document.getElementById('withdrawAccountName').value;
-        const accountNo = document.getElementById('withdrawAccountNo').value;
-
-        if (!employeeId) {
-            showToast('请选择陪玩师', 'error');
-            return;
-        }
-        
-        try {
-            const result = await post('/finance/withdraws/', {
-                employee: parseInt(employeeId),
-                amount: parseFloat(amount),
-                withdraw_method: method,
-                account_name: accountName,
-                account_no: accountNo
-            });
-            
-            if (result.code === 200) {
-                showToast('提现申请已提交', 'success');
-                hideModal('addWithdrawModal');
-                document.getElementById('addWithdrawForm').reset();
-                await loadWithdraws();
-                await loadOverview();
-            } else {
-                showToast(result.msg, 'error');
-            }
-        } catch (error) {
-            showToast(error.message, 'error');
-        }
-    }
-
-    async function approveWithdraw(id) {
-        try {
-            const result = await post(`/finance/withdraws/${id}/approve/`);
-            if (result.code === 200) {
-                showToast('审核通过', 'success');
-                await loadWithdraws();
-                await loadOverview();
-            } else {
-                showToast(result.msg, 'error');
-            }
-        } catch (error) {
-            showToast(error.message, 'error');
-        }
-    }
-
-    async function rejectWithdraw(id) {
-        if (!confirm('确定要拒绝该提现申请吗？')) return;
-        
-        try {
-            const result = await post(`/finance/withdraws/${id}/reject/`);
-            if (result.code === 200) {
-                showToast('已拒绝', 'success');
-                await loadWithdraws();
-                await loadOverview();
-            } else {
-                showToast(result.msg, 'error');
-            }
-        } catch (error) {
-            showToast(error.message, 'error');
-        }
-    }
-
-    async function loadCustomerOptions() {
-        try {
-            const result = await get('/customer/customers/', { page_size: 100 });
-            if (result.code === 200) {
-                const list = result.data.results || [];
-                const select = document.getElementById('rechargeCustomer');
-                select.innerHTML = '<option value="">请选择客户</option>' +
-                    list.map(c => `<option value="${c.id}">${c.nickname || c.phone || c.id}</option>`).join('');
-            }
-        } catch (error) { console.error('加载客户列表失败:', error); }
-    }
-
-    async function loadRecharges() {
-        const keyword = document.getElementById('rechargeSearch').value;
-        try {
-            const params = {};
-            if (keyword) {
-                params.search = keyword;
-            }
-            const result = await get('/finance/recharges/', params);
-            if (result.code === 200) {
-                const recharges = result.data.results || [];
-                const tbody = document.getElementById('rechargeList');
-                
-                if (recharges.length === 0) {
-                    tbody.innerHTML = '<tr><td colspan="10" class="empty-state"><i class="fa-solid fa-inbox"></i><br>暂无数据</td></tr>';
-                    return;
-                }
-                
-                tbody.innerHTML = recharges.map(r => `
-                    <tr>
-                        <td>${r.id}</td>
-                        <td>${r.recharge_no || '-'}</td>
-                        <td>${r.customer_name || '-'}</td>
-                        <td>¥${formatMoney(r.amount)}</td>
-                        <td><span class="badge badge-warning">💎 ${r.coins || 0}</span></td>
-                        <td>${r.payment_method_text || '-'}</td>
-                        <td><span class="badge ${getRechargeStatusBadge(r.status)}">${getRechargeStatusText(r.status)}</span></td>
-                        <td>${r.operator_name || '-'}</td>
-                        <td>${formatDate(r.created_at)}</td>
-                        <td>
-                            ${r.status === 'pending' ? `<button class="btn btn-danger" onclick="cancelRecharge(${r.id})">取消</button>` : '-'}
-                        </td>
-                    </tr>
-                `).join('');
-            }
-        } catch (error) {
-            console.error('加载充值记录失败:', error);
-        }
-    }
-
-    function calculateCoins() {
-        const amount = parseFloat(document.getElementById('rechargeAmount').value) || 0;
-        const ratio = parseFloat(document.getElementById('rechargeRatio').value) || 10;
-        const coins = Math.floor(amount * ratio);
-        document.getElementById('rechargeCoins').value = coins;
-    }
-
-    async function addRecharge() {
-        const customerId = document.getElementById('rechargeCustomer').value;
-        const amount = document.getElementById('rechargeAmount').value;
-        const ratio = document.getElementById('rechargeRatio').value;
-        const coins = document.getElementById('rechargeCoins').value;
-        const method = document.getElementById('rechargeMethod').value;
-        const remark = document.getElementById('rechargeRemark').value;
-
-        if (!customerId) {
-            showToast('请选择客户', 'error');
-            return;
-        }
-        if (!amount || parseFloat(amount) <= 0) {
-            showToast('请输入正确的充值金额', 'error');
-            return;
-        }
-        
-        try {
-            const result = await post('/finance/recharges/', {
-                customer: parseInt(customerId),
-                amount: parseFloat(amount),
-                ratio: parseFloat(ratio),
-                coins: parseInt(coins),
-                payment_method: method,
-                remark: remark
-            });
-            
-            if (result.code === 200) {
-                showToast('充值成功', 'success');
-                hideModal('addRechargeModal');
-                document.getElementById('addRechargeForm').reset();
-                document.getElementById('rechargeCoins').value = '';
-                await loadRecharges();
-                await loadOverview();
-            } else {
-                showToast(result.msg, 'error');
-            }
-        } catch (error) {
-            showToast(error.message, 'error');
-        }
-    }
-
-    async function cancelRecharge(id) {
-        if (!confirm('确定要取消该充值记录吗？')) return;
-        
-        try {
-            const result = await post(`/finance/recharges/${id}/cancel/`);
-            if (result.code === 200) {
-                showToast('已取消', 'success');
-                await loadRecharges();
-                await loadOverview();
-            } else {
-                showToast(result.msg, 'error');
-            }
-        } catch (error) {
-            showToast(error.message, 'error');
-        }
-    }
-
-    function getRechargeStatusText(status) {
-        const map = {
-            'pending': '待完成',
-            'completed': '已完成',
-            'failed': '失败',
-            'cancelled': '已取消'
-        };
-        return map[status] || status;
-    }
-
-    function getRechargeStatusBadge(status) {
-        const map = {
-            'pending': 'badge-warning',
-            'completed': 'badge-success',
-            'failed': 'badge-danger',
-            'cancelled': 'badge-info'
-        };
-        return map[status] || 'badge-info';
-    }
+const financeState={active:'platform',platform:{page:1,count:0},employee:{page:1,count:0},withdraw:{page:1,count:0},recharge:{page:1,count:0}};const PAGE_SIZE=15;
+document.addEventListener('DOMContentLoaded',async()=>{bindFinanceFilters();await Promise.all([loadOverview(),loadEmployeeOptions(),loadCustomerOptions()]);await loadPlatformTransactions()});
+function safe(value){return String(value??'').replace(/[&<>'"]/g,char=>({'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','"':'&quot;'}[char]))}
+function money(value){return `¥${formatMoney(value)}`}
+async function financePost(url,data={}){try{return await post(url,data)}catch(error){showToast(error.message||'操作失败，请稍后重试','error');return null}}
+function bindFinanceFilters(){[['platformSearch',loadPlatformTransactions],['platformType',loadPlatformTransactions],['employeeSearch',loadEmployeeTransactions],['employeeType',loadEmployeeTransactions],['withdrawSearch',loadWithdraws],['withdrawStatus',loadWithdraws],['rechargeSearch',loadRecharges],['rechargeStatus',loadRecharges]].forEach(([id,loader])=>{const el=document.getElementById(id);el.addEventListener(el.tagName==='INPUT'?'input':'change',el.tagName==='INPUT'?debounce(()=>{financeState[financeState.active].page=1;loader()},300):()=>{financeState[financeState.active].page=1;loader()})})}
+async function loadOverview(){try{const result=await get('/finance/overview/');if(result.code!==200)return;const d=result.data||{};[['orderRevenue',d.orderRevenue],['platformIncome',d.platformIncome],['employeeCommission',d.employeeCommission],['pendingWithdraw',d.pendingWithdraw],['platformBalance',d.balance],['employeeWalletBalance',d.employeeWalletBalance],['completedWithdraw',d.completedWithdraw],['rechargeTotal',d.rechargeTotal],['todayPlatformIncome',d.todayPlatformIncome],['monthPlatformIncome',d.monthPlatformIncome],['monthEmployeeCommission',d.monthEmployeeCommission]].forEach(([id,value])=>document.getElementById(id).textContent=money(value));document.getElementById('settledOrderCount').textContent=d.settledOrderCount||0}catch(error){showToast('财务概览加载失败','error')}}
+async function refreshFinance(){await loadOverview();await ({platform:loadPlatformTransactions,employee:loadEmployeeTransactions,withdraw:loadWithdraws,recharge:loadRecharges}[financeState.active])();showToast('财务数据已刷新','success')}
+function switchFinanceTab(tab,button){financeState.active=tab;document.querySelectorAll('.finance-tab').forEach(el=>el.classList.toggle('active',el===button));document.querySelectorAll('.finance-panel').forEach(el=>el.classList.remove('active'));document.getElementById(`${tab}Panel`).classList.add('active');({platform:loadPlatformTransactions,employee:loadEmployeeTransactions,withdraw:loadWithdraws,recharge:loadRecharges}[tab])()}
+function emptyRow(columns,text='暂无数据'){return `<tr><td colspan="${columns}" class="finance-empty"><i class="fa-solid fa-box-open"></i>${text}</td></tr>`}
+function renderPagination(scope,loader){const state=financeState[scope],pages=Math.max(1,Math.ceil(state.count/PAGE_SIZE)),box=document.getElementById(`${scope}Pagination`);box.innerHTML=`<span>共 ${state.count} 条 · 第 ${state.page}/${pages} 页</span><button ${state.page<=1?'disabled':''} onclick="changeFinancePage('${scope}',-1)">上一页</button><button ${state.page>=pages?'disabled':''} onclick="changeFinancePage('${scope}',1)">下一页</button>`;state.loader=loader}
+function changeFinancePage(scope,delta){const state=financeState[scope],pages=Math.max(1,Math.ceil(state.count/PAGE_SIZE)),next=Math.min(pages,Math.max(1,state.page+delta));if(next===state.page)return;state.page=next;state.loader()}
+async function loadPlatformTransactions(){const state=financeState.platform;try{const result=await get('/finance/transactions/',{scope:'platform',page:state.page,page_size:PAGE_SIZE,ordering:'-created_at',search:document.getElementById('platformSearch').value,type:document.getElementById('platformType').value});const rows=result.data?.results||[];state.count=result.data?.count||rows.length;document.getElementById('platformList').innerHTML=rows.length?rows.map(t=>`<tr><td><span class="flow-no">${safe(t.transaction_no)}</span></td><td>${safe(t.order_no||'-')}</td><td>${safe(t.employee_name||'-')}</td><td><span class="badge ${t.type==='income'?'badge-success':'badge-danger'}">${safe(t.category_text)}</span></td><td class="finance-amount ${t.type}">${t.type==='expense'?'-':'+'}${money(t.amount)}</td><td>${money(t.balance_after)}</td><td><span class="flow-remark" title="${safe(t.remark)}">${safe(t.remark||'-')}</span></td><td>${formatDate(t.created_at)}</td></tr>`).join(''):emptyRow(8);renderPagination('platform',loadPlatformTransactions)}catch(error){document.getElementById('platformList').innerHTML=emptyRow(8,'平台流水加载失败')}}
+async function loadEmployeeTransactions(){const state=financeState.employee;try{const result=await get('/finance/transactions/',{scope:'employee',page:state.page,page_size:PAGE_SIZE,ordering:'-created_at',search:document.getElementById('employeeSearch').value,type:document.getElementById('employeeType').value});const rows=result.data?.results||[];state.count=result.data?.count||rows.length;document.getElementById('employeeList').innerHTML=rows.length?rows.map(t=>`<tr><td><span class="flow-no">${safe(t.transaction_no)}</span></td><td><strong>${safe(t.employee_name||'-')}</strong></td><td>${safe(t.order_no||'-')}</td><td>${safe(t.category_text)}</td><td><span class="badge ${t.type==='income'?'badge-success':'badge-danger'}">${safe(t.type_text)}</span></td><td class="finance-amount ${t.type}">${t.type==='expense'?'-':'+'}${money(t.amount)}</td><td>${money(t.balance_after)}</td><td>${formatDate(t.created_at)}</td></tr>`).join(''):emptyRow(8);renderPagination('employee',loadEmployeeTransactions)}catch(error){document.getElementById('employeeList').innerHTML=emptyRow(8,'打手流水加载失败')}}
+const withdrawStatusText={pending:'待审核',approved:'待打款',processing:'处理中',completed:'已完成',rejected:'已拒绝',failed:'失败'};const withdrawBadge={pending:'badge-warning',approved:'badge-info',processing:'badge-info',completed:'badge-success',rejected:'badge-danger',failed:'badge-danger'};
+async function loadWithdraws(){const state=financeState.withdraw;try{const result=await get('/finance/withdraws/',{page:state.page,page_size:PAGE_SIZE,ordering:'-created_at',search:document.getElementById('withdrawSearch').value,status:document.getElementById('withdrawStatus').value});const rows=result.data?.results||[];state.count=result.data?.count||rows.length;document.getElementById('withdrawList').innerHTML=rows.length?rows.map(w=>`<tr><td><span class="flow-no">${safe(w.withdraw_no)}</span></td><td><strong>${safe(w.employee_name||'-')}</strong></td><td class="finance-amount">${money(w.amount)}</td><td>${money(w.actual_amount)}</td><td>${({alipay:'支付宝',wechat:'微信',bank:'银行卡'})[w.withdraw_method]||w.withdraw_method}</td><td><span class="badge ${withdrawBadge[w.status]||'badge-info'}">${withdrawStatusText[w.status]||w.status}</span></td><td>${formatDate(w.created_at)}</td><td class="flow-actions">${w.status==='pending'?`<button class="btn btn-success" onclick="approveWithdraw(${w.id})">通过</button><button class="btn btn-danger" onclick="rejectWithdraw(${w.id})">拒绝</button>`:''}${w.status==='approved'?`<button class="btn btn-primary" onclick="completeWithdraw(${w.id})">确认打款</button>`:''}${!['pending','approved'].includes(w.status)?'-':''}</td></tr>`).join(''):emptyRow(8);renderPagination('withdraw',loadWithdraws)}catch(error){document.getElementById('withdrawList').innerHTML=emptyRow(8,'提现记录加载失败')}}
+async function approveWithdraw(id){const result=await financePost(`/finance/withdraws/${id}/approve/`);if(!result)return;if(result.code===200){showToast('已审核通过','success');await Promise.all([loadWithdraws(),loadOverview()])}else showToast(result.msg||'操作失败','error')}
+async function rejectWithdraw(id){if(!confirm('拒绝后将自动解冻该笔提现金额，确定继续吗？'))return;const result=await financePost(`/finance/withdraws/${id}/reject/`);if(!result)return;if(result.code===200){showToast('已拒绝并解冻余额','success');await Promise.all([loadWithdraws(),loadOverview(),loadEmployeeOptions()])}else showToast(result.msg||'操作失败','error')}
+async function completeWithdraw(id){if(!confirm('请确认已完成线下打款。确认后将扣减打手余额并生成流水。'))return;const result=await financePost(`/finance/withdraws/${id}/complete/`);if(!result)return;if(result.code===200){showToast('提现已完成','success');await Promise.all([loadWithdraws(),loadOverview(),loadEmployeeOptions()])}else showToast(result.msg||'操作失败','error')}
+async function loadEmployeeOptions(){try{const result=await get('/employee/employees/',{page_size:100});const list=result.data?.results||[];document.getElementById('withdrawEmployee').innerHTML='<option value="">请选择打手</option>'+list.map(e=>`<option value="${e.id}" data-balance="${Number(e.wallet?.balance||e.commission_balance||0)}">${safe(e.nickname||e.real_name||`打手#${e.id}`)} · 可用${money(e.wallet?.balance||e.commission_balance||0)}</option>`).join('')}catch(error){console.error(error)}}
+function updateWithdrawBalanceHint(){const option=document.getElementById('withdrawEmployee').selectedOptions[0],balance=Number(option?.dataset.balance||0);document.getElementById('withdrawBalanceHint').textContent=option?.value?`当前可提现余额：${money(balance)}`:'选择后显示可提现余额'}
+async function addWithdraw(){const employee=Number(document.getElementById('withdrawEmployee').value),amount=Number(document.getElementById('withdrawAmount').value),fee=Number(document.getElementById('withdrawFee').value||0);if(!employee||!amount||amount<=0){showToast('请选择打手并填写正确金额','error');return}const result=await financePost('/finance/withdraws/',{employee,amount,fee,withdraw_method:document.getElementById('withdrawMethod').value,account_name:document.getElementById('withdrawAccountName').value.trim(),account_no:document.getElementById('withdrawAccountNo').value.trim()});if(!result)return;if(result.code===200){showToast('提现申请已创建，余额已冻结','success');hideModal('addWithdrawModal');document.getElementById('addWithdrawForm').reset();document.getElementById('withdrawFee').value='0';await Promise.all([loadWithdraws(),loadOverview(),loadEmployeeOptions()])}else showToast(result.msg||'申请失败','error')}
+const rechargeStatusText={pending:'待完成',completed:'已完成',failed:'失败',cancelled:'已取消'};const rechargeBadge={pending:'badge-warning',completed:'badge-success',failed:'badge-danger',cancelled:'badge-info'};
+async function loadCustomerOptions(){try{const result=await get('/customer/customers/',{page_size:100});const list=result.data?.results||[];document.getElementById('rechargeCustomer').innerHTML='<option value="">请选择客户</option>'+list.map(c=>`<option value="${c.id}">${safe(c.nickname||c.phone||`客户#${c.id}`)}</option>`).join('')}catch(error){console.error(error)}}
+async function loadRecharges(){const state=financeState.recharge;try{const result=await get('/finance/recharges/',{page:state.page,page_size:PAGE_SIZE,ordering:'-created_at',search:document.getElementById('rechargeSearch').value,status:document.getElementById('rechargeStatus').value});const rows=result.data?.results||[];state.count=result.data?.count||rows.length;document.getElementById('rechargeList').innerHTML=rows.length?rows.map(r=>`<tr><td><span class="flow-no">${safe(r.recharge_no)}</span></td><td><strong>${safe(r.customer_name||'-')}</strong></td><td class="finance-amount income">${money(r.amount)}</td><td><span class="badge badge-warning">◆ ${r.coins||0}</span></td><td>${safe(r.payment_method_text||'-')}</td><td><span class="badge ${rechargeBadge[r.status]||'badge-info'}">${rechargeStatusText[r.status]||r.status}</span></td><td>${safe(r.operator_name||'-')}</td><td>${formatDate(r.created_at)}</td><td>${r.status==='pending'?`<button class="btn btn-danger" onclick="cancelRecharge(${r.id})">取消</button>`:'-'}</td></tr>`).join(''):emptyRow(9);renderPagination('recharge',loadRecharges)}catch(error){document.getElementById('rechargeList').innerHTML=emptyRow(9,'充值记录加载失败')}}
+function calculateCoins(){const amount=Number(document.getElementById('rechargeAmount').value||0),ratio=Number(document.getElementById('rechargeRatio').value||10);document.getElementById('rechargeCoins').value=Math.floor(amount*ratio)}
+async function addRecharge(){const customer=Number(document.getElementById('rechargeCustomer').value),amount=Number(document.getElementById('rechargeAmount').value),ratio=Number(document.getElementById('rechargeRatio').value||10),coins=Number(document.getElementById('rechargeCoins').value);if(!customer||!amount||amount<=0){showToast('请选择客户并填写正确金额','error');return}const result=await financePost('/finance/recharges/',{customer,amount,ratio,coins,payment_method:document.getElementById('rechargeMethod').value,remark:document.getElementById('rechargeRemark').value.trim()});if(!result)return;if(result.code===200){showToast('充值成功','success');hideModal('addRechargeModal');document.getElementById('addRechargeForm').reset();document.getElementById('rechargeRatio').value='10';await Promise.all([loadRecharges(),loadOverview()])}else showToast(result.msg||'充值失败','error')}
+async function cancelRecharge(id){if(!confirm('确定取消该充值记录吗？'))return;const result=await financePost(`/finance/recharges/${id}/cancel/`);if(!result)return;if(result.code===200){showToast('充值记录已取消','success');await Promise.all([loadRecharges(),loadOverview()])}else showToast(result.msg||'操作失败','error')}
 </script>
 {% endblock %}

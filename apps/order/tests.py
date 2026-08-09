@@ -1,4 +1,3 @@
-from datetime import date, timedelta
 from decimal import Decimal
 
 from django.test import TestCase
@@ -7,9 +6,9 @@ from rest_framework.test import APIClient
 from apps.account.models import User
 from apps.customer.models import Customer
 from apps.employee.models import (
-    Employee, EmployeeContract, EmployeeSkill, EmployeeWallet,
+    Employee, EmployeeSkill, EmployeeWallet,
 )
-from apps.finance.models import Transaction
+from apps.finance.models import Transaction, Wallet
 
 from .models import Order, OrderMember
 from .services import complete_order_and_settle, settle_order_commission
@@ -25,7 +24,7 @@ class OrderCommissionSettlementTests(TestCase):
             name='结算技能', category='test', status=True
         )
 
-    def create_employee(self, suffix, rate=None):
+    def create_employee(self, suffix, employee_rate=None):
         user = User.objects.create_user(username=f'settlement-{suffix}')
         employee = Employee.objects.create(
             user=user,
@@ -33,15 +32,11 @@ class OrderCommissionSettlementTests(TestCase):
             real_name=f'打手{suffix}',
             nickname=f'打手{suffix}',
             status='busy',
+            platform_commission_rate=(
+                Decimal('100.00') - employee_rate
+                if employee_rate is not None else Decimal('20.00')
+            ),
         )
-        if rate is not None:
-            EmployeeContract.objects.create(
-                employee=employee,
-                contract_no=f'CONTRACT-{suffix}',
-                start_date=date.today() - timedelta(days=1),
-                status='active',
-                commission_rate=rate,
-            )
         return employee
 
     def create_order(self, order_no, pay_amount, employees, order_type='self_service'):
@@ -69,7 +64,7 @@ class OrderCommissionSettlementTests(TestCase):
             )
         return order
 
-    def test_self_service_uses_rmb_amount_contract_rate_and_is_idempotent(self):
+    def test_self_service_uses_employee_platform_rate_and_is_idempotent(self):
         employee = self.create_employee('one', Decimal('80.00'))
         order = self.create_order('SETTLE-ORDER-001', Decimal('100.00'), [employee])
 
@@ -92,15 +87,21 @@ class OrderCommissionSettlementTests(TestCase):
         )
         self.assertEqual(tx.amount, Decimal('80.00'))
         self.assertEqual(tx.balance_after, Decimal('80.00'))
+        platform_tx = Transaction.objects.get(
+            order_no=order.order_no, employee=employee, category='platform_commission'
+        )
+        self.assertEqual(platform_tx.amount, Decimal('20.00'))
+        self.assertEqual(Wallet.objects.get(type='platform').balance, Decimal('20.00'))
 
         order.refresh_from_db()
         repeated = settle_order_commission(order)
         employee.refresh_from_db()
         self.assertEqual(repeated['settled_count'], 0)
         self.assertEqual(employee.commission_balance, Decimal('80.00'))
-        self.assertEqual(Transaction.objects.filter(order_no=order.order_no).count(), 1)
+        self.assertEqual(Transaction.objects.filter(order_no=order.order_no).count(), 2)
+        self.assertEqual(Wallet.objects.get(type='platform').balance, Decimal('20.00'))
 
-    def test_multi_member_commission_uses_each_contract_rate(self):
+    def test_multi_member_commission_uses_each_employee_rate(self):
         first = self.create_employee('first', Decimal('60.00'))
         second = self.create_employee('second', Decimal('40.00'))
         order = self.create_order(
@@ -113,6 +114,7 @@ class OrderCommissionSettlementTests(TestCase):
         second.refresh_from_db()
         self.assertEqual(result['settled_count'], 2)
         self.assertEqual(result['commission_total'], Decimal('50.00'))
+        self.assertEqual(result['platform_commission_total'], Decimal('50.00'))
         self.assertEqual(first.commission_balance, Decimal('30.00'))
         self.assertEqual(second.commission_balance, Decimal('20.00'))
         self.assertEqual(
@@ -151,6 +153,7 @@ class OrderCommissionSettlementTests(TestCase):
 
         self.assertEqual(payload['code'], 200)
         self.assertEqual(payload['data']['commission_total'], 35.0)
+        self.assertEqual(payload['data']['platform_commission_total'], 15.0)
         employee.refresh_from_db()
         self.assertEqual(employee.commission_balance, Decimal('35.00'))
 
@@ -166,6 +169,7 @@ class OrderCommissionSettlementTests(TestCase):
 
         self.assertEqual(payload['code'], 200)
         self.assertEqual(payload['data']['commission_total'], 30.0)
+        self.assertEqual(payload['data']['platform_commission_total'], 10.0)
         order.refresh_from_db()
         employee.refresh_from_db()
         self.assertEqual(order.status, 'completed')

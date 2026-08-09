@@ -113,8 +113,8 @@ class SettlementDetail(BaseModel):
                                        verbose_name='订单总额')
     commission_amount = models.DecimalField(max_digits=10, decimal_places=2, default=0,
                                             verbose_name='提成金额')
-    commission_rate = models.DecimalField(max_digits=5, decimal_places=2, default=50,
-                                          verbose_name='提成比例(%)')
+    commission_rate = models.DecimalField(max_digits=5, decimal_places=2, default=80,
+                                          verbose_name='打手结算比例(%)')
     status = models.CharField(max_length=20, default='pending', choices=[
         ('pending', '待结算'),
         ('completed', '已结算'),

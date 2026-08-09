@@ -1,4 +1,5 @@
 from rest_framework import serializers
+from django.db import transaction
 from apps.account.models import User
 from apps.account.serializers import validate_display_id
 from apps.common.media import build_media_url
@@ -288,7 +289,7 @@ class EmployeeSerializer(serializers.ModelSerializer):
                   'assessment_mode', 'online_status', 'work_status', 'skills', 'game_category_ids',
                   'game_categories_list', 'tags', 'tag_names', 'skill_list',
                   'intro', 'voice_intro', 'voice_intro_url', 'voice_duration', 'rating', 'order_count', 'total_duration', 'fans_count',
-                  'commission_balance', 'join_date',
+                  'commission_balance', 'platform_commission_rate', 'join_date',
                   'bank_name', 'bank_card', 'alipay', 'wechat', 'qq', 'sort', 'remark',
                   'is_star', 'star_sort',
                   'wallet', 'created_at', 'updated_at']
@@ -376,7 +377,10 @@ class EmployeeSerializer(serializers.ModelSerializer):
             employee.tags.set(tags)
         if game_categories:
             employee.game_categories.set(game_categories)
-        EmployeeWallet.objects.get_or_create(employee=employee)
+        EmployeeWallet.objects.get_or_create(
+            employee=employee,
+            defaults={'balance': employee.commission_balance},
+        )
         EmployeeStatus.objects.get_or_create(employee=employee)
         
         # 删除该用户的 Customer 记录，确保每个用户只存在于一张表
@@ -386,11 +390,22 @@ class EmployeeSerializer(serializers.ModelSerializer):
         
         return employee
 
+    @transaction.atomic
     def update(self, instance, validated_data):
         display_id_val = validated_data.pop('edit_display_id', None)
         tags = validated_data.pop('tags', None)
         skills = validated_data.pop('skills', None)
         game_categories = validated_data.pop('game_categories', None)
+        commission_balance = validated_data.get('commission_balance')
+        wallet = None
+        if commission_balance is not None:
+            wallet, _ = EmployeeWallet.objects.select_for_update().get_or_create(
+                employee=instance
+            )
+            if commission_balance < wallet.frozen_amount:
+                raise serializers.ValidationError({
+                    'commission_balance': '佣金余额不能低于当前冻结中的提现金额'
+                })
         for attr, value in validated_data.items():
             setattr(instance, attr, value)
         instance.save()
@@ -401,6 +416,9 @@ class EmployeeSerializer(serializers.ModelSerializer):
         if display_id_val and instance.user:
             instance.user.display_id = display_id_val
             instance.user.save(update_fields=['display_id'])
+        if wallet is not None:
+            wallet.balance = commission_balance
+            wallet.save(update_fields=['balance', 'updated_at'])
         return instance
 
 

@@ -2976,6 +2976,7 @@ def complete_order(request, order_id):
     return success_response(data={
         'settled_count': settlement['settled_count'],
         'commission_total': float(settlement['commission_total']),
+        'platform_commission_total': float(settlement['platform_commission_total']),
     }, msg='订单已完结，佣金已结算')
 
 
@@ -3048,6 +3049,7 @@ def end_order(request, order_id):
     return success_response(data={
         'settled_count': settlement['settled_count'],
         'commission_total': float(settlement['commission_total']),
+        'platform_commission_total': float(settlement['platform_commission_total']),
     }, msg='订单已结束，佣金已结算')
 
 

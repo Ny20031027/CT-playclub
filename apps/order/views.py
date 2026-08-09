@@ -92,6 +92,7 @@ class OrderViewSet(BaseModelViewSet):
             data={
                 'settled_count': settlement['settled_count'],
                 'commission_total': float(settlement['commission_total']),
+                'platform_commission_total': float(settlement['platform_commission_total']),
             },
             msg='订单已完成，佣金已结算',
         )
