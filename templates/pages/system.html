@@ -2210,6 +2210,8 @@
                 currentWelcomeId = result.data.id || null;
                 document.getElementById('welcomeText').value = result.data.welcome_text || '';
                 document.getElementById('welcomeEnabled').checked = result.data.is_enabled !== false;
+            } else {
+                console.error('加载欢迎语配置失败:', result);
             }
         } catch (error) {
             console.error('加载欢迎语配置失败:', error);
@@ -2255,7 +2257,7 @@
                 const tbody = document.getElementById('keywordList');
 
                 if (rules.length === 0) {
-                    tbody.innerHTML = '<tr><td colspan="6" class="empty-state"><i class="fa-solid fa-inbox"></i><br>暂无问题与答案</td></tr>';
+                    tbody.innerHTML = '<tr><td colspan="6" class="empty-state"><i class="fa-solid fa-inbox"></i><br>暂无问题与答案，点击右上角"添加问答"创建</td></tr>';
                     return;
                 }
 
@@ -2275,9 +2277,14 @@
                         </td>
                     </tr>
                 `).join('');
+            } else {
+                const tbody = document.getElementById('keywordList');
+                tbody.innerHTML = '<tr><td colspan="6" class="empty-state"><i class="fa-solid fa-triangle-exclamation"></i><br>加载失败：' + (result.msg || ('接口返回 ' + result.code)) + '</td></tr>';
             }
         } catch (error) {
             console.error('加载关键词规则失败:', error);
+            const tbody = document.getElementById('keywordList');
+            tbody.innerHTML = '<tr><td colspan="6" class="empty-state"><i class="fa-solid fa-triangle-exclamation"></i><br>加载失败：' + (error.message || '网络错误') + '</td></tr>';
         }
     }
 
