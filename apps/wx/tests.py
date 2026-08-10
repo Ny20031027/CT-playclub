@@ -86,10 +86,11 @@ class CustomerServicePreOrderTests(TestCase):
         self.assertIn('不能重复下单', second['msg'])
 
     @patch('apps.wx.views._get_wx_access_token', return_value='test-token')
-    @patch('apps.wx.views.requests.post')
-    def test_qrcode_uses_official_mini_program_code(self, mocked_post, _mocked_token):
+    @patch('apps.wx.views.requests.Session')
+    def test_qrcode_uses_official_mini_program_code(self, mocked_session, _mocked_token):
         created = self._create_preorder()
-        response_mock = mocked_post.return_value
+        session = mocked_session.return_value
+        response_mock = session.post.return_value
         response_mock.headers = {'Content-Type': 'image/png'}
         response_mock.content = b'png-content'
         response_mock.raise_for_status.return_value = None
@@ -98,9 +99,25 @@ class CustomerServicePreOrderTests(TestCase):
         response = self.client.get(created['data']['qr_url'])
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.content, b'png-content')
-        call_payload = mocked_post.call_args.kwargs['json']
+        self.assertFalse(session.trust_env)
+        call_payload = session.post.call_args.kwargs['json']
         self.assertEqual(call_payload['scene'], f"po={created['data']['id']}")
         self.assertEqual(call_payload['page'], 'pages/preorder-checkout/preorder-checkout')
+
+    @patch('apps.wx.views.requests.Session')
+    def test_access_token_request_bypasses_proxy_environment(self, mocked_session):
+        from django.core.cache import cache
+        from apps.wx.views import _get_wx_access_token
+
+        cache.delete('wx_mini_program_access_token')
+        session = mocked_session.return_value
+        response = session.get.return_value
+        response.json.return_value = {'access_token': 'fresh-token', 'expires_in': 7200}
+        response.raise_for_status.return_value = None
+
+        self.assertEqual(_get_wx_access_token(), 'fresh-token')
+        self.assertFalse(session.trust_env)
+        self.assertEqual(session.get.call_args.args[0], 'https://api.weixin.qq.com/cgi-bin/token')
 
 
 class BlackGoldSearchTests(TestCase):

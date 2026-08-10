@@ -5780,7 +5780,11 @@ def _get_wx_access_token():
         return token
     if not WX_APPID or not WX_SECRET:
         raise RuntimeError('微信小程序配置不完整')
-    response = requests.get(
+    # 部署平台可能通过 HTTPS_PROXY 注入自签名证书。微信官方接口使用独立
+    # 会话绕过代理环境变量，仍由系统 CA 完整校验证书，不能使用 verify=False。
+    session = requests.Session()
+    session.trust_env = False
+    response = session.get(
         'https://api.weixin.qq.com/cgi-bin/token',
         params={
             'grant_type': 'client_credential',
@@ -5858,7 +5862,9 @@ def preorder_qrcode(request, po_id):
         return error_response(msg='该预下单已完成')
     try:
         access_token = _get_wx_access_token()
-        response = requests.post(
+        session = requests.Session()
+        session.trust_env = False
+        response = session.post(
             f'https://api.weixin.qq.com/wxa/getwxacodeunlimit?access_token={access_token}',
             json={
                 'scene': f'po={po.id}',
@@ -5876,5 +5882,6 @@ def preorder_qrcode(request, po_id):
             raise RuntimeError(payload.get('errmsg') or '生成小程序码失败')
         return HttpResponse(response.content, content_type='image/png')
     except Exception as exc:
-        logger.exception('生成预下单小程序码失败: %s', exc)
+        # 不输出包含 access_token / app secret 的完整请求 URL 或堆栈。
+        logger.warning('生成预下单小程序码失败: %s', type(exc).__name__)
         return error_response(msg='生成小程序码失败，请稍后重试')
