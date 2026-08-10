@@ -26,7 +26,10 @@ from apps.employee.models import (
     SkillGameplay, GameplayPresetItem, GameplayDifficulty, GameplayLevelOption, GameplayService,
     ValueAddedService, AddonValueAddedService, ServiceValueAdded,
 )
-from apps.order.models import Order, OrderMember, OrderComment, OrderPrice, OrderStatus, SupportTicket, OrderCandidate
+from apps.order.models import (
+    Order, OrderMember, OrderComment, OrderPrice, OrderStatus, SupportTicket, OrderCandidate,
+    OrderChatGroup, OrderChatMember, OrderChatMessage,
+)
 from apps.order.comment_utils import create_order_comment_with_retry
 from apps.order.services import (
     OrderCompletionError, complete_order_and_settle,
@@ -68,6 +71,72 @@ WX_SECRET = getattr(settings, 'WX_SECRET', '')
 
 ACTIVE_ORDER_MEMBER_STATUSES = ['accepted', 'in_progress']
 FORMAL_ORDER_STATUSES = ['confirming', 'claimed', 'in_progress', 'completed', 'reviewed']
+
+
+def _as_localtime(value):
+    return timezone.localtime(value) if timezone.is_aware(value) else value
+
+
+def _current_duty_cs_users(now=None):
+    """返回当前排班时段内的客服用户，兼容跨午夜班次。"""
+    from apps.schedule.models import CSSchedule
+    from apps.customer.models import CustomerService
+
+    local_now = _as_localtime(now or timezone.now())
+    weekday = local_now.weekday()
+    current_time = local_now.time().replace(tzinfo=None)
+    schedules = CSSchedule.objects.filter(status=True).select_related('employee__user')
+    employee_user_ids = []
+    for schedule in schedules:
+        same_day = schedule.day_of_week == weekday
+        if schedule.start_time <= schedule.end_time:
+            active = same_day and schedule.start_time <= current_time <= schedule.end_time
+        else:
+            previous_day = (weekday - 1) % 7
+            active = (
+                (same_day and current_time >= schedule.start_time) or
+                (schedule.day_of_week == previous_day and current_time <= schedule.end_time)
+            )
+        if active and schedule.employee.user_id:
+            employee_user_ids.append(schedule.employee.user_id)
+
+    valid_ids = set(CustomerService.objects.filter(
+        customer__user_id__in=employee_user_ids,
+        is_deleted=False,
+        customer__user__is_active=True,
+    ).values_list('customer__user_id', flat=True))
+    return list(User.objects.filter(id__in=valid_ids, is_active=True))
+
+
+def _create_order_chat_group(order):
+    """创建订单临时群，并将客户、全部接单打手和当班客服加入。"""
+    group, created = OrderChatGroup.objects.get_or_create(
+        order=order,
+        defaults={
+            'name': f'订单 {order.order_no} 服务群',
+            'expires_at': timezone.now() + datetime.timedelta(hours=72),
+            'is_active': True,
+        },
+    )
+    if not created:
+        return group
+
+    members = []
+    if order.customer.user_id:
+        members.append((order.customer.user_id, 'customer'))
+    dasher_ids = order.order_members.filter(
+        is_deleted=False, status__in=['accepted', 'in_progress']
+    ).values_list('employee__user_id', flat=True)
+    members.extend((user_id, 'dasher') for user_id in dasher_ids if user_id)
+    members.extend((user.id, 'cs') for user in _current_duty_cs_users())
+    for user_id, role in dict(members).items():
+        OrderChatMember.objects.get_or_create(group=group, user_id=user_id, defaults={'role': role})
+    OrderChatMessage.objects.create(
+        group=group,
+        content='订单已开始，客户、接单打手和当前值班客服已加入本群。本群将在72小时后自动删除。',
+        msg_type='system',
+    )
+    return group
 
 
 def _cs_message_has_ticket_column():
@@ -3033,7 +3102,63 @@ def start_order(request, order_id):
         member.start_time = timezone.now()
         member.save(update_fields=['status', 'start_time'])
 
+    _create_order_chat_group(order)
+
     return success_response(msg='订单已开始')
+
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def order_chat_groups(request):
+    """当前用户的有效订单群；查询时清理已到期群。"""
+    OrderChatGroup.objects.filter(expires_at__lte=timezone.now()).delete()
+    groups = OrderChatGroup.objects.filter(
+        members__user=request.user, members__is_deleted=False,
+        is_active=True, is_deleted=False,
+    ).select_related('order').distinct().order_by('-created_at')
+    data = []
+    for group in groups:
+        last_message = group.messages.filter(is_deleted=False).order_by('-created_at').first()
+        data.append({
+            'id': group.id, 'name': group.name,
+            'order_id': group.order_id, 'order_no': group.order.order_no,
+            'member_count': group.members.filter(is_deleted=False).count(),
+            'last_message': last_message.content if last_message else '',
+            'last_message_time': last_message.created_at.strftime('%m-%d %H:%M') if last_message else '',
+            'expires_at': _as_localtime(group.expires_at).strftime('%Y-%m-%d %H:%M'),
+        })
+    return success_response(data)
+
+
+@api_view(['GET', 'POST'])
+@permission_classes([IsAuthenticated])
+def order_chat_group_detail(request, group_id):
+    try:
+        group = OrderChatGroup.objects.select_related('order').get(id=group_id, is_deleted=False)
+    except OrderChatGroup.DoesNotExist:
+        return error_response(msg='群组不存在或已删除')
+    if group.expires_at <= timezone.now():
+        group.delete()
+        return error_response(msg='群组已到期并自动删除')
+    if not group.members.filter(user=request.user, is_deleted=False).exists():
+        return error_response(msg='您不在该群组中')
+    if request.method == 'POST':
+        content = str(request.data.get('content', '')).strip()
+        if not content:
+            return error_response(msg='消息内容不能为空')
+        message = OrderChatMessage.objects.create(group=group, sender=request.user, content=content)
+        return success_response({'message_id': message.id}, msg='发送成功')
+    messages = group.messages.filter(is_deleted=False).select_related('sender')
+    return success_response({
+        'id': group.id, 'name': group.name,
+        'expires_at': _as_localtime(group.expires_at).strftime('%Y-%m-%d %H:%M'),
+        'messages': [{
+            'id': message.id, 'content': message.content, 'msg_type': message.msg_type,
+            'is_mine': message.sender_id == request.user.id,
+            'sender_name': (message.sender.nickname or message.sender.username) if message.sender else '系统',
+            'created_at': _as_localtime(message.created_at).strftime('%m-%d %H:%M'),
+        } for message in messages],
+    })
 
 
 @api_view(['POST'])
@@ -3304,13 +3429,88 @@ def customer_service(request):
 def cs_welcome_message(request):
     """获取客服欢迎语"""
     from apps.system.models import CSWelcomeConfig
+    welcome_text = ''
+    questions = []
     try:
         config = CSWelcomeConfig.objects.filter(is_deleted=False, is_enabled=True).first()
-        if config:
-            return success_response({'welcome_text': config.welcome_text})
+        welcome_text = config.welcome_text if config else ''
+        from apps.system.models import CSKeywordRule
+        rules = CSKeywordRule.objects.filter(
+            is_deleted=False, is_enabled=True
+        ).order_by('sort', 'id')
+        questions = [
+            {'id': rule.id, 'question': rule.keyword, 'answer': rule.reply_text}
+            for rule in rules
+        ]
     except Exception:
         pass
-    return success_response({'welcome_text': ''})
+    return success_response({'welcome_text': welcome_text, 'questions': questions})
+
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def request_human_service(request):
+    """客户转人工：按当前排班广播给所有可接入客服。"""
+    from apps.customer.models import CustomerServiceConversation
+
+    try:
+        customer = request.user.customer
+    except Exception:
+        return error_response(msg='客户资料不存在')
+
+    existing = CustomerServiceConversation.objects.filter(
+        customer=customer,
+        status__in=[CustomerServiceConversation.STATUS_WAITING, CustomerServiceConversation.STATUS_ACTIVE],
+        is_deleted=False,
+    ).select_related('handler').first()
+    if existing:
+        return success_response({
+            'conversation_id': existing.id,
+            'status': existing.status,
+            'handler_name': (existing.handler.nickname or existing.handler.username) if existing.handler else '',
+        }, msg='人工客服请求已提交')
+
+    duty_users = _current_duty_cs_users()
+    if not duty_users:
+        return error_response(msg='当前暂无排班客服，请稍后再试')
+    conversation = CustomerServiceConversation.objects.create(
+        customer=customer,
+        eligible_user_ids=[user.id for user in duty_users],
+    )
+    notice = Notice.objects.create(
+        title='新的人工客服请求',
+        content=f'客户“{customer.nickname}”正在等待人工客服接入，点击后可接入处理。',
+        type='system', level='warning', target_type='user',
+        target_ids=','.join(str(user.id) for user in duty_users),
+        extra=json.dumps({'type': 'cs_request', 'conversation_id': conversation.id}),
+        publish_time=timezone.now(),
+    )
+    UserNotice.objects.bulk_create([UserNotice(notice=notice, user=user) for user in duty_users])
+    return success_response({
+        'conversation_id': conversation.id,
+        'status': conversation.status,
+    }, msg='已通知当前值班客服')
+
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def human_service_status(request):
+    from apps.customer.models import CustomerServiceConversation
+    try:
+        customer = request.user.customer
+    except Exception:
+        return error_response(msg='客户资料不存在')
+    conversation = CustomerServiceConversation.objects.filter(
+        customer=customer, is_deleted=False,
+        status__in=[CustomerServiceConversation.STATUS_WAITING, CustomerServiceConversation.STATUS_ACTIVE],
+    ).select_related('handler').first()
+    if not conversation:
+        return success_response({'status': 'bot'})
+    return success_response({
+        'conversation_id': conversation.id,
+        'status': conversation.status,
+        'handler_name': (conversation.handler.nickname or conversation.handler.username) if conversation.handler else '',
+    })
 
 
 def _check_keyword_auto_reply(content):
@@ -3471,7 +3671,7 @@ def get_cs_unread_count(request):
 @permission_classes([IsAuthenticated])
 def get_cs_chat_list(request):
     """获取客服工单聊天列表"""
-    from apps.customer.models import CSMessage, CustomerService
+    from apps.customer.models import CSMessage, CustomerService, CustomerServiceConversation
 
     user = request.user
     try:
@@ -3510,6 +3710,7 @@ def get_cs_chat_list(request):
                 customer_avatar = str(ticket.customer.avatar) if ticket.customer.avatar else ''
 
         chat_list.append({
+            'chat_key': f'ticket-{ticket.id}',
             'customer_id': ticket.customer.id if ticket.customer else None,
             'customer_name': ticket.customer.nickname if ticket.customer else '',
             'customer_avatar': customer_avatar,
@@ -3520,6 +3721,34 @@ def get_cs_chat_list(request):
             'last_message_time': last_msg.created_at.strftime('%H:%M') if last_msg else ticket.created_at.strftime('%H:%M'),
             'sort_time': sort_dt,
             'unread_count': unread_count,
+        })
+
+    conversations = CustomerServiceConversation.objects.filter(
+        is_deleted=False,
+        status__in=[CustomerServiceConversation.STATUS_WAITING, CustomerServiceConversation.STATUS_ACTIVE],
+    ).select_related('customer', 'handler')
+    for conversation in conversations:
+        if conversation.handler_id and conversation.handler_id != user.id:
+            continue
+        if not conversation.handler_id and user.id not in (conversation.eligible_user_ids or []):
+            continue
+        last_msg = CSMessage.objects.filter(
+            customer=conversation.customer, ticket__isnull=True
+        ).order_by('-created_at').first()
+        chat_list.append({
+            'chat_key': f'conversation-{conversation.id}',
+            'customer_id': conversation.customer_id,
+            'customer_name': conversation.customer.nickname,
+            'customer_avatar': str(conversation.customer.avatar or ''),
+            'conversation_id': conversation.id,
+            'conversation_status': conversation.status,
+            'last_message': last_msg.content if last_msg else '客户申请转人工服务',
+            'last_message_time': (last_msg.created_at if last_msg else conversation.requested_at).strftime('%H:%M'),
+            'sort_time': last_msg.created_at if last_msg else conversation.requested_at,
+            'unread_count': CSMessage.objects.filter(
+                customer=conversation.customer, ticket__isnull=True,
+                sender_type='customer', is_read=False,
+            ).count(),
         })
 
     # 按最后消息时间排序
@@ -3539,6 +3768,7 @@ def get_cs_chat_messages(request):
 
     customer_id = request.GET.get('customer_id')
     ticket_id = request.GET.get('ticket_id')
+    conversation_id = request.GET.get('conversation_id')
 
     if not customer_id:
         return error_response(msg='缺少客户ID')
@@ -3579,7 +3809,46 @@ def get_cs_chat_messages(request):
         'messages': data,
         'customer_avatar': customer_avatar,
         'ticket': _get_ticket_order_brief(ticket_id) if ticket_id else None,
+        'conversation_id': int(conversation_id) if conversation_id else None,
     })
+
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def claim_human_service(request, conversation_id):
+    """客服原子接入会话；已有处理人时禁止其他客服抢占。"""
+    from apps.customer.models import CustomerService, CustomerServiceConversation, CSMessage
+    try:
+        CustomerService.objects.get(customer__user=request.user, is_deleted=False)
+    except CustomerService.DoesNotExist:
+        return error_response(msg='您不是客服')
+
+    with transaction.atomic():
+        try:
+            conversation = CustomerServiceConversation.objects.select_for_update().select_related('customer').get(
+                id=conversation_id, is_deleted=False
+            )
+        except CustomerServiceConversation.DoesNotExist:
+            return error_response(msg='会话不存在')
+        if conversation.handler_id and conversation.handler_id != request.user.id:
+            return error_response(msg='该客户已由其他客服接入')
+        if request.user.id not in (conversation.eligible_user_ids or []) and not conversation.handler_id:
+            return error_response(msg='您不在本次排班接待范围内')
+        if not conversation.handler_id:
+            conversation.handler = request.user
+            conversation.status = CustomerServiceConversation.STATUS_ACTIVE
+            conversation.accepted_at = timezone.now()
+            conversation.save(update_fields=['handler', 'status', 'accepted_at', 'updated_at'])
+            handler_name = request.user.nickname or request.user.username
+            CSMessage.objects.create(
+                customer=conversation.customer, cs_user=request.user,
+                content=f'客服 {handler_name} 已接入，正在为您处理。',
+                msg_type='text', sender_type='cs',
+            )
+    return success_response({
+        'conversation_id': conversation.id,
+        'handler_name': request.user.nickname or request.user.username,
+    }, msg='接入成功')
 
 
 def _get_ticket_order_brief(ticket_id):
@@ -3621,6 +3890,7 @@ def send_cs_reply(request):
     customer_id = request.data.get('customer_id')
     content = request.data.get('content', '')
     ticket_id = request.data.get('ticket_id')
+    conversation_id = request.data.get('conversation_id')
     logger.info(f'收到消息: customer_id={customer_id}, content={content}, ticket_id={ticket_id}')
 
     if not customer_id:
@@ -3636,6 +3906,14 @@ def send_cs_reply(request):
         return error_response(msg='客户不存在')
 
     # 获取关联工单
+    if conversation_id:
+        from apps.customer.models import CustomerServiceConversation
+        conversation = CustomerServiceConversation.objects.filter(
+            id=conversation_id, customer=customer, is_deleted=False
+        ).first()
+        if not conversation or conversation.handler_id != user.id:
+            return error_response(msg='请先接入该人工客服会话')
+
     ticket = None
     if ticket_id:
         from apps.order.models import SupportTicket

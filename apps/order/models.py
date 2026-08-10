@@ -256,6 +256,45 @@ class SupportTicket(BaseModel):
         return f"{self.ticket_no} - {self.title}"
 
 
+class OrderChatGroup(BaseModel):
+    """订单开始后自动创建的临时服务群。"""
+    order = models.OneToOneField(
+        Order, on_delete=models.CASCADE, related_name='chat_group', verbose_name='订单'
+    )
+    name = models.CharField(max_length=200, verbose_name='群名称')
+    expires_at = models.DateTimeField(verbose_name='到期时间')
+    is_active = models.BooleanField(default=True, verbose_name='有效')
+
+    class Meta:
+        db_table = 'ord_chat_group'
+        ordering = ['-created_at']
+
+
+class OrderChatMember(BaseModel):
+    group = models.ForeignKey(OrderChatGroup, on_delete=models.CASCADE, related_name='members')
+    user = models.ForeignKey(User, on_delete=models.CASCADE, related_name='order_chat_memberships')
+    role = models.CharField(max_length=20, choices=[
+        ('customer', '客户'), ('dasher', '打手'), ('cs', '客服')
+    ])
+
+    class Meta:
+        db_table = 'ord_chat_member'
+        unique_together = [('group', 'user')]
+
+
+class OrderChatMessage(BaseModel):
+    group = models.ForeignKey(OrderChatGroup, on_delete=models.CASCADE, related_name='messages')
+    sender = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, related_name='order_chat_messages')
+    content = models.TextField(verbose_name='消息内容')
+    msg_type = models.CharField(max_length=20, default='text', choices=[
+        ('text', '文本'), ('system', '系统消息')
+    ])
+
+    class Meta:
+        db_table = 'ord_chat_message'
+        ordering = ['created_at']
+
+
 class OrderRefund(BaseModel):
     order = models.ForeignKey(Order, on_delete=models.CASCADE,
                               related_name='refunds', verbose_name='订单')

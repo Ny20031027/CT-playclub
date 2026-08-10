@@ -202,3 +202,36 @@ class CSMessage(BaseModel):
 
     def __str__(self):
         return f"{self.customer.nickname} - {self.content[:20]}"
+
+
+class CustomerServiceConversation(BaseModel):
+    """客户发起的人工客服会话；通过数据库行锁保证只能由一名客服接入。"""
+    STATUS_WAITING = 'waiting'
+    STATUS_ACTIVE = 'active'
+    STATUS_CLOSED = 'closed'
+    STATUS_CHOICES = [
+        (STATUS_WAITING, '等待接入'),
+        (STATUS_ACTIVE, '处理中'),
+        (STATUS_CLOSED, '已结束'),
+    ]
+
+    customer = models.ForeignKey(
+        Customer, on_delete=models.CASCADE,
+        related_name='service_conversations', verbose_name='客户'
+    )
+    handler = models.ForeignKey(
+        User, on_delete=models.SET_NULL, null=True, blank=True,
+        related_name='service_conversations', verbose_name='接入客服'
+    )
+    eligible_user_ids = models.JSONField(default=list, blank=True, verbose_name='可接入客服用户ID')
+    status = models.CharField(max_length=20, choices=STATUS_CHOICES, default=STATUS_WAITING)
+    requested_at = models.DateTimeField(auto_now_add=True, verbose_name='请求时间')
+    accepted_at = models.DateTimeField(null=True, blank=True, verbose_name='接入时间')
+    closed_at = models.DateTimeField(null=True, blank=True, verbose_name='结束时间')
+
+    class Meta:
+        db_table = 'cs_conversation'
+        ordering = ['-requested_at']
+
+    def __str__(self):
+        return f'{self.customer.nickname} - {self.get_status_display()}'

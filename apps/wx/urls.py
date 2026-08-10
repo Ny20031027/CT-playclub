@@ -60,12 +60,17 @@ urlpatterns = [
     # 客服配置
     path('customer-service/', views.customer_service, name='wx-customer-service'),
     path('cs/welcome/', views.cs_welcome_message, name='wx-cs-welcome'),
+    path('cs/human/request/', views.request_human_service, name='wx-cs-human-request'),
+    path('cs/human/status/', views.human_service_status, name='wx-cs-human-status'),
+    path('cs/human/<int:conversation_id>/claim/', views.claim_human_service, name='wx-cs-human-claim'),
     path('cs/send/', views.send_cs_message, name='wx-cs-send'),
     path('cs/messages/', views.get_cs_messages, name='wx-cs-messages'),
     path('cs/unread/', views.get_cs_unread_count, name='wx-cs-unread'),
     path('cs/chat-list/', views.get_cs_chat_list, name='wx-cs-chat-list'),
     path('cs/chat-messages/', views.get_cs_chat_messages, name='wx-cs-chat-messages'),
     path('cs/reply/', views.send_cs_reply, name='wx-cs-reply'),
+    path('chat-groups/', views.order_chat_groups, name='wx-chat-groups'),
+    path('chat-groups/<int:group_id>/', views.order_chat_group_detail, name='wx-chat-group-detail'),
 
     # 个人中心
     path('profile/', user_profile, name='wx-profile'),
