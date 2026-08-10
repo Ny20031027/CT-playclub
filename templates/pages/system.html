@@ -303,20 +303,20 @@
 
     <div class="card" style="margin-top: 20px;">
         <div class="card-header">
-            <div class="card-title">关键词自动回复</div>
+            <div class="card-title">问题与答案（关键词自动回复）</div>
             <div class="card-actions">
                 <button class="btn btn-primary" onclick="showAddKeywordModal()">
-                    <i class="fa-solid fa-plus"></i> 添加规则
+                    <i class="fa-solid fa-plus"></i> 添加问答
                 </button>
             </div>
         </div>
-        <p style="color: #666; padding: 0 20px; font-size: 13px;">当客户消息包含指定关键词时，系统自动回复预设内容</p>
+        <p style="color: #666; padding: 0 20px; font-size: 13px;">智能客服自动回复：客户消息包含"问题（关键词）"时，系统自动回复对应的"答案"内容</p>
         <div class="table-container">
             <table>
                 <thead>
                     <tr>
-                        <th>关键词</th>
-                        <th>回复内容</th>
+                        <th>问题（关键词）</th>
+                        <th>答案</th>
                         <th>匹配方式</th>
                         <th>排序</th>
                         <th>状态</th>
@@ -801,18 +801,18 @@
 <div class="modal-overlay" id="keywordModal">
     <div class="modal">
         <div class="modal-header">
-            <div class="modal-title" id="keywordModalTitle">添加关键词规则</div>
+            <div class="modal-title" id="keywordModalTitle">添加问答</div>
             <div class="modal-close" onclick="hideModal('keywordModal')">&times;</div>
         </div>
         <div class="modal-body">
             <form id="keywordForm">
                 <input type="hidden" id="keywordId">
                 <div class="form-group">
-                    <label>关键词 *</label>
+                    <label>问题（关键词） *</label>
                     <input type="text" id="keywordName" required placeholder="如：退款、价格、怎么玩">
                 </div>
                 <div class="form-group">
-                    <label>回复内容 *</label>
+                    <label>答案 *</label>
                     <textarea id="keywordReply" rows="3" required placeholder="请输入自动回复内容"></textarea>
                 </div>
                 <div class="form-group">
@@ -2255,7 +2255,7 @@
                 const tbody = document.getElementById('keywordList');
 
                 if (rules.length === 0) {
-                    tbody.innerHTML = '<tr><td colspan="6" class="empty-state"><i class="fa-solid fa-inbox"></i><br>暂无关键词规则</td></tr>';
+                    tbody.innerHTML = '<tr><td colspan="6" class="empty-state"><i class="fa-solid fa-inbox"></i><br>暂无问题与答案</td></tr>';
                     return;
                 }
 
@@ -2285,7 +2285,7 @@
 
     function showAddKeywordModal() {
         editingKeywordId = null;
-        document.getElementById('keywordModalTitle').textContent = '添加关键词规则';
+        document.getElementById('keywordModalTitle').textContent = '添加问答';
         document.getElementById('keywordForm').reset();
         document.getElementById('keywordId').value = '';
         document.getElementById('keywordMatchType').value = 'contains';
@@ -2300,7 +2300,7 @@
             if (result.code === 200) {
                 const rule = result.data;
                 editingKeywordId = id;
-                document.getElementById('keywordModalTitle').textContent = '编辑关键词规则';
+                document.getElementById('keywordModalTitle').textContent = '编辑问答';
                 document.getElementById('keywordId').value = rule.id;
                 document.getElementById('keywordName').value = rule.keyword;
                 document.getElementById('keywordReply').value = rule.reply_text;
@@ -2322,7 +2322,7 @@
         const isEnabled = document.getElementById('keywordEnabled').checked;
 
         if (!keyword || !replyText) {
-            showToast('请填写关键词和回复内容', 'error');
+            showToast('请填写问题和答案', 'error');
             return;
         }
 
@@ -2356,7 +2356,7 @@
     }
 
     async function deleteKeywordRule(id) {
-        if (!confirm('确定要删除该关键词规则吗？')) return;
+        if (!confirm('确定要删除该条问答吗？')) return;
 
         try {
             const result = await del(`/system/cs-keywords/${id}/`);
