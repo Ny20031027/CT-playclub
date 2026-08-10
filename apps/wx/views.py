@@ -5,6 +5,7 @@ import requests
 from decimal import Decimal, InvalidOperation, ROUND_HALF_UP
 from django.utils import timezone
 from django.conf import settings
+from django.core.cache import cache
 from django.db import connection
 from django.http import HttpResponse
 from django.db import transaction
@@ -1346,6 +1347,10 @@ def create_self_service_order(request):
             user=user, nickname=user.nickname or f'用户{user.id}'
         )
 
+    checkout_preorder, preorder_error = _lock_checkout_preorder(request)
+    if preorder_error:
+        return preorder_error
+
     gameplay = SkillGameplay.objects.select_for_update().select_related(
         'skill', 'skill__game_category'
     ).filter(
@@ -1508,6 +1513,7 @@ def create_self_service_order(request):
                 remark=f'预制单扣减 {coin_cost}黑钻',
                 operator=request.user,
             )
+        _mark_preorder_used(checkout_preorder)
         return success_response({
             'order_id': order.id,
             'order_no': order.order_no,
@@ -1854,6 +1860,7 @@ def create_self_service_order(request):
             operator=request.user if hasattr(request, 'user') else None,
         )
 
+    _mark_preorder_used(checkout_preorder)
     return success_response({
         'order_id': order.id,
         'order_no': order.order_no,
@@ -5705,12 +5712,99 @@ def search_by_display_id(request):
 
 # ============ 客服预下单 ============
 
+PREORDER_COMPARE_FIELDS = (
+    'gameplay_id', 'preset_item_id', 'quantity', 'difficulty_id', 'level_id',
+    'service_id', 'companion_type', 'gender_requirement', 'trial_requested',
+    'employee_id', 'addon_ids', 'addon_value_ids', 'service_value_ids',
+)
+
+
+def _is_customer_service(user):
+    from apps.customer.models import CustomerService
+    return CustomerService.objects.filter(
+        customer__user=user, is_deleted=False,
+    ).exists()
+
+
+def _normalize_preorder_value(field, value):
+    if field in ('addon_ids', 'addon_value_ids', 'service_value_ids'):
+        return sorted(int(item) for item in (value or []) if str(item).isdigit())
+    if field == 'trial_requested':
+        return bool(value)
+    if field in ('companion_type', 'gender_requirement'):
+        return str(value or '')
+    if field == 'quantity':
+        return str(value or 1)
+    return int(value or 0) if str(value or '').isdigit() else 0
+
+
+def _lock_checkout_preorder(request):
+    """Lock and validate a one-time preorder when checkout comes from a QR code."""
+    raw_preorder_id = request.data.get('preorder_id')
+    if not raw_preorder_id:
+        return None, None
+    try:
+        preorder = PreOrder.objects.select_for_update().get(
+            id=int(raw_preorder_id), is_deleted=False,
+        )
+    except (TypeError, ValueError, PreOrder.DoesNotExist):
+        return None, error_response(msg='预下单不存在或已过期')
+    if preorder.expire_time and preorder.expire_time <= timezone.now():
+        if preorder.status == 'pending':
+            preorder.status = 'expired'
+            preorder.save(update_fields=['status', 'updated_at'])
+        return None, error_response(msg='预下单已过期，请联系客服重新生成')
+    if preorder.status != 'pending':
+        return None, error_response(msg='该预下单已完成，不能重复下单')
+
+    selections = preorder.selections or {}
+    for field in PREORDER_COMPARE_FIELDS:
+        expected = selections.get(field)
+        actual_field = 'assigned_employee_id' if field == 'employee_id' else field
+        actual = request.data.get(actual_field)
+        if _normalize_preorder_value(field, expected) != _normalize_preorder_value(field, actual):
+            return None, error_response(msg='预下单内容已变更，请重新扫码')
+    return preorder, None
+
+
+def _mark_preorder_used(preorder):
+    if preorder is None:
+        return
+    preorder.status = 'used'
+    preorder.save(update_fields=['status', 'updated_at'])
+
+
+def _get_wx_access_token():
+    token = cache.get('wx_mini_program_access_token')
+    if token:
+        return token
+    if not WX_APPID or not WX_SECRET:
+        raise RuntimeError('微信小程序配置不完整')
+    response = requests.get(
+        'https://api.weixin.qq.com/cgi-bin/token',
+        params={
+            'grant_type': 'client_credential',
+            'appid': WX_APPID,
+            'secret': WX_SECRET,
+        },
+        timeout=10,
+    )
+    response.raise_for_status()
+    payload = response.json()
+    token = payload.get('access_token')
+    if not token:
+        raise RuntimeError(payload.get('errmsg') or '获取微信 access_token 失败')
+    cache.set('wx_mini_program_access_token', token, max(int(payload.get('expires_in', 7200)) - 300, 60))
+    return token
+
 @api_view(['POST'])
 @permission_classes([IsAuthenticated])
 def preorder_create(request):
     """客服创建预下单"""
+    if not _is_customer_service(request.user):
+        return error_response(msg='仅客服可以创建预下单')
     selections = request.data.get('selections', {})
-    if not selections:
+    if not isinstance(selections, dict) or not selections.get('gameplay_id'):
         return error_response(msg='请选择下单选项')
 
     expire_time = timezone.now() + timezone.timedelta(hours=24)
@@ -5722,7 +5816,8 @@ def preorder_create(request):
     )
     return success_response({
         'id': po.id,
-        'qr_url': f'/api/wx/preorder/{po.id}/qrcode/',
+        'qr_url': request.build_absolute_uri(f'/api/wx/preorder/{po.id}/qrcode/'),
+        'expire_time': po.expire_time,
     })
 
 
@@ -5735,7 +5830,12 @@ def preorder_detail(request, po_id):
     except PreOrder.DoesNotExist:
         return error_response(msg='预下单不存在或已过期')
     if po.expire_time and po.expire_time < timezone.now():
+        if po.status == 'pending':
+            po.status = 'expired'
+            po.save(update_fields=['status', 'updated_at'])
         return error_response(msg='预下单已过期')
+    if po.status != 'pending':
+        return error_response(msg='该预下单已完成，不能重复下单')
     return success_response({
         'id': po.id,
         'selections': po.selections,
@@ -5746,21 +5846,35 @@ def preorder_detail(request, po_id):
 @api_view(['GET'])
 @permission_classes([AllowAny])
 def preorder_qrcode(request, po_id):
-    """生成预下单二维码"""
+    """生成微信官方小程序码，扫码直达客户确认页。"""
     try:
         po = PreOrder.objects.get(id=po_id, is_deleted=False)
     except PreOrder.DoesNotExist:
         return error_response(msg='预下单不存在')
 
-    import qrcode
-    from io import BytesIO
-    qr = qrcode.QRCode(version=1, box_size=10, border=2)
-    # 使用小程序路径链接（客户扫码打开小程序后跳转）
-    mini_path = f'pages/preorder-checkout/preorder-checkout?id={po.id}'
-    qr.add_data(mini_path)
-    qr.make(fit=True)
-    img = qr.make_image(fill_color='black', back_color='white')
-    buf = BytesIO()
-    img.save(buf, format='PNG')
-    buf.seek(0)
-    return HttpResponse(buf.getvalue(), content_type='image/png')
+    if po.expire_time and po.expire_time <= timezone.now():
+        return error_response(msg='预下单已过期')
+    if po.status != 'pending':
+        return error_response(msg='该预下单已完成')
+    try:
+        access_token = _get_wx_access_token()
+        response = requests.post(
+            f'https://api.weixin.qq.com/wxa/getwxacodeunlimit?access_token={access_token}',
+            json={
+                'scene': f'po={po.id}',
+                'page': 'pages/preorder-checkout/preorder-checkout',
+                'check_path': False,
+                'env_version': getattr(settings, 'WX_MINI_PROGRAM_ENV_VERSION', 'release'),
+                'width': 430,
+            },
+            timeout=15,
+        )
+        response.raise_for_status()
+        content_type = response.headers.get('Content-Type', '')
+        if 'image/' not in content_type:
+            payload = response.json()
+            raise RuntimeError(payload.get('errmsg') or '生成小程序码失败')
+        return HttpResponse(response.content, content_type='image/png')
+    except Exception as exc:
+        logger.exception('生成预下单小程序码失败: %s', exc)
+        return error_response(msg='生成小程序码失败，请稍后重试')

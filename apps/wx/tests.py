@@ -5,11 +5,102 @@ from django.test import TestCase
 from rest_framework.test import APIClient
 
 from apps.account.models import User
-from apps.customer.models import Customer
-from apps.employee.models import Employee, EmployeeSkill
+from apps.customer.models import Customer, CustomerService
+from apps.employee.models import Employee, EmployeeSkill, GameplayPresetItem, SkillGameplay
 from apps.notice.models import UserNotice
 from apps.order.models import Order, OrderComment, OrderMember
-from apps.wx.models import GameAccount, GameCategory, WxUser
+from apps.wx.models import GameAccount, GameCategory, PreOrder, WxUser
+
+
+class CustomerServicePreOrderTests(TestCase):
+    def setUp(self):
+        self.client = APIClient()
+        self.game = GameCategory.objects.create(name='预下单测试游戏', status=True)
+        self.skill = EmployeeSkill.objects.create(
+            name='预下单测试服务', game_category=self.game,
+            self_service_enabled=True, status=True,
+        )
+        self.gameplay = SkillGameplay.objects.create(
+            skill=self.skill, name='护航', order_mode='preset', status=True,
+        )
+        self.preset = GameplayPresetItem.objects.create(
+            gameplay=self.gameplay, name='测试订单', display_image='/media/test.png',
+            content='完整订单内容', price=Decimal('0.00'), status=True,
+        )
+        self.cs_user = User.objects.create_user(username='preorder_cs')
+        cs_customer = Customer.objects.create(user=self.cs_user, nickname='预下单客服')
+        CustomerService.objects.create(customer=cs_customer, status='online')
+        self.customer_user = User.objects.create_user(username='preorder_customer')
+        Customer.objects.create(user=self.customer_user, nickname='扫码客户', coins=0)
+        self.selections = {
+            'skill_id': self.skill.id,
+            'skill_name': self.skill.name,
+            'gameplay_id': self.gameplay.id,
+            'gameplay_name': self.gameplay.name,
+            'gameplay_order_mode': 'preset',
+            'preset_item_id': self.preset.id,
+            'preset_item_name': self.preset.name,
+            'quantity': 1,
+            'trial_requested': False,
+            'employee_id': 0,
+        }
+
+    def _create_preorder(self):
+        self.client.force_authenticate(user=self.cs_user)
+        return self.client.post(
+            '/api/wx/preorder/create/', {'selections': self.selections}, format='json'
+        ).json()
+
+    def test_only_customer_service_can_create_preorder(self):
+        self.client.force_authenticate(user=self.customer_user)
+        denied = self.client.post(
+            '/api/wx/preorder/create/', {'selections': self.selections}, format='json'
+        ).json()
+        self.assertNotEqual(denied['code'], 200)
+
+        created = self._create_preorder()
+        self.assertEqual(created['code'], 200)
+        self.assertIn('/qrcode/', created['data']['qr_url'])
+
+    def test_preorder_is_consumed_once_by_customer_checkout(self):
+        created = self._create_preorder()
+        preorder_id = created['data']['id']
+        payload = {
+            'preorder_id': preorder_id,
+            'gameplay_id': self.gameplay.id,
+            'preset_item_id': self.preset.id,
+            'quantity': 1,
+            'trial_requested': False,
+        }
+        self.client.force_authenticate(user=self.customer_user)
+        first = self.client.post(
+            '/api/wx/orders/create-self-service/', payload, format='json'
+        ).json()
+        self.assertEqual(first['code'], 200)
+        self.assertEqual(PreOrder.objects.get(id=preorder_id).status, 'used')
+
+        second = self.client.post(
+            '/api/wx/orders/create-self-service/', payload, format='json'
+        ).json()
+        self.assertNotEqual(second['code'], 200)
+        self.assertIn('不能重复下单', second['msg'])
+
+    @patch('apps.wx.views._get_wx_access_token', return_value='test-token')
+    @patch('apps.wx.views.requests.post')
+    def test_qrcode_uses_official_mini_program_code(self, mocked_post, _mocked_token):
+        created = self._create_preorder()
+        response_mock = mocked_post.return_value
+        response_mock.headers = {'Content-Type': 'image/png'}
+        response_mock.content = b'png-content'
+        response_mock.raise_for_status.return_value = None
+
+        self.client.force_authenticate(user=None)
+        response = self.client.get(created['data']['qr_url'])
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.content, b'png-content')
+        call_payload = mocked_post.call_args.kwargs['json']
+        self.assertEqual(call_payload['scene'], f"po={created['data']['id']}")
+        self.assertEqual(call_payload['page'], 'pages/preorder-checkout/preorder-checkout')
 
 
 class BlackGoldSearchTests(TestCase):
