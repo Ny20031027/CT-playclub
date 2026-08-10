@@ -179,6 +179,9 @@ class GameplayPresetItem(BaseModel):
     price = models.DecimalField(
         max_digits=10, decimal_places=2, default=0, verbose_name='项目价格'
     )
+    required_people = models.PositiveIntegerField(
+        default=1, verbose_name='所需人数', help_text='该预制单下单时锁定的人数，最低为1'
+    )
     sort = models.IntegerField(default=0, verbose_name='排序')
     status = models.BooleanField(default=True, verbose_name='状态')
 

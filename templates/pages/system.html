@@ -2716,6 +2716,7 @@
                         return {
                             id: item.id || null, name: item.name || '', display_image: item.display_image || '',
                             content: item.content || '', remark: item.remark || '', price: Number(item.price) || 0,
+                            required_people: Math.max(1, parseInt(item.required_people) || 1),
                             sort: item.sort || 0, status: item.status !== false
                         };
                     }),
@@ -2846,7 +2847,8 @@
                 '<input type="file" id="selfServicePresetImage-' + gpIdx + '-' + itemIdx + '" accept="image/*" style="display:none;" onchange="uploadSelfServicePresetImage(' + gpIdx + ',' + itemIdx + ',this)"></div>' +
                 '<div class="preset-fields">' +
                     '<div class="form-row"><div class="form-group"><label>预制单名称 *</label><input type="text" value="' + escAttr(item.name) + '" placeholder="如：单局上分护航" onchange="updateSelfServicePresetItem(' + gpIdx + ',' + itemIdx + ',\'name\',this.value)"></div>' +
-                    '<div class="form-group"><label>项目价格（元）*</label><input type="number" min="0" step="0.01" value="' + escAttr(item.price || 0) + '" onchange="updateSelfServicePresetItem(' + gpIdx + ',' + itemIdx + ',\'price\',parseFloat(this.value)||0)"></div></div>' +
+                    '<div class="form-group"><label>项目价格（元）*</label><input type="number" min="0" step="0.01" value="' + escAttr(item.price || 0) + '" onchange="updateSelfServicePresetItem(' + gpIdx + ',' + itemIdx + ',\'price\',parseFloat(this.value)||0)"></div>' +
+                    '<div class="form-group"><label>所需人数 *</label><input type="number" min="1" step="1" value="' + escAttr(item.required_people || 1) + '" placeholder="最低1" onchange="updateSelfServicePresetItem(' + gpIdx + ',' + itemIdx + ',\'required_people\',Math.max(1, parseInt(this.value)||1))"></div></div>' +
                     '<div class="form-group"><label>项目内容 *</label><textarea rows="4" placeholder="说明该预制单包含的完整服务内容" onchange="updateSelfServicePresetItem(' + gpIdx + ',' + itemIdx + ',\'content\',this.value)">' + escHtml(item.content || '') + '</textarea></div>' +
                     '<div class="form-group"><label>项目备注</label><textarea rows="2" maxlength="500" placeholder="补充限制、注意事项或履约说明" onchange="updateSelfServicePresetItem(' + gpIdx + ',' + itemIdx + ',\'remark\',this.value)">' + escHtml(item.remark || '') + '</textarea></div>' +
                     '<div class="form-row"><div class="form-group"><label>排序</label><input type="number" value="' + escAttr(item.sort || 0) + '" onchange="updateSelfServicePresetItem(' + gpIdx + ',' + itemIdx + ',\'sort\',parseInt(this.value)||0)"></div>' +
@@ -3438,6 +3440,7 @@
                     if (!preset.display_image) { showToast('预制单“' + preset.name + '”请上传显示图片', 'error'); return; }
                     if (!preset.content.trim()) { showToast('预制单“' + preset.name + '”请填写项目内容', 'error'); return; }
                     if (Number(preset.price) < 0) { showToast('预制单“' + preset.name + '”价格不能小于0', 'error'); return; }
+                    if (!Number.isInteger(Number(preset.required_people)) || Number(preset.required_people) < 1) { showToast('预制单“' + preset.name + '”所需人数最低为1', 'error'); return; }
                 }
             }
         }

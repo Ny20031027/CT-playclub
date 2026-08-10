@@ -61,7 +61,7 @@ class GameplayPriceRuleSerializer(serializers.ModelSerializer):
 class GameplayPresetItemSerializer(serializers.ModelSerializer):
     class Meta:
         model = GameplayPresetItem
-        fields = ['id', 'name', 'display_image', 'content', 'remark', 'price', 'sort', 'status']
+        fields = ['id', 'name', 'display_image', 'content', 'remark', 'price', 'required_people', 'sort', 'status']
 
 
 class SkillGameplaySerializer(serializers.ModelSerializer):

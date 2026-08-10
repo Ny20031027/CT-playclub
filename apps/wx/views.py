@@ -1475,15 +1475,8 @@ def create_self_service_order(request):
             return error_response(msg='请选择有效的预制单项目')
         if not preset_item.display_image or not preset_item.content:
             return error_response(msg='该预制单配置不完整，请联系管理员')
-        try:
-            preset_quantity_value = Decimal(str(request.data.get('quantity', 1)))
-            if not preset_quantity_value.is_finite() or preset_quantity_value % 1 != 0:
-                raise ValueError
-            preset_quantity = int(preset_quantity_value)
-        except (InvalidOperation, TypeError, ValueError):
-            return error_response(msg='预制单数量必须是1至999之间的整数')
-        if preset_quantity < 1 or preset_quantity > 999:
-            return error_response(msg='预制单数量必须是1至999之间的整数')
+        # 数量锁定为预制单所需人数（最低1），打手由系统/在线打手自由接单匹配
+        preset_quantity = preset_item.required_people or 1
         preset_price = Decimal(preset_item.price).quantize(Decimal('0.01'), rounding=ROUND_HALF_UP)
         if preset_price < 0:
             return error_response(msg='该预制单价格配置无效，请联系管理员')
@@ -1514,6 +1507,7 @@ def create_self_service_order(request):
             'preset_content': preset_item.content,
             'preset_remark': preset_item.remark,
             'quantity': preset_quantity,
+            'required_people': preset_quantity,
             'unit_price': float(preset_price),
             'unit_coins': unit_coin_cost,
             'total_amount': float(total_price),

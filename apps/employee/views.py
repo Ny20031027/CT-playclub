@@ -519,6 +519,15 @@ class EmployeeSkillViewSet(BaseModelViewSet):
                     preset.content = str(preset_data.get('content', '') or '').strip()
                     preset.remark = str(preset_data.get('remark', '') or '').strip()
                     preset.price = self._decimal(preset_data.get('price', 0), 'preset_items.price')
+                    try:
+                        required_people = int(preset_data.get('required_people', 1) or 1)
+                    except (TypeError, ValueError):
+                        raise serializers.ValidationError({'preset_items': f'预制单“{preset.name}”所需人数必须是整数'})
+                    if required_people < 1:
+                        raise serializers.ValidationError({'preset_items': f'预制单“{preset.name}”所需人数最低为1'})
+                    if required_people > 999:
+                        raise serializers.ValidationError({'preset_items': f'预制单“{preset.name}”所需人数不能超过999'})
+                    preset.required_people = required_people
                     preset.sort = preset_data.get('sort', preset_index)
                     preset.status = preset_data.get('status', True) is not False
                     preset.is_deleted = False
