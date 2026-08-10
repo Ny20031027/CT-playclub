@@ -1,5 +1,6 @@
 from decimal import Decimal
 from unittest.mock import patch
+import requests
 
 from django.test import TestCase
 from rest_framework.test import APIClient
@@ -118,6 +119,29 @@ class CustomerServicePreOrderTests(TestCase):
         self.assertEqual(_get_wx_access_token(), 'fresh-token')
         self.assertFalse(session.trust_env)
         self.assertEqual(session.get.call_args.args[0], 'https://api.weixin.qq.com/cgi-bin/token')
+
+    @patch('apps.wx.views.requests.Session')
+    def test_access_token_retries_only_ssl_failure_for_wechat_host(self, mocked_session):
+        from django.core.cache import cache
+        from apps.wx.views import _get_wx_access_token
+
+        cache.delete('wx_mini_program_access_token')
+        session = mocked_session.return_value
+        successful_response = session.get.return_value
+        successful_response.json.return_value = {
+            'access_token': 'fallback-token', 'expires_in': 7200,
+        }
+        successful_response.raise_for_status.return_value = None
+        session.get.side_effect = [
+            requests.exceptions.SSLError('self-signed certificate'),
+            successful_response,
+        ]
+
+        self.assertEqual(_get_wx_access_token(), 'fallback-token')
+        self.assertEqual(session.get.call_count, 2)
+        self.assertNotIn('verify', session.get.call_args_list[0].kwargs)
+        self.assertFalse(session.get.call_args_list[1].kwargs['verify'])
+        self.assertFalse(session.get.call_args_list[1].kwargs['allow_redirects'])
 
 
 class BlackGoldSearchTests(TestCase):

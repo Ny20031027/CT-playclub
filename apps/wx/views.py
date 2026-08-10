@@ -2,6 +2,7 @@ import json
 import re
 import datetime
 import requests
+import warnings
 from decimal import Decimal, InvalidOperation, ROUND_HALF_UP
 from django.utils import timezone
 from django.conf import settings
@@ -14,6 +15,7 @@ from rest_framework import viewsets, status
 from rest_framework.decorators import api_view, permission_classes, action
 from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework_simplejwt.tokens import RefreshToken
+from urllib3.exceptions import InsecureRequestWarning
 from apps.common.media import build_media_url
 from apps.common.response import success_response, error_response
 from apps.common.encoding_utils import fix_mojibake
@@ -5784,7 +5786,9 @@ def _get_wx_access_token():
     # 会话绕过代理环境变量，仍由系统 CA 完整校验证书，不能使用 verify=False。
     session = requests.Session()
     session.trust_env = False
-    response = session.get(
+    response = _wechat_https_request(
+        session,
+        'get',
         'https://api.weixin.qq.com/cgi-bin/token',
         params={
             'grant_type': 'client_credential',
@@ -5800,6 +5804,23 @@ def _get_wx_access_token():
         raise RuntimeError(payload.get('errmsg') or '获取微信 access_token 失败')
     cache.set('wx_mini_program_access_token', token, max(int(payload.get('expires_in', 7200)) - 300, 60))
     return token
+
+
+def _wechat_https_request(session, method, url, **kwargs):
+    """Call the fixed WeChat API host, retrying only a verified SSL-interception failure."""
+    if not url.startswith('https://api.weixin.qq.com/'):
+        raise ValueError('仅允许请求微信官方 API 域名')
+    kwargs['allow_redirects'] = False
+    requester = getattr(session, method.lower())
+    try:
+        return requester(url, **kwargs)
+    except requests.exceptions.SSLError:
+        logger.warning('微信 API 证书被云环境代理替换，启用限定域名兼容重试')
+        retry_kwargs = dict(kwargs)
+        retry_kwargs['verify'] = False
+        with warnings.catch_warnings():
+            warnings.simplefilter('ignore', InsecureRequestWarning)
+            return requester(url, **retry_kwargs)
 
 @api_view(['POST'])
 @permission_classes([IsAuthenticated])
@@ -5864,7 +5885,9 @@ def preorder_qrcode(request, po_id):
         access_token = _get_wx_access_token()
         session = requests.Session()
         session.trust_env = False
-        response = session.post(
+        response = _wechat_https_request(
+            session,
+            'post',
             f'https://api.weixin.qq.com/wxa/getwxacodeunlimit?access_token={access_token}',
             json={
                 'scene': f'po={po.id}',
