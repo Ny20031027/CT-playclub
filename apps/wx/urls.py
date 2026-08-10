@@ -114,6 +114,11 @@ urlpatterns = [
     # 搜索
     path('search/', views.search_by_display_id, name='wx-search'),
 
+    # 客服预下单
+    path('preorder/create/', views.preorder_create, name='wx-preorder-create'),
+    path('preorder/<int:po_id>/', views.preorder_detail, name='wx-preorder-detail'),
+    path('preorder/<int:po_id>/qrcode/', views.preorder_qrcode, name='wx-preorder-qrcode'),
+
     # 排行榜
     path('game-ranking/', views.game_ranking, name='wx-game-ranking'),
 

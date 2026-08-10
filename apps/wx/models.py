@@ -206,3 +206,20 @@ class DasherApplication(BaseModel):
 
     def __str__(self):
         return f'{self.real_name} - {self.get_status_display()}'
+
+
+class PreOrder(BaseModel):
+    """客服预下单"""
+    cs_user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.SET_NULL,
+                                null=True, related_name='cs_preorders', verbose_name='客服')
+    selections = models.JSONField(default=dict, verbose_name='下单选项')
+    status = models.CharField(max_length=20, default='pending',
+                              choices=[('pending', '待下单'), ('used', '已下单'), ('expired', '已过期')],
+                              verbose_name='状态')
+    expire_time = models.DateTimeField(null=True, blank=True, verbose_name='过期时间')
+
+    class Meta:
+        db_table = 'wx_pre_order'
+        verbose_name = '预下单'
+        verbose_name_plural = verbose_name
+        ordering = ['-created_at']

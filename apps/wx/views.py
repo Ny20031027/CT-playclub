@@ -6,6 +6,7 @@ from decimal import Decimal, InvalidOperation, ROUND_HALF_UP
 from django.utils import timezone
 from django.conf import settings
 from django.db import connection
+from django.http import HttpResponse
 from django.db import transaction
 from django.db.models import Q, Sum, Count
 from rest_framework import viewsets, status
@@ -30,7 +31,7 @@ from apps.order.services import (
 from apps.notice.models import Notice, UserNotice
 from apps.finance.models import Wallet, Transaction
 from apps.upload.models import UploadFile
-from .models import WxUser, Banner, Announcement, GameCategory, Gift, GameBanner, Follow, GameAccount, DasherApplication
+from .models import WxUser, Banner, Announcement, GameCategory, Gift, GameBanner, Follow, GameAccount, DasherApplication, PreOrder
 from .serializers import (
     WxUserSerializer, BannerSerializer, AnnouncementSerializer,
     GameCategorySerializer, GiftSerializer, GameBannerSerializer
@@ -5700,3 +5701,66 @@ def search_by_display_id(request):
         'level_num': employee.level_num,
         'display_id': user.display_id,
     })
+
+
+# ============ 客服预下单 ============
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def preorder_create(request):
+    """客服创建预下单"""
+    selections = request.data.get('selections', {})
+    if not selections:
+        return error_response(msg='请选择下单选项')
+
+    expire_time = timezone.now() + timezone.timedelta(hours=24)
+    po = PreOrder.objects.create(
+        cs_user=request.user,
+        selections=selections,
+        expire_time=expire_time,
+        status='pending',
+    )
+    return success_response({
+        'id': po.id,
+        'qr_url': f'/api/wx/preorder/{po.id}/qrcode/',
+    })
+
+
+@api_view(['GET'])
+@permission_classes([AllowAny])
+def preorder_detail(request, po_id):
+    """获取预下单详情"""
+    try:
+        po = PreOrder.objects.get(id=po_id, is_deleted=False)
+    except PreOrder.DoesNotExist:
+        return error_response(msg='预下单不存在或已过期')
+    if po.expire_time and po.expire_time < timezone.now():
+        return error_response(msg='预下单已过期')
+    return success_response({
+        'id': po.id,
+        'selections': po.selections,
+        'status': po.status,
+    })
+
+
+@api_view(['GET'])
+@permission_classes([AllowAny])
+def preorder_qrcode(request, po_id):
+    """生成预下单二维码"""
+    try:
+        po = PreOrder.objects.get(id=po_id, is_deleted=False)
+    except PreOrder.DoesNotExist:
+        return error_response(msg='预下单不存在')
+
+    import qrcode
+    from io import BytesIO
+    qr = qrcode.QRCode(version=1, box_size=10, border=2)
+    # 使用小程序路径链接（客户扫码打开小程序后跳转）
+    mini_path = f'pages/preorder-checkout/preorder-checkout?id={po.id}'
+    qr.add_data(mini_path)
+    qr.make(fit=True)
+    img = qr.make_image(fill_color='black', back_color='white')
+    buf = BytesIO()
+    img.save(buf, format='PNG')
+    buf.seek(0)
+    return HttpResponse(buf.getvalue(), content_type='image/png')
