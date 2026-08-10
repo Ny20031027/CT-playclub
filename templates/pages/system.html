@@ -3083,7 +3083,7 @@
     }
     function addSelfServicePresetItem(gpIdx) {
         var items = selfServiceGameplays[gpIdx].preset_items || (selfServiceGameplays[gpIdx].preset_items = []);
-        items.push({ name: '', display_image: '', content: '', remark: '', price: 0, sort: items.length, status: true });
+        items.push({ name: '', display_image: '', content: '', remark: '', price: 0, required_people: 1, sort: items.length, status: true });
         renderSelfServiceGameplays();
     }
     function removeSelfServicePresetItem(gpIdx, itemIdx) {
@@ -3305,6 +3305,7 @@
                         return {
                             id: item.id || null, name: item.name.trim(), display_image: item.display_image || '',
                             content: item.content || '', remark: item.remark || '', price: Number(item.price) || 0,
+                            required_people: Math.max(1, parseInt(item.required_people) || 1),
                             sort: parseInt(item.sort) || 0, status: item.status !== false
                         };
                     }),
