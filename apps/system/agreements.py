@@ -75,7 +75,7 @@ def _normalize_agreement(item, fallback=None):
     fallback = fallback or {}
     key = str(item.get('key') or fallback.get('key') or '').strip()
     title = str(item.get('title') or fallback.get('title') or '').strip()
-    content = str(item.get('content') or fallback.get('content') or '').strip()
+    content = str(item.get('content') or fallback.get('content') or '').replace('\\n', '\n').strip()
     summary = str(item.get('summary') or fallback.get('summary') or '').strip()
     if not key or not title:
         return None

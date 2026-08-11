@@ -227,6 +227,19 @@ class AgreementTests(TestCase):
         self.assertEqual(response['data']['summary'], '新版摘要')
         self.assertEqual(response['data']['content'], '新版内容')
 
+    def test_agreement_detail_converts_literal_newline_marks(self):
+        Config.objects.create(
+            key='mini_agreements',
+            value='[{"key":"user_agreement","title":"用户协议","content":"第一行\\\\n第二行","sort":0,"status":true}]',
+            name='小程序协议设置',
+            type='json',
+            group='agreement',
+        )
+
+        response = self.client.get('/api/wx/agreements/user_agreement/').json()
+        self.assertEqual(response['code'], 200)
+        self.assertEqual(response['data']['content'], '第一行\n第二行')
+
 
 class BlackGoldSearchTests(TestCase):
     def setUp(self):
