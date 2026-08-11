@@ -36,7 +36,12 @@ class ConfigViewSet(BaseModelViewSet):
     def batch_update(self, request):
         items = request.data.get('items', {})
         for key, value in items.items():
-            Config.objects.filter(key=key).update(value=value)
+            obj, _ = Config.objects.get_or_create(
+                key=key, defaults={'value': value, 'name': key}
+            )
+            obj.value = value
+            obj.is_deleted = False
+            obj.save(update_fields=['value', 'is_deleted', 'updated_at'])
         return success_response(msg='批量更新成功')
 
 

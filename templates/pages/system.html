@@ -78,6 +78,19 @@
 <div id="configTab" style="display: block;">
     <div class="card">
         <div class="card-header">
+            <div class="card-title">黑金ID冻结名单</div>
+        </div>
+        <div class="card-body" style="padding: 20px;">
+            <p style="color: #666; margin-bottom: 15px; font-size: 13px;">系统自动生成黑金ID时，将跳过以下被冻结的ID（每行一个，最多9位数字）。多用于预留吉祥号/连号等特殊号码。</p>
+            <div class="form-group">
+                <textarea id="displayIdBlacklist" rows="8" placeholder="每行一个黑金ID，如：&#10;888888888&#10;666666666" style="width: 100%; padding: 10px; border: 1px solid #ddd; border-radius: 4px; resize: vertical; font-family: monospace;"></textarea>
+            </div>
+            <button class="btn btn-primary" onclick="saveDisplayIdBlacklist()">保存冻结名单</button>
+        </div>
+    </div>
+
+    <div class="card">
+        <div class="card-header">
             <div class="card-title">系统配置</div>
             <div class="card-actions">
                 <button class="btn btn-primary" onclick="showAddConfigModal()">
@@ -1042,23 +1055,51 @@
                 
                 if (configs.length === 0) {
                     tbody.innerHTML = '<tr><td colspan="4" class="empty-state"><i class="fa-solid fa-inbox"></i><br>暂无配置</td></tr>';
-                    return;
+                } else {
+                    tbody.innerHTML = configs.map(c => `
+                        <tr>
+                            <td>${c.key}</td>
+                            <td>${c.value}</td>
+                            <td>${c.description || '-'}</td>
+                            <td>
+                                <button class="btn btn-default" onclick="editConfig(${c.id})">编辑</button>
+                                <button class="btn btn-danger" onclick="deleteConfig(${c.id})">删除</button>
+                            </td>
+                        </tr>
+                    `).join('');
                 }
-                
-                tbody.innerHTML = configs.map(c => `
-                    <tr>
-                        <td>${c.key}</td>
-                        <td>${c.value}</td>
-                        <td>${c.description || '-'}</td>
-                        <td>
-                            <button class="btn btn-default" onclick="editConfig(${c.id})">编辑</button>
-                            <button class="btn btn-danger" onclick="deleteConfig(${c.id})">删除</button>
-                        </td>
-                    </tr>
-                `).join('');
+                // 回填黑金ID冻结名单
+                const blacklistCfg = configs.find(c => c.key === 'display_id_blacklist');
+                const blEl = document.getElementById('displayIdBlacklist');
+                if (blEl) blEl.value = (blacklistCfg && blacklistCfg.value) || '';
             }
         } catch (error) {
             console.error('加载配置失败:', error);
+        }
+    }
+
+    async function saveDisplayIdBlacklist() {
+        const value = document.getElementById('displayIdBlacklist').value || '';
+        // 校验：每行最多9位数字
+        const lines = value.split('\n').map(s => s.trim()).filter(Boolean);
+        for (const line of lines) {
+            if (!/^\d{1,9}$/.test(line)) {
+                showToast(`无效的黑金ID：${line}（需为1-9位数字）`, 'error');
+                return;
+            }
+        }
+        try {
+            const result = await post('/system/configs/batch-update/', {
+                items: { display_id_blacklist: lines.join('\n') },
+            });
+            if (result.code === 200) {
+                showToast('冻结名单已保存', 'success');
+                await loadConfigs();
+            } else {
+                showToast(result.msg || '保存失败', 'error');
+            }
+        } catch (error) {
+            showToast(error.message, 'error');
         }
     }
 

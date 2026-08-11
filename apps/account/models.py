@@ -117,9 +117,34 @@ class User(AbstractUser, BaseModel):
         return self.username
 
     @classmethod
+    def get_display_id_blacklist(cls):
+        """读取系统设置中的黑金ID冻结名单（每行一个ID）。"""
+        try:
+            from apps.system.models import Config
+            cfg = Config.objects.filter(
+                key='display_id_blacklist', is_deleted=False
+            ).first()
+        except Exception:
+            cfg = None
+        if not cfg or not cfg.value:
+            return set()
+        return set(
+            line.strip() for line in cfg.value.splitlines() if line.strip()
+        )
+
+    @classmethod
     def generate_display_id(cls):
-        """生成九位数字黑金ID，数据库唯一约束负责最终防重。"""
-        return str(100000000 + secrets.randbelow(900000000))
+        """生成九位数字黑金ID，数据库唯一约束负责最终防重；排除冻结名单中的ID。"""
+        blacklist = cls.get_display_id_blacklist()
+        for _ in range(30):
+            candidate = str(100000000 + secrets.randbelow(900000000))
+            if candidate not in blacklist:
+                return candidate
+        # 极端情况（冻结名单几乎覆盖全部ID）：持续重试直到生成未冻结的ID
+        while True:
+            candidate = str(100000000 + secrets.randbelow(900000000))
+            if candidate not in blacklist:
+                return candidate
 
     def ensure_display_id(self):
         """缺少黑金ID时原子补齐；已有ID保持不变。"""
