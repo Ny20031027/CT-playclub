@@ -3145,9 +3145,35 @@ def order_chat_group_detail(request, group_id):
         message = OrderChatMessage.objects.create(group=group, sender=request.user, content=content)
         return success_response({'message_id': message.id}, msg='发送成功')
     messages = group.messages.filter(is_deleted=False).select_related('sender')
+    order_card = None
+    order = group.order if group.order_id else None
+    if order is not None:
+        members = []
+        for m in order.order_members.filter(is_deleted=False):
+            if m.employee is None:
+                continue
+            members.append({
+                'id': m.id,
+                'employee_name': m.employee.nickname or m.employee.real_name,
+                'employee_avatar': employee_avatar_url(m.employee),
+            })
+        order_card = {
+            'order_id': order.id,
+            'order_no': order.order_no,
+            'skill_name': order.skill.name if order.skill else '',
+            'status': order.status,
+            'status_display': order.get_status_display(),
+            'duration': order.duration,
+            'quantity': order.quantity,
+            'game_name': order.game_name,
+            'total_amount': float(order.total_amount),
+            'pay_amount': float(order.pay_amount),
+            'members': members,
+        }
     return success_response({
         'id': group.id, 'name': group.name,
         'expires_at': _as_localtime(group.expires_at).strftime('%Y-%m-%d %H:%M'),
+        'order_card': order_card,
         'messages': [{
             'id': message.id, 'content': message.content, 'msg_type': message.msg_type,
             'is_mine': message.sender_id == request.user.id,
