@@ -7,7 +7,7 @@ from rest_framework.test import APIClient
 
 from apps.account.models import User
 from apps.customer.models import Customer, CustomerService
-from apps.employee.models import Employee, EmployeeSkill, GameplayPresetItem, SkillGameplay
+from apps.employee.models import Employee, EmployeeGameRank, EmployeeSkill, EmployeeSkillRelation, GameRank, GameplayPresetItem, SkillGameplay
 from apps.notice.models import UserNotice
 from apps.order.models import Order, OrderComment, OrderMember
 from apps.system.models import Config
@@ -239,6 +239,45 @@ class AgreementTests(TestCase):
         response = self.client.get('/api/wx/agreements/user_agreement/').json()
         self.assertEqual(response['code'], 200)
         self.assertEqual(response['data']['content'], '第一行\n第二行')
+
+
+class EmployeeGameRankDisplayTests(TestCase):
+    def setUp(self):
+        self.client = APIClient()
+        self.game = GameCategory.objects.create(name='三角洲', status=True)
+        self.rank = GameRank.objects.create(game_category=self.game, name='铂金', sort=1, status=True)
+        self.user = User.objects.create_user(username='rank_dasher')
+        self.employee = Employee.objects.create(
+            user=self.user,
+            employee_no='EMP-RANK-001',
+            real_name='段位打手',
+            nickname='段位打手',
+            status='idle',
+        )
+        self.employee.game_categories.add(self.game)
+        EmployeeGameRank.objects.create(employee=self.employee, game_category=self.game, rank=self.rank)
+        self.skill = EmployeeSkill.objects.create(
+            name='三角洲护航',
+            game_category=self.game,
+            unit_price=Decimal('20.00'),
+            status=True,
+        )
+        EmployeeSkillRelation.objects.create(
+            employee=self.employee,
+            skill=self.skill,
+            unit_price=Decimal('20.00'),
+            is_enabled=True,
+        )
+
+    def test_employee_list_returns_current_game_rank_badge(self):
+        response = self.client.get(f'/api/wx/employees/?game_id={self.game.id}').json()
+        self.assertEqual(response['code'], 200)
+        self.assertEqual(response['data']['list'][0]['game_rank_badge'], '三角洲-铂金')
+
+    def test_employee_detail_skill_returns_game_rank_badge(self):
+        response = self.client.get(f'/api/wx/employees/{self.employee.id}/').json()
+        self.assertEqual(response['code'], 200)
+        self.assertEqual(response['data']['skills'][0]['game_rank_badge'], '三角洲-铂金')
 
 
 class BlackGoldSearchTests(TestCase):

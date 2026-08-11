@@ -22,7 +22,7 @@ from apps.common.encoding_utils import fix_mojibake
 from apps.common.viewsets import BaseModelViewSet
 from apps.account.models import User
 from apps.employee.models import (
-    Employee, EmployeeSkill, EmployeeSkillRelation, EmployeeTag, SkillLevel,
+    Employee, EmployeeGameRank, EmployeeSkill, EmployeeSkillRelation, EmployeeTag, SkillLevel,
     SkillGameplay, GameplayPresetItem, GameplayDifficulty, GameplayLevelOption, GameplayService,
     ValueAddedService, AddonValueAddedService, ServiceValueAdded,
 )
@@ -1053,6 +1053,39 @@ def game_banners(request, game_id):
 
 # ============ 陪玩师模块 ============
 
+
+def _rank_payload(game_name='', rank_name='', game_id=0, rank_id=0):
+    game_name = fix_mojibake(game_name or '')
+    rank_name = fix_mojibake(rank_name or '')
+    return {
+        'game_id': game_id or 0,
+        'game_name': game_name,
+        'rank_id': rank_id or 0,
+        'rank_name': rank_name,
+        'badge': f'{game_name}-{rank_name}' if game_name and rank_name else '',
+    }
+
+
+def _employee_game_rank_payload(employee, game_id):
+    if not game_id:
+        return _rank_payload()
+    try:
+        rel = EmployeeGameRank.objects.select_related('game_category', 'rank').get(
+            employee=employee,
+            game_category_id=game_id,
+            is_deleted=False,
+            rank__status=True,
+            rank__is_deleted=False,
+        )
+    except EmployeeGameRank.DoesNotExist:
+        return _rank_payload()
+    return _rank_payload(
+        game_name=rel.game_category.name if rel.game_category else '',
+        rank_name=rel.rank.name if rel.rank else '',
+        game_id=rel.game_category_id,
+        rank_id=rel.rank_id,
+    )
+
 @api_view(['GET'])
 @permission_classes([AllowAny])
 def employee_list(request):
@@ -1120,10 +1153,11 @@ def employee_list(request):
 
     employee_list = []
     for emp in employees:
+        current_game_rank = _employee_game_rank_payload(emp, game_id)
         skills = []
         for rel in emp.skill_relations.filter(
             skill__status=True, is_deleted=False
-        ).select_related('skill', 'skill_level', 'skill__required_rank').order_by(
+        ).select_related('skill', 'skill_level', 'skill__required_rank', 'skill__game_category').order_by(
             '-is_enabled', 'skill__sort', 'id'
         )[:5]:
             skills.append({
@@ -1163,6 +1197,8 @@ def employee_list(request):
             'skills': skills,
             'tags': tags,
             'game_categories': game_categories,
+            'game_rank': current_game_rank,
+            'game_rank_badge': current_game_rank['badge'],
             'is_online': emp.online_status,
             'is_star': emp.is_star,
         })
@@ -1185,19 +1221,37 @@ def employee_detail(request, emp_id):
     except Employee.DoesNotExist:
         return error_response(msg='陪玩师不存在')
 
+    rank_map = {}
+    for rank_rel in emp.game_rank_relations.filter(
+        is_deleted=False, rank__status=True, rank__is_deleted=False
+    ).select_related('game_category', 'rank'):
+        rank_map[rank_rel.game_category_id] = _rank_payload(
+            game_name=rank_rel.game_category.name if rank_rel.game_category else '',
+            rank_name=rank_rel.rank.name if rank_rel.rank else '',
+            game_id=rank_rel.game_category_id,
+            rank_id=rank_rel.rank_id,
+        )
+
     skills = []
     for rel in emp.skill_relations.filter(
         skill__status=True, is_deleted=False
-    ).select_related('skill', 'skill_level', 'skill__required_rank').order_by(
+    ).select_related('skill', 'skill_level', 'skill__required_rank', 'skill__game_category').order_by(
         '-is_enabled', 'skill__sort', 'id'
     ):
+        game_category_id = rel.skill.game_category_id or 0
+        game_name = rel.skill.game_category.name if rel.skill.game_category else ''
+        game_rank = rank_map.get(game_category_id) or _rank_payload(game_name=game_name, game_id=game_category_id)
         skills.append({
             'id': rel.skill.id,
             'name': fix_mojibake(rel.skill.name),
             'category': fix_mojibake(rel.skill.category),
+            'game_id': game_category_id,
+            'game_name': fix_mojibake(game_name),
             'price': float(rel.unit_price),
             'level': fix_mojibake(rel.skill_level.name) if rel.skill_level else '',
             'required_rank': fix_mojibake(rel.skill.required_rank.name) if rel.skill.required_rank else '',
+            'game_rank': game_rank,
+            'game_rank_badge': game_rank['badge'],
             'min_people': rel.skill.min_people or 1,
             'icon': rel.skill.icon or '',
             'is_enabled': rel.is_enabled,
