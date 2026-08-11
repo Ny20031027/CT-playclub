@@ -2051,7 +2051,8 @@ def my_orders(request):
     page = int(request.GET.get('page', 1))
     page_size = int(request.GET.get('page_size', 10))
 
-    queryset = Order.objects.filter(customer=customer, is_deleted=False)
+    # 客户（老板）视角：显示自己的全部订单（含待接单/转单中/已取消）
+    queryset = Order.objects.filter(customer=customer, is_deleted=False).order_by('-created_at')
 
     if order_status:
         queryset = queryset.filter(status=order_status)
@@ -2113,13 +2114,14 @@ def employee_orders(request):
     page = int(request.GET.get('page', 1))
     page_size = int(request.GET.get('page_size', 10))
 
-    # 只显示打手已接取的订单
+    # 打手视角：显示自己参与（接取/在队）的全部订单，按最新排序。
+    # 只要存在未删除的订单成员记录即视为参与，覆盖待确认/待开始/进行中/已完成/已评价/已取消；
+    # 排除仍在大厅的 published 与与自己无关的订单。
     queryset = Order.objects.filter(
         order_members__employee=employee,
         order_members__is_deleted=False,
-        order_members__status__in=ACTIVE_ORDER_MEMBER_STATUSES,
         is_deleted=False
-    ).distinct()
+    ).exclude(status='published').distinct().order_by('-created_at')
 
     if order_status:
         queryset = queryset.filter(status=order_status)
