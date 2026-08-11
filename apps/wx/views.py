@@ -643,9 +643,6 @@ def wx_login(request):
     else:
         user = wx_user.user
 
-    user.last_login = timezone.now()
-    user.save(update_fields=['last_login'])
-
     user.ensure_display_id()
 
     # 封禁拦截：封禁中的用户不允许登录，明确返回封禁原因与截止时间
@@ -659,9 +656,13 @@ def wx_login(request):
                 'banned': True,
                 'permanent': info.get('permanent', False),
                 'ban_until': info.get('ban_until'),
+                'ban_until_display': info.get('ban_until_display'),
                 'ban_reason': info.get('ban_reason', ''),
             },
         )
+
+    user.last_login = timezone.now()
+    user.save(update_fields=['last_login'])
 
     # 判断用户类型
     is_dasher = bool(user.get_active_employee())
@@ -773,6 +774,20 @@ def test_login(request):
             user = customer.user
         except Exception:
             return error_response(msg='客户账号不存在')
+
+    if user.is_banned_active():
+        from apps.account.ban_utils import ban_info
+        info = ban_info(user)
+        return error_response(
+            msg='账号已被封禁，无法登录', code=4010,
+            data={
+                'banned': True,
+                'permanent': info.get('permanent', False),
+                'ban_until': info.get('ban_until'),
+                'ban_until_display': info.get('ban_until_display'),
+                'ban_reason': info.get('ban_reason', ''),
+            },
+        )
 
     # 生成 JWT token
     refresh = RefreshToken.for_user(user)

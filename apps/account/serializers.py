@@ -18,6 +18,9 @@ class LoginSerializer(serializers.Serializer):
             raise serializers.ValidationError('用户名或密码错误')
         if not user.is_active:
             raise serializers.ValidationError('账号已被禁用')
+        if user.is_banned_active():
+            from .ban_utils import ban_message
+            raise serializers.ValidationError(ban_message(user))
 
         refresh = RefreshToken.for_user(user)
         attrs['user'] = user
@@ -66,6 +69,9 @@ class WxLoginSerializer(serializers.Serializer):
         
         if not user.is_active:
             raise serializers.ValidationError('账号已被禁用')
+        if user.is_banned_active():
+            from .ban_utils import ban_message
+            raise serializers.ValidationError(ban_message(user))
 
         # 生成token
         refresh = RefreshToken.for_user(user)

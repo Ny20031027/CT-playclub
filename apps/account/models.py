@@ -107,6 +107,9 @@ class User(AbstractUser, BaseModel):
     is_banned = models.BooleanField(default=False, verbose_name='是否封禁')
     ban_until = models.DateTimeField(null=True, blank=True, verbose_name='封禁截止时间')
     ban_reason = models.CharField(max_length=200, blank=True, verbose_name='封禁原因')
+    auth_invalid_before = models.DateTimeField(
+        null=True, blank=True, verbose_name='登录凭证失效时间'
+    )
 
     class Meta:
         db_table = 'sys_user'

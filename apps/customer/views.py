@@ -99,14 +99,17 @@ class CustomerViewSet(BaseModelViewSet):
         customer = self.get_object()
         if not customer.user:
             return success_response(code=400, msg='该客户未绑定用户，无法封禁')
-        from apps.account.ban_utils import apply_ban
-        apply_ban(
-            customer.user,
-            request.data.get('duration_type', 'forever'),
-            request.data.get('duration'),
-            request.data.get('reason', ''),
-        )
-        return success_response(msg='封禁成功')
+        from apps.account.ban_utils import apply_ban, ban_info
+        try:
+            apply_ban(
+                customer.user,
+                request.data.get('duration_type', 'forever'),
+                request.data.get('duration'),
+                request.data.get('reason', ''),
+            )
+        except ValueError as exc:
+            return error_response(msg=str(exc))
+        return success_response(ban_info(customer.user), msg='封禁成功，该用户已被强制下线')
 
     @action(detail=True, methods=['post'], url_path='unban')
     def unban_customer(self, request, pk=None):

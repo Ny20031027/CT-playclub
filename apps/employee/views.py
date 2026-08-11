@@ -4,7 +4,7 @@ from decimal import Decimal, InvalidOperation
 from rest_framework import serializers, viewsets
 from rest_framework.decorators import action
 
-from apps.common.response import success_response
+from apps.common.response import success_response, error_response
 from apps.common.viewsets import BaseModelViewSet
 from .models import (
     Employee, EmployeeSkill, EmployeeTag, EmployeeWallet,
@@ -66,14 +66,17 @@ class EmployeeViewSet(BaseModelViewSet):
         employee = self.get_object()
         if not employee.user:
             return success_response(code=400, msg='该打手未绑定用户，无法封禁')
-        from apps.account.ban_utils import apply_ban
-        apply_ban(
-            employee.user,
-            request.data.get('duration_type', 'forever'),
-            request.data.get('duration'),
-            request.data.get('reason', ''),
-        )
-        return success_response(msg='封禁成功')
+        from apps.account.ban_utils import apply_ban, ban_info
+        try:
+            apply_ban(
+                employee.user,
+                request.data.get('duration_type', 'forever'),
+                request.data.get('duration'),
+                request.data.get('reason', ''),
+            )
+        except ValueError as exc:
+            return error_response(msg=str(exc))
+        return success_response(ban_info(employee.user), msg='封禁成功，该用户已被强制下线')
 
     @action(detail=True, methods=['post'], url_path='unban')
     def unban_employee(self, request, pk=None):

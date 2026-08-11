@@ -87,6 +87,20 @@ class FinanceFlowTests(TestCase):
         self.assertEqual(self.wallet.balance, Decimal('100.00'))
         self.assertEqual(self.wallet.frozen_amount, Decimal('0.00'))
 
+    def test_frozen_commission_cannot_be_withdrawn(self):
+        self.employee.commission_frozen = True
+        self.employee.save(update_fields=['commission_frozen'])
+
+        response = self.client.post('/api/finance/withdraws/', {
+            'employee': self.employee.id,
+            'amount': 30,
+            'withdraw_method': 'wechat',
+        }, format='json')
+
+        self.assertEqual(response.status_code, 400)
+        self.assertIn('佣金已被冻结', str(response.data))
+        self.assertFalse(Withdraw.objects.exists())
+
     def test_platform_and_employee_flows_are_separate(self):
         skill = EmployeeSkill.objects.create(name='财务测试技能', category='test')
         order = Order.objects.create(

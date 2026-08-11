@@ -593,8 +593,11 @@
                     const starBadge = emp.is_star
                         ? `<span class="badge star-badge"><i class="fa-solid fa-star"></i> 明星 · ${Number(emp.star_sort) || 0}</span>`
                         : '<span class="category-badge muted">普通</span>';
+                    const banDeadline = emp.ban_detail?.permanent
+                        ? '永久封禁'
+                        : (emp.ban_detail?.ban_until_display ? `封禁至 ${emp.ban_detail.ban_until_display}` : '已封禁');
                     const banBadge = emp.user_banned
-                        ? '<span class="badge badge-danger">已封禁</span>'
+                        ? `<span class="badge badge-danger" title="${banDeadline}">${banDeadline}</span>`
                         : '';
                     const freezeBadge = emp.commission_frozen
                         ? '<span class="badge badge-warning">佣金冻结</span>'
@@ -617,7 +620,7 @@
                             <button class="btn btn-default" onclick="editEmployee(${emp.id})">编辑</button>
                             ${emp.user_banned
                                 ? `<button class="btn btn-warning" onclick="unbanEmployee(${emp.id})">解封</button>`
-                                : `<button class="btn btn-warning" onclick="openBanModal(${emp.id}, '${emp.nickname || '打手'}')">封禁</button>`}
+                                : `<button class="btn btn-warning" onclick="openBanModal(${emp.id}, decodeURIComponent('${encodeURIComponent(emp.nickname || '打手')}'))">封禁</button>`}
                             <button class="btn btn-info" onclick="toggleFreezeCommission(${emp.id}, ${emp.commission_frozen ? 'false' : 'true'})">${emp.commission_frozen ? '解冻佣金' : '冻结佣金'}</button>
                             <button class="btn btn-danger" onclick="dismissEmployee(${emp.id})">解聘</button>
                         </td>

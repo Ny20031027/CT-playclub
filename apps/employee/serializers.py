@@ -282,6 +282,7 @@ class EmployeeSerializer(serializers.ModelSerializer):
     star_sort = serializers.IntegerField(required=False, min_value=0)
     commission_frozen = serializers.BooleanField(read_only=True)
     user_banned = serializers.SerializerMethodField()
+    ban_detail = serializers.SerializerMethodField()
 
     class Meta:
         model = Employee
@@ -293,7 +294,7 @@ class EmployeeSerializer(serializers.ModelSerializer):
                   'intro', 'voice_intro', 'voice_intro_url', 'voice_duration', 'rating', 'order_count', 'total_duration', 'fans_count',
                   'commission_balance', 'commission_frozen', 'platform_commission_rate', 'join_date',
                   'bank_name', 'bank_card', 'alipay', 'wechat', 'qq', 'sort', 'remark',
-                  'is_star', 'star_sort', 'user_banned',
+                  'is_star', 'star_sort', 'user_banned', 'ban_detail',
                   'wallet', 'created_at', 'updated_at']
         read_only_fields = ['id', 'rating', 'order_count', 'total_duration',
                             'online_status', 'created_at', 'updated_at', 'user', 'username', 'avatar_url',
@@ -323,6 +324,12 @@ class EmployeeSerializer(serializers.ModelSerializer):
             return bool(obj.user and obj.user.is_banned_active())
         except Exception:
             return False
+
+    def get_ban_detail(self, obj):
+        if not obj.user_id:
+            return {'is_banned': False}
+        from apps.account.ban_utils import ban_info
+        return ban_info(obj.user)
 
     def validate_edit_display_id(self, value):
         value = validate_display_id(value)

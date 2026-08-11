@@ -274,8 +274,11 @@
                     const statusBadge = cust.status
                         ? '<span class="badge badge-success">正常</span>'
                         : '<span class="badge badge-danger">禁用</span>';
+                    const banDeadline = cust.ban_detail?.permanent
+                        ? '永久封禁'
+                        : (cust.ban_detail?.ban_until_display ? `封禁至 ${cust.ban_detail.ban_until_display}` : '已封禁');
                     const banBadge = cust.user_banned
-                        ? '<span class="badge badge-danger">已封禁</span>'
+                        ? `<span class="badge badge-danger" title="${banDeadline}">${banDeadline}</span>`
                         : '';
                     const freezeBadge = cust.coins_frozen
                         ? '<span class="badge badge-warning">💎已冻结</span>'
@@ -300,7 +303,7 @@
                                 <button class="btn btn-primary btn-sm" onclick="editCustomer(${cust.id})">编辑</button>
                                 ${cust.user_banned
                                     ? `<button class="btn btn-warning btn-sm" onclick="unbanCustomer(${cust.id})">解封</button>`
-                                    : `<button class="btn btn-warning btn-sm" onclick="openBanModal(${cust.id}, '${cust.nickname || '客户'}')">封禁</button>`}
+                                    : `<button class="btn btn-warning btn-sm" onclick="openBanModal(${cust.id}, decodeURIComponent('${encodeURIComponent(cust.nickname || '客户')}'))">封禁</button>`}
                                 <button class="btn btn-info btn-sm" onclick="toggleFreezeCoins(${cust.id}, ${cust.coins_frozen ? 'false' : 'true'})">${cust.coins_frozen ? '解冻黑钻' : '冻结黑钻'}</button>
                             </td>
                         </tr>

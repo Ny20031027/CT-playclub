@@ -5,6 +5,7 @@ from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework_simplejwt.tokens import RefreshToken
 
 from apps.account.models import User
+from apps.account.ban_utils import ban_info
 from apps.common.media import build_media_url
 from apps.common.response import success_response, error_response
 from apps.customer.models import Customer, CustomerService
@@ -105,8 +106,7 @@ def wx_login(request):
     )
     if not created:
         wx_user.session_key = session_key
-        wx_user.last_login = timezone.now()
-        wx_user.save(update_fields=['session_key', 'last_login'])
+        wx_user.save(update_fields=['session_key'])
 
     if not wx_user.user:
         username = f'wx_{openid[-8:]}'
@@ -124,6 +124,22 @@ def wx_login(request):
     else:
         user = wx_user.user
 
+    if user.is_banned_active():
+        info = ban_info(user)
+        return error_response(
+            msg='账号已被封禁，无法登录',
+            code=4010,
+            data={
+                'banned': True,
+                'permanent': info.get('permanent', False),
+                'ban_until': info.get('ban_until'),
+                'ban_until_display': info.get('ban_until_display'),
+                'ban_reason': info.get('ban_reason', ''),
+            },
+        )
+
+    wx_user.last_login = timezone.now()
+    wx_user.save(update_fields=['last_login'])
     user.ensure_display_id()
     user.last_login = timezone.now()
     user.save(update_fields=['last_login'])
@@ -208,6 +224,20 @@ def test_login(request):
         if not customer:
             return error_response(msg='没有可用的客户账号')
         user = customer.user
+
+    if user.is_banned_active():
+        info = ban_info(user)
+        return error_response(
+            msg='账号已被封禁，无法登录',
+            code=4010,
+            data={
+                'banned': True,
+                'permanent': info.get('permanent', False),
+                'ban_until': info.get('ban_until'),
+                'ban_until_display': info.get('ban_until_display'),
+                'ban_reason': info.get('ban_reason', ''),
+            },
+        )
 
     refresh = RefreshToken.for_user(user)
     user.ensure_display_id()

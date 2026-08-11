@@ -1,7 +1,10 @@
 import time
 import json
 import logging
+import datetime
+from django.http import JsonResponse
 from django.utils.deprecation import MiddlewareMixin
+from django.utils import timezone
 
 logger = logging.getLogger(__name__)
 
@@ -15,7 +18,7 @@ class BanCheckMiddleware(MiddlewareMixin):
             return None
         try:
             from rest_framework_simplejwt.authentication import JWTAuthentication
-            user, _ = JWTAuthentication().authenticate(request)
+            user, validated_token = JWTAuthentication().authenticate(request)
         except Exception as exc:
             # token 无效/过期，或底层（如数据库未迁移/不可用）异常：放行，交给后续 DRF 处理
             logger.warning('BanCheck authenticate skipped: %s', exc)
@@ -29,17 +32,34 @@ class BanCheckMiddleware(MiddlewareMixin):
             if banned:
                 from apps.account.ban_utils import ban_info
                 info = ban_info(user)
-                from apps.common.response import error_response
-                return error_response(
-                    msg='账号已被封禁，无法操作',
-                    code=4010,
-                    data={
+                return JsonResponse({
+                    'code': 4010,
+                    'msg': '账号已被封禁，无法操作',
+                    'data': {
                         'banned': True,
                         'permanent': info.get('permanent', False),
                         'ban_until': info.get('ban_until'),
+                        'ban_until_display': info.get('ban_until_display'),
                         'ban_reason': info.get('ban_reason', ''),
                     },
+                })
+            invalid_before = getattr(user, 'auth_invalid_before', None)
+            token_issued_at = validated_token.get('iat') if validated_token else None
+            if invalid_before and token_issued_at:
+                issued_at = datetime.datetime.fromtimestamp(
+                    int(token_issued_at), tz=datetime.timezone.utc
                 )
+                compare_before = invalid_before
+                if timezone.is_naive(compare_before):
+                    compare_before = timezone.make_aware(
+                        compare_before, timezone.get_current_timezone()
+                    )
+                if issued_at < compare_before:
+                    return JsonResponse({
+                        'code': 401,
+                        'msg': '登录状态已失效，请重新登录',
+                        'data': {'session_revoked': True},
+                    })
         return None
 
 
