@@ -2466,10 +2466,19 @@ def order_detail(request, order_id):
             visible_snapshot.pop('game_account_id', None)
             visible_snapshot.pop('game_account_name', None)
             visible_snapshot.pop('game_account_category', None)
+    customer_game_account_id = visible_snapshot.get('game_account_id')
+    customer_game_account_name = visible_snapshot.get('game_account_name') or ''
+    customer_game_account_category = visible_snapshot.get('game_account_category') or ''
 
     return success_response({
         'id': order.id,
         'order_no': order.order_no,
+        'customer_id': order.customer_id,
+        'customer_name': order.customer.nickname if order.customer else '',
+        'customer_avatar': build_media_url(order.customer.avatar, request) if order.customer else '',
+        'customer_display_id': (
+            order.customer.user.display_id if order.customer and order.customer.user else ''
+        ),
         'skill_name': order.skill.name if order.skill else '',
         'status': order.status,
         'status_display': order.get_status_display(),
@@ -2479,10 +2488,16 @@ def order_detail(request, order_id):
         'purchase_quantity': float(order.purchase_quantity),
         'settlement_unit': order.settlement_unit,
         'self_service_snapshot': visible_snapshot,
+        'customer_game_account_id': customer_game_account_id,
+        'customer_game_account_name': customer_game_account_name,
+        'customer_game_account_category': customer_game_account_category,
         'assigned_employee_id': order.assigned_employee_id,
         'assigned_employee_name': (
             order.assigned_employee.nickname or order.assigned_employee.real_name
         ) if order.assigned_employee else '',
+        'assigned_employee_display_id': (
+            order.assigned_employee.user.display_id if order.assigned_employee and order.assigned_employee.user else ''
+        ),
         'assigned_employee_avatar': employee_avatar_url(order.assigned_employee) if order.assigned_employee else '',
         'locked_slots': order.locked_slots,
         'remaining_slots': remaining_slots,
@@ -2496,6 +2511,7 @@ def order_detail(request, order_id):
         'game_name': order.game_name,
         'server': order.server,
         'remark': order.remark,
+        'cancel_reason': order.cancel_reason,
         'transfer_reason': (order.transfer_reason or '') if is_dasher else '',
         'is_transfer': bool(order.transfer_reason),
         'members': members,
@@ -2513,6 +2529,7 @@ def order_detail(request, order_id):
         'pay_time': order.pay_time.strftime('%Y-%m-%d %H:%M') if order.pay_time else None,
         'start_time': order.start_time.strftime('%Y-%m-%d %H:%M') if order.start_time else None,
         'end_time': order.end_time.strftime('%Y-%m-%d %H:%M') if order.end_time else None,
+        'cancel_time': order.cancel_time.strftime('%Y-%m-%d %H:%M') if order.cancel_time else None,
     })
 
 

@@ -5,49 +5,219 @@
     document.getElementById('pageTitle').textContent = '订单管理';
 </script>
 
-<div class="filter-bar">
-    <input type="text" id="orderNoInput" placeholder="订单号">
-    <select id="statusSelect">
-        <option value="">全部状态</option>
-        <option value="pending">待支付</option>
-        <option value="allocated">待分配</option>
-        <option value="in_progress">进行中</option>
-        <option value="completed">已完成</option>
-        <option value="cancelled">已取消</option>
-    </select>
-    <input type="date" id="startDate">
-    <input type="date" id="endDate">
-    <button class="btn btn-primary" onclick="loadOrders()">搜索</button>
-</div>
+<style>
+    .order-page { display: flex; flex-direction: column; gap: 18px; }
+    .order-hero {
+        display: grid;
+        grid-template-columns: repeat(4, minmax(0, 1fr));
+        gap: 16px;
+    }
+    .order-stat {
+        position: relative;
+        overflow: hidden;
+        padding: 20px;
+        border-radius: 18px;
+        background: #fff;
+        box-shadow: 0 10px 28px rgba(31, 42, 68, .06);
+        border: 1px solid #eef1f7;
+    }
+    .order-stat::after {
+        content: '';
+        position: absolute;
+        right: -26px;
+        top: -32px;
+        width: 92px;
+        height: 92px;
+        border-radius: 50%;
+        background: rgba(91, 124, 255, .08);
+    }
+    .order-stat strong { display: block; font-size: 28px; line-height: 1; color: #1f2937; }
+    .order-stat span { display: block; margin-top: 10px; color: #8a94a8; font-size: 13px; }
+    .order-toolbar {
+        display: grid;
+        grid-template-columns: 1.4fr 170px 150px 150px auto;
+        gap: 12px;
+        align-items: center;
+        padding: 16px;
+        border-radius: 18px;
+        background: #fff;
+        box-shadow: 0 10px 28px rgba(31, 42, 68, .06);
+        border: 1px solid #eef1f7;
+    }
+    .order-toolbar input, .order-toolbar select {
+        height: 40px;
+        border-radius: 12px;
+        border: 1px solid #dfe5f0;
+        background: #f8fafd;
+        padding: 0 14px;
+        outline: none;
+    }
+    .order-toolbar input:focus, .order-toolbar select:focus {
+        border-color: #6f63ff;
+        box-shadow: 0 0 0 3px rgba(111, 99, 255, .12);
+    }
+    .order-card {
+        border-radius: 20px;
+        overflow: hidden;
+        background: #fff;
+        box-shadow: 0 12px 34px rgba(31, 42, 68, .07);
+        border: 1px solid #eef1f7;
+    }
+    .order-card .card-header {
+        padding: 18px 20px;
+        border-bottom: 1px solid #eef1f7;
+        background: linear-gradient(180deg, #fff, #fbfcff);
+    }
+    .order-table { width: 100%; border-collapse: separate; border-spacing: 0; }
+    .order-table th {
+        padding: 14px 16px;
+        background: #f7f8fc;
+        color: #687386;
+        font-size: 13px;
+        font-weight: 700;
+        text-align: left;
+        white-space: nowrap;
+    }
+    .order-table td {
+        padding: 16px;
+        border-bottom: 1px solid #f0f2f7;
+        vertical-align: middle;
+        color: #2d3546;
+    }
+    .order-table tr:hover td { background: #fafbff; }
+    .order-main { display: flex; flex-direction: column; gap: 5px; min-width: 190px; }
+    .order-no { font-weight: 800; color: #1f2937; }
+    .order-brief { color: #8a94a8; font-size: 12px; max-width: 360px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .person-cell { display: flex; align-items: center; gap: 10px; min-width: 130px; }
+    .person-avatar { width: 34px; height: 34px; border-radius: 50%; object-fit: cover; background: #eef1f7; }
+    .person-name { font-weight: 700; color: #273044; }
+    .person-sub { color: #98a2b3; font-size: 12px; margin-top: 2px; }
+    .amount-cell { font-weight: 900; color: #ff6a1f; }
+    .order-actions { display: flex; gap: 8px; flex-wrap: wrap; }
+    .badge { display: inline-flex; align-items: center; height: 24px; padding: 0 10px; border-radius: 999px; font-size: 12px; font-weight: 800; }
+    .badge-purple { color: #6b57e8; background: #efedff; }
+    .badge-blue { color: #2377dd; background: #eaf3ff; }
+    .badge-green { color: #159a67; background: #e9fbf3; }
+    .badge-orange { color: #a66400; background: #fff1d4; }
+    .badge-gray { color: #657184; background: #eef1f6; }
+    .badge-red { color: #db3b56; background: #fff0f3; }
+    .badge-cyan { color: #078a92; background: #e6fbfd; }
+    .order-detail-modal { max-width: 1040px; width: 88vw; }
+    .detail-shell { display: grid; grid-template-columns: minmax(0, 1.25fr) minmax(320px, .75fr); gap: 18px; }
+    .detail-panel {
+        padding: 18px;
+        border-radius: 18px;
+        background: #f8fafd;
+        border: 1px solid #edf1f7;
+    }
+    .detail-panel h4 { margin: 0 0 14px; font-size: 15px; color: #1f2937; }
+    .detail-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
+    .detail-item {
+        padding: 12px;
+        border-radius: 14px;
+        background: #fff;
+        border: 1px solid #edf1f7;
+        min-width: 0;
+    }
+    .detail-item.wide { grid-column: 1 / span 2; }
+    .detail-label { display: block; color: #8a94a8; font-size: 12px; margin-bottom: 6px; }
+    .detail-value { display: block; color: #263044; font-weight: 800; line-height: 1.5; word-break: break-word; white-space: pre-wrap; }
+    .mini-list { display: flex; flex-direction: column; gap: 10px; }
+    .mini-member {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        padding: 12px;
+        border-radius: 14px;
+        background: #fff;
+        border: 1px solid #edf1f7;
+    }
+    .mini-member .person-avatar { width: 42px; height: 42px; }
+    .modal-tip {
+        display: flex;
+        gap: 10px;
+        align-items: flex-start;
+        padding: 12px 14px;
+        margin-bottom: 14px;
+        border-radius: 14px;
+        color: #936200;
+        background: #fff7df;
+        border: 1px solid #f6dc91;
+    }
+    .cancel-reason {
+        width: 100%;
+        min-height: 110px;
+        resize: vertical;
+        border: 1px solid #dfe5f0;
+        border-radius: 14px;
+        padding: 12px;
+        outline: none;
+        box-sizing: border-box;
+    }
+    .cancel-reason:focus { border-color: #ef5366; box-shadow: 0 0 0 3px rgba(239, 83, 102, .12); }
+    @media (max-width: 1180px) {
+        .order-hero { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+        .order-toolbar { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+        .order-toolbar .btn { width: 100%; }
+        .detail-shell { grid-template-columns: 1fr; }
+    }
+</style>
 
-<div class="card">
-    <div class="card-header">
-        <div class="card-title">订单列表</div>
-        <div class="card-actions">
-            <button class="btn btn-primary" onclick="showModal('addOrderModal')">
-                <i class="fa-solid fa-plus"></i> 创建订单
-            </button>
-        </div>
+<div class="order-page">
+    <div class="order-hero">
+        <div class="order-stat"><strong id="statTotal">0</strong><span>全部订单</span></div>
+        <div class="order-stat"><strong id="statRunning">0</strong><span>进行中/待开始</span></div>
+        <div class="order-stat"><strong id="statCompleted">0</strong><span>已完成/已评价</span></div>
+        <div class="order-stat"><strong id="statAmount">¥0.00</strong><span>当前页订单金额</span></div>
     </div>
-    <div class="table-container">
-        <table>
-            <thead>
-                <tr>
-                    <th>订单号</th>
-                    <th>客户</th>
-                    <th>陪玩师</th>
-                    <th>游戏</th>
-                    <th>金额</th>
-                    <th>时长</th>
-                    <th>状态</th>
-                    <th>创建时间</th>
-                    <th>操作</th>
-                </tr>
-            </thead>
-            <tbody id="orderList">
-                <tr><td colspan="9" class="empty-state"><i class="fa-solid fa-spinner fa-spin"></i><br>加载中...</td></tr>
-            </tbody>
-        </table>
+
+    <div class="order-toolbar">
+        <input type="text" id="orderNoInput" placeholder="搜索订单号、客户昵称、游戏名称">
+        <select id="statusSelect">
+            <option value="">全部状态</option>
+            <option value="published">可领取</option>
+            <option value="transferring">转单中</option>
+            <option value="claimed">待开始</option>
+            <option value="confirming">待双方确认</option>
+            <option value="in_progress">进行中</option>
+            <option value="completed">已结束</option>
+            <option value="reviewed">已评价</option>
+            <option value="cancelled">已取消</option>
+        </select>
+        <input type="date" id="startDate">
+        <input type="date" id="endDate">
+        <button class="btn btn-primary" onclick="loadOrders()"><i class="fa-solid fa-magnifying-glass"></i> 搜索</button>
+    </div>
+
+    <div class="order-card">
+        <div class="card-header">
+            <div class="card-title">订单列表</div>
+            <div class="card-actions">
+                <button class="btn btn-default" onclick="resetFilters()">重置</button>
+                <button class="btn btn-primary" onclick="showModal('addOrderModal')">
+                    <i class="fa-solid fa-plus"></i> 创建订单
+                </button>
+            </div>
+        </div>
+        <div class="table-container">
+            <table class="order-table">
+                <thead>
+                    <tr>
+                        <th>订单</th>
+                        <th>客户</th>
+                        <th>打手</th>
+                        <th>游戏/账号</th>
+                        <th>金额</th>
+                        <th>状态</th>
+                        <th>创建时间</th>
+                        <th>操作</th>
+                    </tr>
+                </thead>
+                <tbody id="orderList">
+                    <tr><td colspan="8" class="empty-state"><i class="fa-solid fa-spinner fa-spin"></i><br>加载中...</td></tr>
+                </tbody>
+            </table>
+        </div>
     </div>
 </div>
 
@@ -61,15 +231,11 @@
             <form id="addOrderForm">
                 <div class="form-group">
                     <label>客户</label>
-                    <select id="orderCustomerId" required>
-                        <option value="">请选择客户</option>
-                    </select>
+                    <select id="orderCustomerId" required><option value="">请选择客户</option></select>
                 </div>
                 <div class="form-group">
                     <label>陪玩师</label>
-                    <select id="orderEmployeeId">
-                        <option value="">不指定</option>
-                    </select>
+                    <select id="orderEmployeeId"><option value="">不指定</option></select>
                 </div>
                 <div class="form-group">
                     <label>游戏名称</label>
@@ -92,21 +258,143 @@
     </div>
 </div>
 
+<div class="modal-overlay" id="orderDetailModal">
+    <div class="modal order-detail-modal">
+        <div class="modal-header">
+            <div class="modal-title">订单详情</div>
+            <div class="modal-close" onclick="hideModal('orderDetailModal')">&times;</div>
+        </div>
+        <div class="modal-body" id="orderDetailBody"></div>
+        <div class="modal-footer">
+            <button class="btn btn-default" onclick="hideModal('orderDetailModal')">关闭</button>
+            <button class="btn btn-danger" id="detailCancelBtn" onclick="openCancelModalFromDetail()">取消订单</button>
+        </div>
+    </div>
+</div>
+
+<div class="modal-overlay" id="cancelOrderModal">
+    <div class="modal">
+        <div class="modal-header">
+            <div class="modal-title">取消订单</div>
+            <div class="modal-close" onclick="hideModal('cancelOrderModal')">&times;</div>
+        </div>
+        <div class="modal-body">
+            <div class="modal-tip">
+                <i class="fa-solid fa-triangle-exclamation"></i>
+                <span>取消后订单将不可继续接单或服务，请填写取消原因方便后续核对。</span>
+            </div>
+            <input type="hidden" id="cancelOrderId">
+            <textarea id="cancelReason" class="cancel-reason" placeholder="请输入取消原因，例如：客户主动取消、信息填写错误、无法履约等"></textarea>
+        </div>
+        <div class="modal-footer">
+            <button class="btn btn-default" onclick="hideModal('cancelOrderModal')">再想想</button>
+            <button class="btn btn-danger" onclick="submitCancelOrder()">确认取消</button>
+        </div>
+    </div>
+</div>
+
 <script>
+    let currentDetailOrder = null;
+
     document.addEventListener('DOMContentLoaded', async function() {
         await loadOrders();
         await loadCustomerOptions();
         await loadEmployeeOptions();
     });
 
+    function escHtml(value) {
+        return String(value == null ? '' : value)
+            .replace(/&/g, '&amp;')
+            .replace(/</g, '&lt;')
+            .replace(/>/g, '&gt;')
+            .replace(/"/g, '&quot;')
+            .replace(/'/g, '&#39;');
+    }
+
+    function valueOrDash(value) {
+        return value === undefined || value === null || value === '' ? '-' : value;
+    }
+
+    function getStatusText(status, fallback) {
+        const map = {
+            published: '可领取',
+            transferring: '转单中',
+            claimed: '待开始',
+            confirming: '待双方确认',
+            in_progress: '进行中',
+            completed: '已结束',
+            reviewed: '已评价',
+            cancelled: '已取消'
+        };
+        return fallback || map[status] || status || '-';
+    }
+
+    function getStatusBadge(status) {
+        const map = {
+            published: 'badge-purple',
+            transferring: 'badge-orange',
+            claimed: 'badge-blue',
+            confirming: 'badge-cyan',
+            in_progress: 'badge-green',
+            completed: 'badge-gray',
+            reviewed: 'badge-gray',
+            cancelled: 'badge-red'
+        };
+        return map[status] || 'badge-gray';
+    }
+
+    function canCancel(order) {
+        return order && !['completed', 'reviewed', 'cancelled'].includes(order.status);
+    }
+
+    function snapshot(order) {
+        return order.self_service_snapshot || {};
+    }
+
+    function orderTitle(order) {
+        const s = snapshot(order);
+        return [s.skill_name || order.game_name || order.skill_name, s.gameplay_name, s.preset_item_name].filter(Boolean).join(' · ') || order.order_no;
+    }
+
+    function orderBrief(order) {
+        const s = snapshot(order);
+        const parts = [];
+        if (s.level) parts.push(s.level);
+        if (s.service) parts.push(s.service);
+        if (s.preset_content) parts.push(s.preset_content);
+        if (order.remark) parts.push(order.remark);
+        return parts.join(' / ');
+    }
+
+    function memberNames(order) {
+        const names = (order.members || [])
+            .filter(m => m.employee_name)
+            .map(m => m.employee_name);
+        if (order.assigned_employee_name && !names.includes(order.assigned_employee_name)) {
+            names.unshift(order.assigned_employee_name + '（指定）');
+        }
+        return names.join('、') || '-';
+    }
+
+    function renderPerson(name, avatar, sub) {
+        return `
+            <div class="person-cell">
+                <img class="person-avatar" src="${escHtml(avatar || '/static/images/default-avatar.png')}" onerror="this.style.visibility='hidden'">
+                <div>
+                    <div class="person-name">${escHtml(valueOrDash(name))}</div>
+                    <div class="person-sub">${escHtml(valueOrDash(sub))}</div>
+                </div>
+            </div>
+        `;
+    }
+
     async function loadCustomerOptions() {
         try {
             const result = await get('/customer/customers/', { page_size: 100 });
             if (result.code === 200) {
                 const list = result.data.results || [];
-                const select = document.getElementById('orderCustomerId');
-                select.innerHTML = '<option value="">请选择客户</option>' +
-                    list.map(c => `<option value="${c.id}">${c.nickname}</option>`).join('');
+                document.getElementById('orderCustomerId').innerHTML = '<option value="">请选择客户</option>' +
+                    list.map(c => `<option value="${c.id}">${escHtml(c.nickname)}</option>`).join('');
             }
         } catch (error) { console.error('加载客户列表失败:', error); }
     }
@@ -116,164 +404,294 @@
             const result = await get('/employee/employees/', { page_size: 100 });
             if (result.code === 200) {
                 const list = result.data.results || [];
-                const select = document.getElementById('orderEmployeeId');
-                select.innerHTML = '<option value="">不指定</option>' +
-                    list.map(e => `<option value="${e.id}">${e.nickname || e.real_name}</option>`).join('');
+                document.getElementById('orderEmployeeId').innerHTML = '<option value="">不指定</option>' +
+                    list.map(e => `<option value="${e.id}">${escHtml(e.nickname || e.real_name)}</option>`).join('');
             }
         } catch (error) { console.error('加载陪玩师列表失败:', error); }
     }
 
     async function loadOrders() {
-        const orderNo = document.getElementById('orderNoInput').value;
+        const query = document.getElementById('orderNoInput').value.trim();
         const status = document.getElementById('statusSelect').value;
         const startDate = document.getElementById('startDate').value;
         const endDate = document.getElementById('endDate').value;
-        
+        const tbody = document.getElementById('orderList');
+        tbody.innerHTML = '<tr><td colspan="8" class="empty-state"><i class="fa-solid fa-spinner fa-spin"></i><br>加载中...</td></tr>';
         try {
             const result = await get('/order/orders/', {
-                order_no: orderNo,
+                search: query,
+                order_no: query,
                 status,
                 start_date: startDate,
                 end_date: endDate
             });
-            
-            if (result.code === 200) {
-                const orders = result.data.results || [];
-                const tbody = document.getElementById('orderList');
-                
-                if (orders.length === 0) {
-                    tbody.innerHTML = '<tr><td colspan="9" class="empty-state"><i class="fa-solid fa-inbox"></i><br>暂无数据</td></tr>';
-                    return;
-                }
-                
-                tbody.innerHTML = orders.map(order => `
+            if (result.code !== 200) {
+                showToast(result.msg || '加载失败', 'error');
+                return;
+            }
+            const orders = result.data.results || [];
+            updateStats(orders, result.data.count || orders.length);
+            if (orders.length === 0) {
+                tbody.innerHTML = '<tr><td colspan="8" class="empty-state"><i class="fa-solid fa-inbox"></i><br>暂无订单</td></tr>';
+                return;
+            }
+            tbody.innerHTML = orders.map(order => {
+                const s = snapshot(order);
+                const account = order.game_account_name ? `${order.game_account_category || '游戏账号'}：${order.game_account_name}` : '未记录游戏账号';
+                return `
                     <tr>
-                        <td>${order.order_no}</td>
-                        <td>${order.customer_name || '-'}</td>
-                        <td>${order.employee_name || '-'}</td>
-                        <td>${order.game || '-'}</td>
-                        <td>¥${formatMoney(order.total_amount)}</td>
-                        <td>${order.duration || 0}小时</td>
-                        <td><span class="badge ${getStatusBadge(order.status)}">${getStatusText(order.status)}</span></td>
+                        <td>
+                            <div class="order-main">
+                                <span class="order-no">${escHtml(order.order_no)}</span>
+                                <span class="order-brief">${escHtml(orderTitle(order))}</span>
+                            </div>
+                        </td>
+                        <td>${renderPerson(order.customer_name, order.customer_avatar, order.customer_display_id ? '黑金ID ' + order.customer_display_id : '客户')}</td>
+                        <td>${escHtml(memberNames(order))}</td>
+                        <td>
+                            <div class="order-main">
+                                <span>${escHtml(s.skill_name || order.game_name || order.skill_name || '-')}</span>
+                                <span class="order-brief">${escHtml(account)}</span>
+                            </div>
+                        </td>
+                        <td><span class="amount-cell">¥${formatMoney(order.pay_amount || order.total_amount)}</span></td>
+                        <td><span class="badge ${getStatusBadge(order.status)}">${escHtml(getStatusText(order.status, order.status_text))}</span></td>
                         <td>${formatDate(order.created_at)}</td>
                         <td>
-                            <button class="btn btn-default" onclick="viewOrder(${order.id})">查看</button>
-                            ${order.status === 'allocated' ? `<button class="btn btn-success" onclick="allocateOrder(${order.id})">分配</button>` : ''}
-                            ${order.status === 'in_progress' ? `<button class="btn btn-success" onclick="completeOrder(${order.id})">完成</button>` : ''}
-                            ${order.status !== 'completed' && order.status !== 'cancelled' ? `<button class="btn btn-danger" onclick="cancelOrder(${order.id})">取消</button>` : ''}
+                            <div class="order-actions">
+                                <button class="btn btn-default" onclick="viewOrder(${order.id})">查看</button>
+                                ${order.status === 'published' || order.status === 'transferring' ? `<button class="btn btn-success" onclick="allocateOrder(${order.id})">分配</button>` : ''}
+                                ${order.status === 'in_progress' ? `<button class="btn btn-success" onclick="completeOrder(${order.id})">完成</button>` : ''}
+                                ${canCancel(order) ? `<button class="btn btn-danger" onclick="openCancelModal(${order.id})">取消</button>` : ''}
+                            </div>
                         </td>
                     </tr>
-                `).join('');
-            }
+                `;
+            }).join('');
         } catch (error) {
             console.error('加载订单数据失败:', error);
+            tbody.innerHTML = '<tr><td colspan="8" class="empty-state"><i class="fa-solid fa-circle-exclamation"></i><br>加载失败</td></tr>';
+            showToast(error.message || '加载订单数据失败', 'error');
         }
     }
 
-    function getStatusText(status) {
-        const map = {
-            'pending': '待支付',
-            'allocated': '待分配',
-            'in_progress': '进行中',
-            'completed': '已完成',
-            'cancelled': '已取消',
-            'refunded': '已退款'
-        };
-        return map[status] || status;
+    function updateStats(orders, total) {
+        const running = orders.filter(o => ['claimed', 'confirming', 'in_progress', 'published', 'transferring'].includes(o.status)).length;
+        const completed = orders.filter(o => ['completed', 'reviewed'].includes(o.status)).length;
+        const amount = orders.reduce((sum, o) => sum + Number(o.pay_amount || o.total_amount || 0), 0);
+        document.getElementById('statTotal').textContent = total || 0;
+        document.getElementById('statRunning').textContent = running;
+        document.getElementById('statCompleted').textContent = completed;
+        document.getElementById('statAmount').textContent = '¥' + formatMoney(amount);
     }
 
-    function getStatusBadge(status) {
-        const map = {
-            'pending': 'badge-warning',
-            'allocated': 'badge-info',
-            'in_progress': 'badge-blue',
-            'completed': 'badge-success',
-            'cancelled': 'badge-danger',
-            'refunded': 'badge-danger'
-        };
-        return map[status] || 'badge-info';
+    function resetFilters() {
+        document.getElementById('orderNoInput').value = '';
+        document.getElementById('statusSelect').value = '';
+        document.getElementById('startDate').value = '';
+        document.getElementById('endDate').value = '';
+        loadOrders();
     }
 
     async function addOrder() {
         const customerId = document.getElementById('orderCustomerId').value;
         const employeeId = document.getElementById('orderEmployeeId').value;
-        const game = document.getElementById('orderGame').value;
-        const duration = document.getElementById('orderDuration').value;
-        const amount = document.getElementById('orderAmount').value;
-        
+        const game = document.getElementById('orderGame').value.trim();
+        const duration = Number(document.getElementById('orderDuration').value || 0);
+        const amount = Number(document.getElementById('orderAmount').value || 0);
+        if (!customerId || !game || !amount) { showToast('请填写客户、游戏和金额', 'error'); return; }
         try {
             const result = await post('/order/orders/', {
                 customer: parseInt(customerId),
                 employee_ids: employeeId ? [parseInt(employeeId)] : [],
                 game_name: game,
-                duration: parseFloat(duration) * 60,
-                total_amount: parseFloat(amount)
+                duration: duration * 60,
+                unit_price: amount,
+                total_amount: amount,
+                pay_amount: amount,
+                platform: 'web'
             });
-            
             if (result.code === 200) {
                 showToast('创建成功', 'success');
                 hideModal('addOrderModal');
                 document.getElementById('addOrderForm').reset();
                 await loadOrders();
             } else {
-                showToast(result.msg, 'error');
+                showToast(result.msg || '创建失败', 'error');
             }
         } catch (error) {
-            showToast(error.message, 'error');
+            showToast(error.message || '创建失败', 'error');
         }
     }
 
-    async function cancelOrder(id) {
-        if (!confirm('确定要取消该订单吗？')) return;
-        
+    function detailItem(label, value, wide=false) {
+        return `
+            <div class="detail-item ${wide ? 'wide' : ''}">
+                <span class="detail-label">${escHtml(label)}</span>
+                <span class="detail-value">${escHtml(valueOrDash(value))}</span>
+            </div>
+        `;
+    }
+
+    function renderDetailRows(order) {
+        const s = snapshot(order);
+        const unit = order.settlement_unit === 'round' ? '局' : order.settlement_unit === 'hour' ? '小时' : '份';
+        const rows = [
+            detailItem('订单状态', getStatusText(order.status, order.status_text)),
+            detailItem('订单类型', order.order_type === 'self_service' ? '自助订单' : order.order_type),
+            detailItem('游戏品类', s.skill_name || order.game_name || order.skill_name),
+            detailItem('玩法', s.gameplay_name),
+            detailItem('订单项目', s.preset_item_name),
+            detailItem('客户游戏账号', order.game_account_name ? `${order.game_account_category || ''} ${order.game_account_name}` : ''),
+            detailItem('购买数量', `${s.quantity || order.purchase_quantity || order.quantity || 1}${unit}`),
+            detailItem('接单人数', `需要 ${order.quantity || 1} 人，已接 ${(order.members || []).filter(m => m.employee_name).length} 人`),
+            detailItem('单价', `¥${formatMoney(order.unit_price)}/${unit}`),
+            detailItem('实付金额', `¥${formatMoney(order.pay_amount || order.total_amount)}`),
+            detailItem('订单备注', order.remark, true),
+            detailItem('项目内容', s.preset_content, true),
+            detailItem('取消原因', order.cancel_reason, true)
+        ];
+        return rows.join('');
+    }
+
+    function renderMembers(order) {
+        const members = (order.members || []).filter(m => m.employee_name);
+        if (!members.length && !order.assigned_employee_name) {
+            return '<div class="empty-state">暂无打手接单</div>';
+        }
+        const assigned = order.assigned_employee_name ? `
+            <div class="mini-member">
+                <img class="person-avatar" src="${escHtml(order.assigned_employee_avatar || '/static/images/default-avatar.png')}" onerror="this.style.visibility='hidden'">
+                <div>
+                    <div class="person-name">${escHtml(order.assigned_employee_name)} <span class="badge badge-orange">指定</span></div>
+                    <div class="person-sub">${escHtml(order.assigned_employee_display_id ? '黑金ID ' + order.assigned_employee_display_id : '指定打手')}</div>
+                </div>
+            </div>
+        ` : '';
+        return assigned + members.map(m => `
+            <div class="mini-member">
+                <img class="person-avatar" src="${escHtml(m.employee_avatar || '/static/images/default-avatar.png')}" onerror="this.style.visibility='hidden'">
+                <div>
+                    <div class="person-name">${escHtml(m.employee_name)} ${m.is_leader ? '<span class="badge badge-orange">队长</span>' : ''}</div>
+                    <div class="person-sub">${escHtml(m.skill_name || '服务打手')} · ¥${formatMoney(m.amount)} · ${escHtml(m.status_display || m.status)}</div>
+                </div>
+            </div>
+        `).join('');
+    }
+
+    async function viewOrder(id) {
         try {
-            const result = await post(`/order/orders/${id}/cancel/`);
+            const result = await get(`/order/orders/${id}/`);
+            if (result.code !== 200) {
+                showToast(result.msg || '获取订单详情失败', 'error');
+                return;
+            }
+            const order = result.data;
+            currentDetailOrder = order;
+            document.getElementById('detailCancelBtn').style.display = canCancel(order) ? '' : 'none';
+            document.getElementById('orderDetailBody').innerHTML = `
+                <div class="detail-shell">
+                    <div class="detail-panel">
+                        <h4>${escHtml(order.order_no)} · ${escHtml(orderTitle(order))}</h4>
+                        <div class="detail-grid">${renderDetailRows(order)}</div>
+                    </div>
+                    <div class="detail-panel">
+                        <h4>参与人</h4>
+                        <div class="mini-list">
+                            ${renderPerson(order.customer_name, order.customer_avatar, order.customer_display_id ? '黑金ID ' + order.customer_display_id : '客户')}
+                            ${renderMembers(order)}
+                        </div>
+                    </div>
+                    <div class="detail-panel">
+                        <h4>时间记录</h4>
+                        <div class="detail-grid">
+                            ${detailItem('创建时间', formatDate(order.created_at))}
+                            ${detailItem('支付时间', order.pay_time ? formatDate(order.pay_time) : '')}
+                            ${detailItem('开始时间', order.start_time ? formatDate(order.start_time) : '')}
+                            ${detailItem('结束时间', order.end_time ? formatDate(order.end_time) : '')}
+                            ${detailItem('取消时间', order.cancel_time ? formatDate(order.cancel_time) : '')}
+                        </div>
+                    </div>
+                    <div class="detail-panel">
+                        <h4>费用信息</h4>
+                        <div class="detail-grid">
+                            ${detailItem('订单金额', '¥' + formatMoney(order.total_amount))}
+                            ${detailItem('优惠/免单', '¥' + formatMoney(order.discount_amount))}
+                            ${detailItem('实付金额', '¥' + formatMoney(order.pay_amount))}
+                            ${detailItem('支付方式', order.pay_method === 'balance' ? '黑钻余额' : order.pay_method)}
+                        </div>
+                    </div>
+                </div>
+            `;
+            showModal('orderDetailModal');
+        } catch (error) {
+            showToast(error.message || '获取订单详情失败', 'error');
+        }
+    }
+
+    function openCancelModal(id) {
+        document.getElementById('cancelOrderId').value = id;
+        document.getElementById('cancelReason').value = '';
+        showModal('cancelOrderModal');
+    }
+
+    function openCancelModalFromDetail() {
+        if (!currentDetailOrder) return;
+        hideModal('orderDetailModal');
+        openCancelModal(currentDetailOrder.id);
+    }
+
+    async function submitCancelOrder() {
+        const id = document.getElementById('cancelOrderId').value;
+        const reason = document.getElementById('cancelReason').value.trim();
+        if (!id) return;
+        if (!reason) { showToast('请填写取消原因', 'error'); return; }
+        try {
+            const result = await post(`/order/orders/${id}/cancel/`, { reason });
             if (result.code === 200) {
                 showToast('订单已取消', 'success');
+                hideModal('cancelOrderModal');
+                currentDetailOrder = null;
                 await loadOrders();
             } else {
-                showToast(result.msg, 'error');
+                showToast(result.msg || '取消失败', 'error');
             }
         } catch (error) {
-            showToast(error.message, 'error');
+            showToast(error.message || '取消失败', 'error');
         }
     }
 
     async function completeOrder(id) {
+        if (!confirm('确定将该订单标记为完成并结算佣金吗？')) return;
         try {
             const result = await post(`/order/orders/${id}/complete/`);
             if (result.code === 200) {
                 showToast('订单已完成', 'success');
                 await loadOrders();
             } else {
-                showToast(result.msg, 'error');
+                showToast(result.msg || '操作失败', 'error');
             }
         } catch (error) {
-            showToast(error.message, 'error');
+            showToast(error.message || '操作失败', 'error');
         }
     }
 
     async function allocateOrder(id) {
-        const employeeId = prompt('请输入陪玩师ID');
+        const employeeId = prompt('请输入打手ID');
         if (!employeeId) return;
-        
         try {
             const result = await post(`/order/orders/${id}/assign/`, {
-                employee: parseInt(employeeId)
+                employee_ids: [parseInt(employeeId)]
             });
             if (result.code === 200) {
                 showToast('分配成功', 'success');
                 await loadOrders();
             } else {
-                showToast(result.msg, 'error');
+                showToast(result.msg || '分配失败', 'error');
             }
         } catch (error) {
-            showToast(error.message, 'error');
+            showToast(error.message || '分配失败', 'error');
         }
-    }
-
-    function viewOrder(id) {
-        showToast('查看详情功能开发中', 'info');
     }
 </script>
 {% endblock %}

@@ -29,24 +29,49 @@ class OrderViewSet(BaseModelViewSet):
             return OrderCreateSerializer
         return OrderSerializer
 
+    def get_queryset(self):
+        queryset = super().get_queryset().select_related(
+            'customer', 'customer__user', 'skill', 'assigned_employee',
+            'assigned_employee__user', 'assigner',
+        ).prefetch_related('order_members__employee', 'order_members__skill')
+        order_no = (self.request.query_params.get('order_no') or '').strip()
+        start_date = (self.request.query_params.get('start_date') or '').strip()
+        end_date = (self.request.query_params.get('end_date') or '').strip()
+        if order_no:
+            queryset = queryset.filter(
+                Q(order_no__icontains=order_no) |
+                Q(customer__nickname__icontains=order_no) |
+                Q(game_name__icontains=order_no)
+            )
+        if start_date:
+            queryset = queryset.filter(created_at__date__gte=start_date)
+        if end_date:
+            queryset = queryset.filter(created_at__date__lte=end_date)
+        return queryset
+
     @action(detail=True, methods=['post'], url_path='pay')
     def pay(self, request, pk=None):
         order = self.get_object()
-        if order.status != OrderStatus.PENDING_PAYMENT:
+        if order.status not in [OrderStatus.PUBLISHED]:
             return error_response(msg='订单状态不正确')
         pay_method = request.data.get('pay_method', 'balance')
         order.pay_method = pay_method
         order.pay_time = timezone.now()
-        order.status = OrderStatus.PENDING_ASSIGN
-        order.save()
+        order.save(update_fields=['pay_method', 'pay_time', 'updated_at'])
         return success_response(msg='支付成功')
 
     @action(detail=True, methods=['post'], url_path='assign')
     def assign(self, request, pk=None):
         order = self.get_object()
-        if order.status not in [OrderStatus.PENDING_ASSIGN, OrderStatus.PENDING_PAYMENT]:
+        if order.status not in [OrderStatus.PUBLISHED, OrderStatus.TRANSFERRING, OrderStatus.CONFIRMING]:
             return error_response(msg='订单状态不正确，无法派单')
-        employee_ids = request.data.get('employee_ids', [])
+        employee_ids = request.data.get('employee_ids', request.data.get('employee', []))
+        if isinstance(employee_ids, int):
+            employee_ids = [employee_ids]
+        elif isinstance(employee_ids, str) and employee_ids.isdigit():
+            employee_ids = [int(employee_ids)]
+        if not employee_ids:
+            return error_response(msg='请选择打手')
         from apps.employee.models import Employee
         for emp_id in employee_ids:
             try:
@@ -100,16 +125,19 @@ class OrderViewSet(BaseModelViewSet):
     @action(detail=True, methods=['post'], url_path='cancel')
     def cancel(self, request, pk=None):
         order = self.get_object()
+        if order.status in [OrderStatus.COMPLETED, OrderStatus.REVIEWED, OrderStatus.CANCELLED]:
+            return error_response(msg='当前订单状态无法取消')
         reason = request.data.get('reason', '')
         order.status = OrderStatus.CANCELLED
         order.cancel_time = timezone.now()
         order.cancel_reason = reason
-        order.save()
-        order.order_members.all().update(status='cancelled')
-        from apps.employee.models import Employee
-        for member in order.order_members.all():
-            member.employee.status = 'idle'
-            member.employee.save(update_fields=['status'])
+        order.save(update_fields=['status', 'cancel_time', 'cancel_reason', 'updated_at'])
+        members = order.order_members.filter(is_deleted=False).select_related('employee')
+        members.update(status='cancelled')
+        for member in members:
+            if member.employee:
+                member.employee.status = 'idle'
+                member.employee.save(update_fields=['status'])
         return success_response(msg='订单已取消')
 
     @action(detail=True, methods=['post'], url_path='refund')

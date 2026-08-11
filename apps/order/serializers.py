@@ -26,17 +26,65 @@ class OrderMemberSerializer(serializers.ModelSerializer):
 class OrderSerializer(serializers.ModelSerializer):
     customer_name = serializers.CharField(source='customer.nickname', read_only=True)
     customer_avatar = serializers.SerializerMethodField()
+    customer_display_id = serializers.SerializerMethodField()
     skill_name = serializers.CharField(source='skill.name', read_only=True)
     assigner_name = serializers.CharField(source='assigner.username', read_only=True)
+    assigned_employee_id = serializers.SerializerMethodField()
+    assigned_employee_name = serializers.SerializerMethodField()
+    assigned_employee_avatar = serializers.SerializerMethodField()
+    assigned_employee_display_id = serializers.SerializerMethodField()
+    game_account_id = serializers.SerializerMethodField()
+    game_account_name = serializers.SerializerMethodField()
+    game_account_category = serializers.SerializerMethodField()
     members = OrderMemberSerializer(many=True, read_only=True, source='order_members')
     status_text = serializers.CharField(source='get_status_display', read_only=True)
 
     def get_customer_avatar(self, obj):
         return build_media_url(obj.customer.avatar if obj.customer else '', self.context.get('request'))
 
+    def get_customer_display_id(self, obj):
+        return obj.customer.user.display_id if obj.customer and obj.customer.user else ''
+
+    def get_assigned_employee_name(self, obj):
+        if not obj.assigned_employee:
+            return ''
+        return obj.assigned_employee.nickname or obj.assigned_employee.real_name
+
+    def get_assigned_employee_id(self, obj):
+        return obj.assigned_employee_id
+
+    def get_assigned_employee_avatar(self, obj):
+        return build_media_url(
+            obj.assigned_employee.avatar if obj.assigned_employee else '',
+            self.context.get('request'),
+        )
+
+    def get_assigned_employee_display_id(self, obj):
+        return (
+            obj.assigned_employee.user.display_id
+            if obj.assigned_employee and obj.assigned_employee.user else ''
+        )
+
+    def _snapshot_value(self, obj, key):
+        snapshot = obj.self_service_snapshot or {}
+        return snapshot.get(key) or ''
+
+    def get_game_account_id(self, obj):
+        return self._snapshot_value(obj, 'game_account_id')
+
+    def get_game_account_name(self, obj):
+        return self._snapshot_value(obj, 'game_account_name')
+
+    def get_game_account_category(self, obj):
+        return self._snapshot_value(obj, 'game_account_category')
+
     class Meta:
         model = Order
         fields = ['id', 'order_no', 'customer', 'customer_name', 'customer_avatar',
+                  'customer_display_id', 'assigned_employee_id',
+                  'assigned_employee_name', 'assigned_employee_avatar',
+                  'assigned_employee_display_id', 'game_account_id',
+                  'game_account_name', 'game_account_category',
                   'skill', 'skill_name', 'status', 'status_text', 'order_type',
                   'quantity', 'purchase_quantity', 'settlement_unit',
                   'self_service_snapshot', 'duration', 'unit_price', 'total_amount',
