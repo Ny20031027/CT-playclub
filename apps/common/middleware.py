@@ -16,12 +16,20 @@ class BanCheckMiddleware(MiddlewareMixin):
         try:
             from rest_framework_simplejwt.authentication import JWTAuthentication
             user, _ = JWTAuthentication().authenticate(request)
-        except Exception:
-            # token 无效/过期：交给后续 DRF 处理（返回 401）
+        except Exception as exc:
+            # token 无效/过期，或底层（如数据库未迁移/不可用）异常：放行，交给后续 DRF 处理
+            logger.warning('BanCheck authenticate skipped: %s', exc)
             return None
-        if user is not None and user.is_banned_active():
-            from apps.common.response import error_response
-            return error_response(msg='账号已被封禁，无法操作', code=4010)
+        if user is not None:
+            try:
+                banned = user.is_banned_active()
+            except Exception as exc:
+                logger.warning('BanCheck is_banned_active error: %s', exc)
+                banned = False
+            if banned:
+                from apps.common.response import error_response
+                return error_response(msg='账号已被封禁，无法操作', code=4010)
+        return None
 
 
 class OperationLogMiddleware(MiddlewareMixin):
