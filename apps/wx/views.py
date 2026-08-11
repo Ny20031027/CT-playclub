@@ -3106,12 +3106,19 @@ def start_order(request, order_id):
 @api_view(['GET'])
 @permission_classes([IsAuthenticated])
 def order_chat_groups(request):
-    """当前用户的有效订单群；查询时清理已到期群。"""
+    """当前用户的有效订单群；客服可查看全部订单群，客户/打手仅自己的；查询时清理已到期群。"""
     OrderChatGroup.objects.filter(expires_at__lte=timezone.now()).delete()
-    groups = OrderChatGroup.objects.filter(
-        members__user=request.user, members__is_deleted=False,
-        is_active=True, is_deleted=False,
-    ).select_related('order').distinct().order_by('-created_at')
+    user = request.user
+    is_cs = 'cs' in user.get_role_codes()
+    if is_cs:
+        groups = OrderChatGroup.objects.filter(
+            is_active=True, is_deleted=False,
+        ).select_related('order').distinct().order_by('-created_at')
+    else:
+        groups = OrderChatGroup.objects.filter(
+            members__user=user, members__is_deleted=False,
+            is_active=True, is_deleted=False,
+        ).select_related('order').distinct().order_by('-created_at')
     data = []
     for group in groups:
         last_message = group.messages.filter(is_deleted=False).order_by('-created_at').first()
@@ -3136,7 +3143,8 @@ def order_chat_group_detail(request, group_id):
     if group.expires_at <= timezone.now():
         group.delete()
         return error_response(msg='群组已到期并自动删除')
-    if not group.members.filter(user=request.user, is_deleted=False).exists():
+    is_cs = 'cs' in request.user.get_role_codes()
+    if not is_cs and not group.members.filter(user=request.user, is_deleted=False).exists():
         return error_response(msg='您不在该群组中')
     if request.method == 'POST':
         content = str(request.data.get('content', '')).strip()
