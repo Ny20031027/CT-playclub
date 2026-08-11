@@ -6,6 +6,24 @@ from django.utils.deprecation import MiddlewareMixin
 logger = logging.getLogger(__name__)
 
 
+class BanCheckMiddleware(MiddlewareMixin):
+    """封禁拦截：带有效 token 的封禁用户，任何请求直接返回封禁错误（踢下线）。"""
+
+    def process_request(self, request):
+        auth = request.META.get('HTTP_AUTHORIZATION', '')
+        if not auth.startswith('Bearer '):
+            return None
+        try:
+            from rest_framework_simplejwt.authentication import JWTAuthentication
+            user, _ = JWTAuthentication().authenticate(request)
+        except Exception:
+            # token 无效/过期：交给后续 DRF 处理（返回 401）
+            return None
+        if user is not None and user.is_banned_active():
+            from apps.common.response import error_response
+            return error_response(msg='账号已被封禁，无法操作', code=4010)
+
+
 class OperationLogMiddleware(MiddlewareMixin):
     def process_response(self, request, response):
         if request.method in ['POST', 'PUT', 'PATCH', 'DELETE']:
