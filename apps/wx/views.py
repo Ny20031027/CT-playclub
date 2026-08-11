@@ -131,9 +131,18 @@ def _create_order_chat_group(order):
     members.extend((user.id, 'cs') for user in _current_duty_cs_users())
     for user_id, role in dict(members).items():
         OrderChatMember.objects.get_or_create(group=group, user_id=user_id, defaults={'role': role})
+    # 群组欢迎语：读取系统配置，未配置时使用默认文案
+    group_welcome = ''
+    try:
+        from apps.system.models import Config
+        cfg = Config.objects.filter(key='group_welcome_text', is_deleted=False).first()
+        if cfg and cfg.value and cfg.value.strip():
+            group_welcome = cfg.value.strip()
+    except Exception:
+        group_welcome = ''
     OrderChatMessage.objects.create(
         group=group,
-        content='订单已开始，客户、接单打手和当前值班客服已加入本群。本群将在72小时后自动删除。',
+        content=group_welcome or '订单已开始，客户、接单打手和当前值班客服已加入本群。本群将在72小时后自动删除。',
         msg_type='system',
     )
     return group

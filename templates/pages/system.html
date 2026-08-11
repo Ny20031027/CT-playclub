@@ -316,6 +316,20 @@
 
     <div class="card" style="margin-top: 20px;">
         <div class="card-header">
+            <div class="card-title">群组欢迎语</div>
+        </div>
+        <div class="card-body" style="padding: 20px;">
+            <p style="color: #666; margin-bottom: 15px; font-size: 13px;">订单开始时自动创建服务群，系统会在群内自动发送此条欢迎语。留空则发送默认文案。</p>
+            <div class="form-group">
+                <label>群组欢迎语内容</label>
+                <textarea id="groupWelcomeText" rows="3" placeholder="请输入订单群组自动发送的欢迎语" style="width: 100%; padding: 10px; border: 1px solid #ddd; border-radius: 4px; resize: vertical;"></textarea>
+            </div>
+            <button class="btn btn-primary" onclick="saveGroupWelcome()">保存群组欢迎语</button>
+        </div>
+    </div>
+
+    <div class="card" style="margin-top: 20px;">
+        <div class="card-header">
             <div class="card-title">问题与答案（关键词自动回复）</div>
             <div class="card-actions">
                 <button class="btn btn-primary" onclick="showAddKeywordModal()">
@@ -1023,7 +1037,7 @@
         document.getElementById('selfServiceTab').style.display = tab === 'selfService' ? 'block' : 'none';
 
         if (tab === 'cs') loadCSConfig();
-        if (tab === 'welcomeKeyword') { loadWelcomeConfig(); loadKeywordRules(); }
+        if (tab === 'welcomeKeyword') { loadWelcomeConfig(); loadGroupWelcome(); loadKeywordRules(); }
 
         if (tab === 'gameBanner' && !window._gameBannersLoaded) {
             loadGameBanners();
@@ -2256,6 +2270,36 @@
             }
         } catch (error) {
             console.error('加载欢迎语配置失败:', error);
+        }
+    }
+
+    async function loadGroupWelcome() {
+        try {
+            const result = await get('/system/configs/');
+            if (result.code === 200) {
+                const configs = result.data.results || [];
+                const cfg = configs.find(c => c.key === 'group_welcome_text');
+                const el = document.getElementById('groupWelcomeText');
+                if (el) el.value = (cfg && cfg.value) || '';
+            }
+        } catch (error) {
+            console.error('加载群组欢迎语失败:', error);
+        }
+    }
+
+    async function saveGroupWelcome() {
+        const value = document.getElementById('groupWelcomeText').value || '';
+        try {
+            const result = await post('/system/configs/batch-update/', {
+                items: { group_welcome_text: value },
+            });
+            if (result.code === 200) {
+                showToast('群组欢迎语已保存', 'success');
+            } else {
+                showToast(result.msg || '保存失败', 'error');
+            }
+        } catch (error) {
+            showToast(error.message, 'error');
         }
     }
 
