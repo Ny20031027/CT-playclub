@@ -81,6 +81,7 @@ class Announcement(BaseModel):
     """首页公告"""
     title = models.CharField(max_length=200, verbose_name='标题')
     content = models.TextField(verbose_name='内容')
+    image = models.CharField(max_length=500, blank=True, verbose_name='图片URL')
     type = models.CharField(max_length=20, default='info', choices=[
         ('info', '通知'),
         ('activity', '活动'),

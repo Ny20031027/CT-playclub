@@ -1,5 +1,6 @@
 from rest_framework import serializers
 from .models import WxUser, Banner, Announcement, GameCategory, Gift, GameBanner
+from apps.common.media import build_media_url
 
 
 class WxUserSerializer(serializers.ModelSerializer):
@@ -26,7 +27,12 @@ class BannerSerializer(serializers.ModelSerializer):
 class AnnouncementSerializer(serializers.ModelSerializer):
     class Meta:
         model = Announcement
-        fields = ['id', 'title', 'content', 'type', 'created_at']
+        fields = ['id', 'title', 'content', 'image', 'type', 'created_at']
+
+    def to_representation(self, instance):
+        ret = super().to_representation(instance)
+        ret['image'] = build_media_url(ret.get('image', ''), self.context.get('request'))
+        return ret
 
 
 class GameCategorySerializer(serializers.ModelSerializer):

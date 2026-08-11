@@ -85,7 +85,7 @@ class AnnouncementManageSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = Announcement
-        fields = ['id', 'title', 'content', 'type', 'type_text', 'sort',
+        fields = ['id', 'title', 'content', 'image', 'type', 'type_text', 'sort',
                   'status', 'created_at', 'updated_at']
         read_only_fields = ['id', 'created_at', 'updated_at']
 
@@ -118,6 +118,5 @@ class GameBannerManageSerializer(serializers.ModelSerializer):
         fields = ['id', 'game', 'game_name', 'title', 'image', 'link_url', 'sort',
                   'status', 'created_at', 'updated_at']
         read_only_fields = ['id', 'created_at', 'updated_at']
-
 
 

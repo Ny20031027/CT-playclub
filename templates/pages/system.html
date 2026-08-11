@@ -54,6 +54,10 @@
     .preview-box dt { font-weight: 600; color: #606266; margin-top: 10px; }
     .preview-box dt:first-child { margin-top: 0; }
     .preview-box dd { margin: 4px 0 0 0; color: #303133; line-height: 1.7; }
+    .announcement-thumb { width: 96px; height: 54px; border-radius: 6px; object-fit: cover; background: #f5f7fa; }
+    .announcement-image-upload { min-height: 150px; border: 1px dashed #c0c4cc; border-radius: 8px; overflow: hidden; background: #fafafa; cursor: pointer; display: flex; align-items: center; justify-content: center; color: #909399; text-align: center; }
+    .announcement-image-upload:hover { border-color: #409eff; color: #409eff; }
+    .announcement-image-upload img { width: 100%; max-height: 220px; object-fit: cover; display: block; }
     @media (max-width: 768px) { .preset-editor { grid-template-columns: 1fr; } }
 </style>
 <script>
@@ -160,6 +164,7 @@
             <table>
                 <thead>
                     <tr>
+                        <th>图片</th>
                         <th>标题</th>
                         <th>类型</th>
                         <th>内容</th>
@@ -169,7 +174,7 @@
                     </tr>
                 </thead>
                 <tbody id="announcementList">
-                    <tr><td colspan="6" class="empty-state"><i class="fa-solid fa-spinner fa-spin"></i><br>加载中...</td></tr>
+                    <tr><td colspan="7" class="empty-state"><i class="fa-solid fa-spinner fa-spin"></i><br>加载中...</td></tr>
                 </tbody>
             </table>
         </div>
@@ -672,6 +677,18 @@
                 <div class="form-group">
                     <label>内容 *</label>
                     <textarea id="announcementContent" rows="6" required placeholder="请输入公告内容"></textarea>
+                </div>
+                <div class="form-group">
+                    <label>公告图片</label>
+                    <div class="announcement-image-upload" id="announcementImagePreview" onclick="document.getElementById('announcementImageFile').click()">
+                        <div>
+                            <i class="fa-solid fa-cloud-arrow-up"></i>
+                            <p>点击上传公告图片，可不填</p>
+                        </div>
+                    </div>
+                    <input type="file" id="announcementImageFile" accept="image/*" style="display:none;" onchange="handleAnnouncementImageUpload(event)">
+                    <input type="hidden" id="announcementImage">
+                    <button type="button" class="btn btn-default btn-sm" style="margin-top: 8px;" onclick="clearAnnouncementImage()">清除图片</button>
                 </div>
                 <div class="form-group">
                     <label>排序</label>
@@ -1666,17 +1683,18 @@
                 const tbody = document.getElementById('announcementList');
 
                 if (announcements.length === 0) {
-                    tbody.innerHTML = '<tr><td colspan="6" class="empty-state"><i class="fa-solid fa-inbox"></i><br>暂无公告</td></tr>';
+                    tbody.innerHTML = '<tr><td colspan="7" class="empty-state"><i class="fa-solid fa-inbox"></i><br>暂无公告</td></tr>';
                     return;
                 }
 
                 tbody.innerHTML = announcements.map(a => `
                     <tr>
-                        <td>${a.title}</td>
+                        <td>${a.image ? `<img class="announcement-thumb" src="${escapeHtmlAttr(a.image)}">` : '<span style="color: #999;">无图片</span>'}</td>
+                        <td>${escapeHtmlAttr(a.title)}</td>
                         <td>
                             <span class="badge ${a.type === 'activity' ? 'badge-warning' : a.type === 'rule' ? 'badge-info' : 'badge-success'}">${a.type_text || a.type}</span>
                         </td>
-                        <td style="max-width: 300px;">${a.content.substring(0, 50)}${a.content.length > 50 ? '...' : ''}</td>
+                        <td style="max-width: 300px;">${escapeHtmlAttr((a.content || '').substring(0, 50))}${(a.content || '').length > 50 ? '...' : ''}</td>
                         <td>${a.sort || 0}</td>
                         <td>
                             <span class="badge ${a.status ? 'badge-success' : 'badge-danger'}">${a.status ? '启用' : '禁用'}</span>
@@ -1698,6 +1716,8 @@
         document.getElementById('announcementModalTitle').textContent = '添加公告';
         document.getElementById('announcementForm').reset();
         document.getElementById('announcementId').value = '';
+        document.getElementById('announcementImage').value = '';
+        document.getElementById('announcementImagePreview').innerHTML = '<div><i class="fa-solid fa-cloud-arrow-up"></i><p>点击上传公告图片，可不填</p></div>';
         showModal('announcementModal');
     }
 
@@ -1712,8 +1732,12 @@
                 document.getElementById('announcementTitle').value = announcement.title;
                 document.getElementById('announcementType').value = announcement.type;
                 document.getElementById('announcementContent').value = announcement.content;
+                document.getElementById('announcementImage').value = announcement.image || '';
                 document.getElementById('announcementSort').value = announcement.sort || 0;
                 document.getElementById('announcementStatus').value = announcement.status ? 'true' : 'false';
+                document.getElementById('announcementImagePreview').innerHTML = announcement.image
+                    ? `<img src="${escapeHtmlAttr(announcement.image)}">`
+                    : '<div><i class="fa-solid fa-cloud-arrow-up"></i><p>点击上传公告图片，可不填</p></div>';
 
                 showModal('announcementModal');
             }
@@ -1722,11 +1746,40 @@
         }
     }
 
+    async function handleAnnouncementImageUpload(event) {
+        const file = event.target.files[0];
+        if (!file) return;
+
+        const formData = new FormData();
+        formData.append('file', file);
+
+        try {
+            const result = await upload('/upload/files/image/', formData);
+            if (result.code === 200) {
+                const url = result.data.url;
+                document.getElementById('announcementImage').value = url;
+                document.getElementById('announcementImagePreview').innerHTML = `<img src="${escapeHtmlAttr(url)}">`;
+                showToast('上传成功', 'success');
+            } else {
+                showToast(result.msg || '上传失败', 'error');
+            }
+        } catch (error) {
+            showToast('上传失败: ' + error.message, 'error');
+        }
+    }
+
+    function clearAnnouncementImage() {
+        document.getElementById('announcementImage').value = '';
+        document.getElementById('announcementImageFile').value = '';
+        document.getElementById('announcementImagePreview').innerHTML = '<div><i class="fa-solid fa-cloud-arrow-up"></i><p>点击上传公告图片，可不填</p></div>';
+    }
+
     async function saveAnnouncement() {
         const id = document.getElementById('announcementId').value;
         const title = document.getElementById('announcementTitle').value;
         const type = document.getElementById('announcementType').value;
         const content = document.getElementById('announcementContent').value;
+        const image = document.getElementById('announcementImage').value;
         const sort = document.getElementById('announcementSort').value;
         const status = document.getElementById('announcementStatus').value === 'true';
 
@@ -1735,7 +1788,7 @@
             return;
         }
 
-        const data = { title, type, content, sort: parseInt(sort) || 0, status };
+        const data = { title, type, content, image, sort: parseInt(sort) || 0, status };
 
         try {
             let result;

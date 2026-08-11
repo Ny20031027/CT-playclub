@@ -10,7 +10,7 @@ from apps.customer.models import Customer, CustomerService
 from apps.employee.models import Employee, EmployeeSkill, GameplayPresetItem, SkillGameplay
 from apps.notice.models import UserNotice
 from apps.order.models import Order, OrderComment, OrderMember
-from apps.wx.models import GameAccount, GameCategory, PreOrder, WxUser
+from apps.wx.models import Announcement, GameAccount, GameCategory, PreOrder, WxUser
 
 
 class CustomerServicePreOrderTests(TestCase):
@@ -142,6 +142,39 @@ class CustomerServicePreOrderTests(TestCase):
         self.assertNotIn('verify', session.get.call_args_list[0].kwargs)
         self.assertFalse(session.get.call_args_list[1].kwargs['verify'])
         self.assertFalse(session.get.call_args_list[1].kwargs['allow_redirects'])
+
+
+class OfficialAnnouncementTests(TestCase):
+    def setUp(self):
+        self.client = APIClient()
+        self.user = User.objects.create_user(username='announcement_user')
+        self.client.force_authenticate(user=self.user)
+
+    def test_my_notices_returns_pinned_official_conversation(self):
+        Announcement.objects.create(
+            title='暑期活动',
+            content='活动说明',
+            image='/media/announcements/summer.png',
+            status=True,
+        )
+
+        response = self.client.get('/api/wx/notices/').json()
+        self.assertEqual(response['code'], 200)
+        official = response['data']['official_conversation']
+        self.assertEqual(official['title'], '官方公告')
+        self.assertEqual(official['type'], 'official')
+        self.assertTrue(official['is_pinned'])
+        self.assertEqual(official['content'], '暑期活动')
+        self.assertTrue(official['image'].endswith('/media/announcements/summer.png'))
+
+    def test_official_announcements_only_returns_enabled_items(self):
+        Announcement.objects.create(title='可见公告', content='公告内容', status=True)
+        Announcement.objects.create(title='隐藏公告', content='隐藏内容', status=False)
+
+        response = self.client.get('/api/wx/official-announcements/').json()
+        self.assertEqual(response['code'], 200)
+        self.assertEqual(response['data']['total'], 1)
+        self.assertEqual(response['data']['list'][0]['title'], '可见公告')
 
 
 class BlackGoldSearchTests(TestCase):

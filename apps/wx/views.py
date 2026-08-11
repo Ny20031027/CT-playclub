@@ -949,7 +949,7 @@ def home_data(request):
 
     return success_response({
         'banners': BannerSerializer(banners, many=True, context={'request': request}).data,
-        'announcements': AnnouncementSerializer(announcements, many=True).data,
+        'announcements': AnnouncementSerializer(announcements, many=True, context={'request': request}).data,
         'games': GameCategorySerializer(games, many=True, context={'request': request}).data,
         'employees': employee_list,
         'star_dashers': star_list,
@@ -3430,11 +3430,44 @@ def my_notices(request):
             'created_at': n.created_at.strftime('%Y-%m-%d %H:%M'),
         })
 
+    official_conversation = None
+    latest_announcement = Announcement.objects.filter(
+        status=True, is_deleted=False
+    ).order_by('sort', '-created_at').first()
+    if latest_announcement:
+        official_conversation = {
+            'id': 'official-announcements',
+            'title': '官方公告',
+            'content': latest_announcement.title or latest_announcement.content,
+            'type': 'official',
+            'level': 'info',
+            'is_read': True,
+            'is_official': True,
+            'is_pinned': True,
+            'image': build_media_url(latest_announcement.image, request),
+            'created_at': latest_announcement.created_at.strftime('%Y-%m-%d %H:%M'),
+        }
+
     return success_response({
         'total': total,
         'page': page,
         'page_size': page_size,
         'list': notice_list,
+        'official_conversation': official_conversation,
+    })
+
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def official_announcements(request):
+    """官方公告列表"""
+    queryset = Announcement.objects.filter(
+        status=True, is_deleted=False
+    ).order_by('sort', '-created_at')
+    serializer = AnnouncementSerializer(queryset, many=True, context={'request': request})
+    return success_response({
+        'total': queryset.count(),
+        'list': serializer.data,
     })
 
 

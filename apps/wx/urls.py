@@ -50,6 +50,7 @@ urlpatterns = [
 
     # 消息
     path('notices/', views.my_notices, name='wx-my-notices'),
+    path('official-announcements/', views.official_announcements, name='wx-official-announcements'),
     path('notices/unread-count/', views.unread_count, name='wx-unread-count'),
     path('notices/<int:notice_id>/read/', views.mark_read, name='wx-mark-read'),
     path('notices/read-all/', views.mark_all_read, name='wx-mark-all-read'),
