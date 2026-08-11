@@ -1124,6 +1124,8 @@ def employee_list(request):
             Q(intro__icontains=keyword)
         )
 
+    base_queryset = queryset
+
     # 排序
     sort_map = {
         'rating': '-rating',
@@ -1143,11 +1145,7 @@ def employee_list(request):
 
     total = queryset.count()
     # 当前筛选条件下明星打手总数（供前端判断是否显示"明星"筛选入口）
-    star_total = 0
-    if not is_star_filter:
-        star_total = Employee.objects.filter(
-            status__in=['idle', 'busy'], is_deleted=False, is_star=True,
-        ).filter(id__in=queryset.values('id')).count()
+    star_total = base_queryset.filter(is_star=True).distinct().count()
     start = (page - 1) * page_size
     employees = queryset[start:start + page_size]
 
@@ -1231,6 +1229,7 @@ def employee_detail(request, emp_id):
             game_id=rank_rel.game_category_id,
             rank_id=rank_rel.rank_id,
         )
+    game_rank_list = sorted(rank_map.values(), key=lambda item: (item.get('game_name') or '', item.get('rank_name') or ''))
 
     skills = []
     for rel in emp.skill_relations.filter(
@@ -1312,6 +1311,8 @@ def employee_detail(request, emp_id):
         'voice_duration': emp.voice_duration or 0,
         'skills': skills,
         'tags': tags,
+        'game_ranks': game_rank_list,
+        'game_rank_badge': game_rank_list[0]['badge'] if game_rank_list else '',
         'game_categories': game_categories,
         'comments': comment_list,
         'photos': emp.photos or [],

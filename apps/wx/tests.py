@@ -253,6 +253,8 @@ class EmployeeGameRankDisplayTests(TestCase):
             real_name='段位打手',
             nickname='段位打手',
             status='idle',
+            is_star=True,
+            star_sort=1,
         )
         self.employee.game_categories.add(self.game)
         EmployeeGameRank.objects.create(employee=self.employee, game_category=self.game, rank=self.rank)
@@ -277,7 +279,14 @@ class EmployeeGameRankDisplayTests(TestCase):
     def test_employee_detail_skill_returns_game_rank_badge(self):
         response = self.client.get(f'/api/wx/employees/{self.employee.id}/').json()
         self.assertEqual(response['code'], 200)
-        self.assertEqual(response['data']['skills'][0]['game_rank_badge'], '三角洲-铂金')
+        self.assertEqual(response['data']['game_rank_badge'], '三角洲-铂金')
+        self.assertEqual(response['data']['game_ranks'][0]['badge'], '三角洲-铂金')
+
+    def test_star_filter_keeps_star_total_for_current_game(self):
+        response = self.client.get(f'/api/wx/employees/?game_id={self.game.id}&sort=star').json()
+        self.assertEqual(response['code'], 200)
+        self.assertEqual(response['data']['star_total'], 1)
+        self.assertEqual(response['data']['list'][0]['id'], self.employee.id)
 
 
 class BlackGoldSearchTests(TestCase):
