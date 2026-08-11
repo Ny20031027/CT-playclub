@@ -35,6 +35,7 @@ from apps.order.services import (
     OrderCompletionError, complete_order_and_settle,
 )
 from apps.notice.models import Notice, UserNotice
+from apps.system.recharge_offers import get_recharge_offers
 from apps.finance.models import Wallet, Transaction
 from apps.upload.models import UploadFile
 from .models import WxUser, Banner, Announcement, GameCategory, Gift, GameBanner, Follow, GameAccount, DasherApplication, PreOrder
@@ -962,6 +963,13 @@ def game_list(request):
     """游戏分类列表（与首页共用）"""
     games = GameCategory.objects.filter(status=True, is_deleted=False).order_by('sort', 'id')
     return success_response(GameCategorySerializer(games, many=True, context={'request': request}).data)
+
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def recharge_offers(request):
+    """充值优惠套餐"""
+    return success_response({'list': get_recharge_offers(active_only=True)})
 
 
 @api_view(['GET'])

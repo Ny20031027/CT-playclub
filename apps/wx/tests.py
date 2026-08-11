@@ -10,6 +10,7 @@ from apps.customer.models import Customer, CustomerService
 from apps.employee.models import Employee, EmployeeSkill, GameplayPresetItem, SkillGameplay
 from apps.notice.models import UserNotice
 from apps.order.models import Order, OrderComment, OrderMember
+from apps.system.models import Config
 from apps.wx.models import Announcement, GameAccount, GameCategory, PreOrder, WxUser
 
 
@@ -175,6 +176,29 @@ class OfficialAnnouncementTests(TestCase):
         self.assertEqual(response['code'], 200)
         self.assertEqual(response['data']['total'], 1)
         self.assertEqual(response['data']['list'][0]['title'], '可见公告')
+
+
+class RechargeOfferTests(TestCase):
+    def setUp(self):
+        self.client = APIClient()
+        self.user = User.objects.create_user(username='recharge_offer_user')
+        self.client.force_authenticate(user=self.user)
+
+    def test_recharge_offers_read_from_system_config(self):
+        Config.objects.create(
+            key='recharge_offers',
+            value='[{"amount":50,"coins":500,"bonus_coins":50,"sort":0,"status":true}]',
+            name='充值优惠',
+            type='json',
+            group='discount',
+        )
+
+        response = self.client.get('/api/wx/recharge-offers/').json()
+        self.assertEqual(response['code'], 200)
+        self.assertEqual(response['data']['list'][0]['amount'], 50.0)
+        self.assertEqual(response['data']['list'][0]['coins'], 500)
+        self.assertEqual(response['data']['list'][0]['bonus_coins'], 50)
+        self.assertEqual(response['data']['list'][0]['total_coins'], 550)
 
 
 class BlackGoldSearchTests(TestCase):

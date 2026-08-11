@@ -36,12 +36,21 @@ class ConfigViewSet(BaseModelViewSet):
     def batch_update(self, request):
         items = request.data.get('items', {})
         for key, value in items.items():
+            defaults = {'value': value, 'name': key}
+            if key == 'recharge_offers':
+                defaults.update({'name': '充值优惠', 'type': 'json', 'group': 'discount'})
             obj, _ = Config.objects.get_or_create(
-                key=key, defaults={'value': value, 'name': key}
+                key=key, defaults=defaults
             )
             obj.value = value
             obj.is_deleted = False
-            obj.save(update_fields=['value', 'is_deleted', 'updated_at'])
+            if key == 'recharge_offers':
+                obj.name = '充值优惠'
+                obj.type = 'json'
+                obj.group = 'discount'
+                obj.save(update_fields=['value', 'name', 'type', 'group', 'is_deleted', 'updated_at'])
+            else:
+                obj.save(update_fields=['value', 'is_deleted', 'updated_at'])
         return success_response(msg='批量更新成功')
 
 
@@ -305,5 +314,4 @@ class CSKeywordRuleViewSet(BaseModelViewSet):
             if not _ensure_cs_tables():
                 return _cs_tables_unavailable_response()
             return super().update(request, *args, **kwargs)
-
 

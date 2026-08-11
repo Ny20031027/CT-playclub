@@ -4,6 +4,7 @@ from django.test import TestCase
 from rest_framework.test import APIClient
 
 from apps.account.models import User
+from apps.system.models import Config
 from .serializers import CustomerSerializer
 from .models import Customer
 
@@ -41,6 +42,34 @@ class CustomerRechargeTests(TestCase):
         self.customer.refresh_from_db()
         self.assertEqual(self.customer.coins, 850)
         self.assertEqual(self.customer.balance, Decimal('15.00'))
+
+    def test_recharge_uses_configured_offer_and_ignores_client_coins(self):
+        Config.objects.create(
+            key='recharge_offers',
+            value='[{"amount":50,"coins":500,"bonus_coins":50,"sort":0,"status":true}]',
+            name='充值优惠',
+            type='json',
+            group='discount',
+        )
+
+        response = self.client.post(
+            f'/api/customer/customers/{self.customer.id}/recharge/',
+            {
+                'amount': 50,
+                'coins': 999999,
+                'ratio': 10,
+                'payment_method': 'wechat',
+            },
+            format='json',
+        )
+
+        payload = response.json()
+        self.assertEqual(payload['code'], 200)
+        self.assertEqual(payload['data']['recharged_coins'], 550)
+        self.assertEqual(payload['data']['bonus_coins'], 50)
+
+        self.customer.refresh_from_db()
+        self.assertEqual(self.customer.coins, 1300)
 
 
 class CustomerDisplayIdEditTests(TestCase):

@@ -58,6 +58,15 @@
     .announcement-image-upload { min-height: 150px; border: 1px dashed #c0c4cc; border-radius: 8px; overflow: hidden; background: #fafafa; cursor: pointer; display: flex; align-items: center; justify-content: center; color: #909399; text-align: center; }
     .announcement-image-upload:hover { border-color: #409eff; color: #409eff; }
     .announcement-image-upload img { width: 100%; max-height: 220px; object-fit: cover; display: block; }
+    .offer-toolbar { display: flex; justify-content: space-between; align-items: center; gap: 12px; flex-wrap: wrap; margin-bottom: 14px; }
+    .offer-note { margin: 0; color: #909399; font-size: 13px; }
+    .recharge-offer-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 14px; margin-top: 16px; }
+    .recharge-offer-preview { position: relative; min-height: 98px; border: 1px solid #ebeef5; border-radius: 8px; background: linear-gradient(145deg, #fff, #f7f8fb); display: flex; flex-direction: column; align-items: center; justify-content: center; box-shadow: 0 4px 14px rgba(15, 23, 42, .04); overflow: hidden; }
+    .recharge-offer-preview .coins { color: #151827; font-weight: 800; font-size: 24px; }
+    .recharge-offer-preview .coins small { margin-left: 4px; color: #8d96a8; font-size: 13px; font-weight: 500; }
+    .recharge-offer-preview .amount { margin-top: 8px; color: #5d8b6c; font-weight: 700; }
+    .recharge-offer-preview .bonus { position: absolute; right: 10px; top: 8px; padding: 4px 9px; border-radius: 999px; color: #fff; background: #ff5a5f; font-size: 12px; font-weight: 700; }
+    .recharge-offer-actions { white-space: nowrap; }
     @media (max-width: 768px) { .preset-editor { grid-template-columns: 1fr; } }
 </style>
 <script>
@@ -77,6 +86,7 @@
     <div class="tab-item" onclick="switchTab('logs')">操作日志</div>
     <div class="tab-item" onclick="switchTab('gameBanner')">游戏轮播</div>
     <div class="tab-item" onclick="switchTab('selfService')">自助下单</div>
+    <div class="tab-item" onclick="switchTab('discount')">折扣优惠</div>
 </div>
 
 <div id="configTab" style="display: block;">
@@ -480,6 +490,42 @@
                     <tr><td colspan="8" class="empty-state"><i class="fa-solid fa-spinner fa-spin"></i><br>加载中...</td></tr>
                 </tbody>
             </table>
+        </div>
+    </div>
+</div>
+
+<div id="discountTab" style="display: none;">
+    <div class="card">
+        <div class="card-header">
+            <div>
+                <div class="card-title">充值优惠</div>
+                <p class="offer-note">设置小程序充值页展示的充值档位：实充金额是用户支付金额，到账黑钻是基础到账，赠送黑钻会额外发放。</p>
+            </div>
+            <div class="card-actions">
+                <button class="btn btn-primary" onclick="addRechargeOffer()"><i class="fa-solid fa-plus"></i> 添加档位</button>
+                <button class="btn btn-success" onclick="saveRechargeOffers()"><i class="fa-solid fa-floppy-disk"></i> 保存设置</button>
+            </div>
+        </div>
+        <div class="card-body" style="padding: 20px;">
+            <div class="offer-toolbar">
+                <p class="offer-note">例：实充 50 元、到账 500 黑钻、赠送 50 黑钻，小程序将显示“500黑钻 ¥50 送50黑钻”。</p>
+                <span class="badge badge-info">1元 = 10黑钻</span>
+            </div>
+            <div class="table-container">
+                <table>
+                    <thead>
+                        <tr>
+                            <th style="width: 180px;">实充金额（元）</th>
+                            <th style="width: 180px;">到账黑钻</th>
+                            <th style="width: 180px;">赠送黑钻</th>
+                            <th>小程序展示预览</th>
+                            <th style="width: 120px;">操作</th>
+                        </tr>
+                    </thead>
+                    <tbody id="rechargeOfferList"></tbody>
+                </table>
+            </div>
+            <div id="rechargeOfferPreview" class="recharge-offer-grid"></div>
         </div>
     </div>
 </div>
@@ -1026,7 +1072,7 @@
         document.getElementById('selfServiceSkillSearchInput').addEventListener('input', debounce(renderSelfServiceSkillTable, 200));
 
         var hash = window.location.hash.substring(1);
-        if (hash === 'gameBanner' || hash === 'selfService') {
+        if (hash === 'gameBanner' || hash === 'selfService' || hash === 'discount') {
             switchTab(hash);
         }
     });
@@ -1034,7 +1080,7 @@
     function switchTab(tab) {
         document.querySelectorAll('.tab-item').forEach(t => t.classList.remove('active'));
         var tabItems = document.querySelectorAll('.tab-item');
-        var tabIndexMap = { config: 0, banner: 1, announcement: 2, gameCategory: 3, dictionary: 4, skill: 5, tag: 6, cs: 7, welcomeKeyword: 8, logs: 9, gameBanner: 10, selfService: 11 };
+        var tabIndexMap = { config: 0, banner: 1, announcement: 2, gameCategory: 3, dictionary: 4, skill: 5, tag: 6, cs: 7, welcomeKeyword: 8, logs: 9, gameBanner: 10, selfService: 11, discount: 12 };
         var idx = tabIndexMap[tab];
         if (idx !== undefined && tabItems[idx]) {
             tabItems[idx].classList.add('active');
@@ -1052,6 +1098,7 @@
         document.getElementById('logsTab').style.display = tab === 'logs' ? 'block' : 'none';
         document.getElementById('gameBannerTab').style.display = tab === 'gameBanner' ? 'block' : 'none';
         document.getElementById('selfServiceTab').style.display = tab === 'selfService' ? 'block' : 'none';
+        document.getElementById('discountTab').style.display = tab === 'discount' ? 'block' : 'none';
 
         if (tab === 'cs') loadCSConfig();
         if (tab === 'welcomeKeyword') { loadWelcomeConfig(); loadGroupWelcome(); loadKeywordRules(); }
@@ -1068,6 +1115,12 @@
     }
 
     let editingConfigId = null;
+    let rechargeOffers = [
+        { amount: 10, coins: 100, bonus_coins: 0 },
+        { amount: 50, coins: 500, bonus_coins: 50 },
+        { amount: 100, coins: 1000, bonus_coins: 150 },
+        { amount: 500, coins: 5000, bonus_coins: 1000 },
+    ];
 
     function showAddConfigModal() {
         editingConfigId = null;
@@ -1103,9 +1156,140 @@
                 const blacklistCfg = configs.find(c => c.key === 'display_id_blacklist');
                 const blEl = document.getElementById('displayIdBlacklist');
                 if (blEl) blEl.value = (blacklistCfg && blacklistCfg.value) || '';
+
+                const rechargeOfferCfg = configs.find(c => c.key === 'recharge_offers');
+                hydrateRechargeOffers(rechargeOfferCfg && rechargeOfferCfg.value);
             }
         } catch (error) {
             console.error('加载配置失败:', error);
+        }
+    }
+
+    function hydrateRechargeOffers(rawValue) {
+        if (rawValue) {
+            try {
+                const parsed = JSON.parse(rawValue);
+                if (Array.isArray(parsed) && parsed.length > 0) {
+                    rechargeOffers = parsed.map(item => ({
+                        amount: Number(item.amount || item.real_amount || item.price || 0),
+                        coins: parseInt(item.coins || item.credited_coins || 0) || 0,
+                        bonus_coins: parseInt(item.bonus_coins || item.bonus || 0) || 0,
+                    })).filter(item => item.amount > 0 && item.coins > 0);
+                }
+            } catch (e) {
+                console.warn('充值优惠配置解析失败，使用默认档位', e);
+            }
+        }
+        renderRechargeOffers();
+    }
+
+    function renderRechargeOffers() {
+        const tbody = document.getElementById('rechargeOfferList');
+        const preview = document.getElementById('rechargeOfferPreview');
+        if (!tbody || !preview) return;
+
+        if (!rechargeOffers.length) {
+            tbody.innerHTML = '<tr><td colspan="5" class="empty-state"><i class="fa-solid fa-inbox"></i><br>暂无充值优惠档位</td></tr>';
+            preview.innerHTML = '';
+            return;
+        }
+
+        tbody.innerHTML = rechargeOffers.map((item, index) => {
+            const amount = Number(item.amount || 0);
+            const coins = parseInt(item.coins || 0) || 0;
+            const bonus = parseInt(item.bonus_coins || 0) || 0;
+            const total = coins + bonus;
+            return `
+                <tr>
+                    <td><input type="number" min="0.01" step="0.01" value="${amount || ''}" onchange="updateRechargeOffer(${index}, 'amount', this.value)" placeholder="如 50"></td>
+                    <td><input type="number" min="1" step="1" value="${coins || ''}" onchange="updateRechargeOffer(${index}, 'coins', this.value)" placeholder="如 500"></td>
+                    <td><input type="number" min="0" step="1" value="${bonus || 0}" onchange="updateRechargeOffer(${index}, 'bonus_coins', this.value)" placeholder="如 50"></td>
+                    <td>
+                        <span class="badge badge-success">${total} 黑钻</span>
+                        <span style="color:#909399;margin-left:8px;">¥${formatMoney(amount)}${bonus > 0 ? ' · 送' + bonus + '黑钻' : ''}</span>
+                    </td>
+                    <td class="recharge-offer-actions">
+                        <button class="btn btn-danger btn-sm" onclick="removeRechargeOffer(${index})">删除</button>
+                    </td>
+                </tr>
+            `;
+        }).join('');
+
+        preview.innerHTML = rechargeOffers.map(item => {
+            const amount = Number(item.amount || 0);
+            const coins = parseInt(item.coins || 0) || 0;
+            const bonus = parseInt(item.bonus_coins || 0) || 0;
+            return `
+                <div class="recharge-offer-preview">
+                    ${bonus > 0 ? `<span class="bonus">送${bonus}黑钻</span>` : ''}
+                    <div class="coins">${coins}<small>黑钻</small></div>
+                    <div class="amount">¥${formatMoney(amount)}</div>
+                </div>
+            `;
+        }).join('');
+    }
+
+    function updateRechargeOffer(index, field, value) {
+        if (!rechargeOffers[index]) return;
+        rechargeOffers[index][field] = field === 'amount' ? Number(value || 0) : (parseInt(value || 0) || 0);
+        renderRechargeOffers();
+    }
+
+    function addRechargeOffer() {
+        rechargeOffers.push({ amount: 0, coins: 0, bonus_coins: 0 });
+        renderRechargeOffers();
+    }
+
+    function removeRechargeOffer(index) {
+        rechargeOffers.splice(index, 1);
+        renderRechargeOffers();
+    }
+
+    function collectRechargeOffers() {
+        const normalized = rechargeOffers.map((item, index) => ({
+            amount: Number(item.amount || 0),
+            coins: parseInt(item.coins || 0) || 0,
+            bonus_coins: Math.max(0, parseInt(item.bonus_coins || 0) || 0),
+            sort: index,
+            status: true,
+        })).filter(item => item.amount > 0 || item.coins > 0 || item.bonus_coins > 0);
+
+        const amountSet = new Set();
+        for (const item of normalized) {
+            if (item.amount <= 0) throw new Error('实充金额必须大于0');
+            if (item.coins <= 0) throw new Error('到账黑钻必须大于0');
+            const amountKey = item.amount.toFixed(2);
+            if (amountSet.has(amountKey)) throw new Error('实充金额不能重复');
+            amountSet.add(amountKey);
+        }
+        return normalized;
+    }
+
+    async function saveRechargeOffers() {
+        let items = [];
+        try {
+            items = collectRechargeOffers();
+            if (!items.length) {
+                showToast('请至少添加一个充值档位', 'error');
+                return;
+            }
+        } catch (error) {
+            showToast(error.message, 'error');
+            return;
+        }
+
+        try {
+            const result = await post('/system/configs/batch-update/', {
+                items: { recharge_offers: JSON.stringify(items) },
+            });
+            if (result.code === 200) {
+                showToast('充值优惠已保存', 'success');
+                await loadConfigs();
+            } else {
+                showToast(result.msg || '保存失败', 'error');
+            }
+        } catch (error) {
+            showToast(error.message || '保存失败', 'error');
         }
     }
 
@@ -2703,6 +2887,11 @@
     function escHtml(v) {
         if (v === null || v === undefined) return '';
         return String(v).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+    }
+    function formatMoney(value) {
+        var num = Number(value || 0);
+        if (!isFinite(num)) return '0';
+        return num % 1 === 0 ? String(Math.round(num)) : num.toFixed(2);
     }
     function selectOpts(values, labels, current) {
         return values.map(function (v, i) {

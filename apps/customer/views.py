@@ -132,18 +132,14 @@ class CustomerViewSet(BaseModelViewSet):
     @action(detail=True, methods=['post'], url_path='recharge')
     def recharge(self, request, pk=None):
         from decimal import Decimal
+        from apps.system.recharge_offers import resolve_recharge_coins
         customer = self.get_object()
         amount = Decimal(str(request.data.get('amount', 0) or 0))
         if amount <= 0:
             return success_response(code=400, msg='充值金额必须大于0')
-        
-        # 优先使用前端传递的 coins，如果没有则根据比例计算
-        coins = int(request.data.get('coins', 0) or 0)
-        if coins <= 0:
-            ratio = Decimal(str(request.data.get('ratio', 10) or 10))
-            coins = int(amount * ratio)
-        else:
-            ratio = Decimal(str(request.data.get('ratio', 10) or 10))
+
+        coins, matched_offer = resolve_recharge_coins(amount)
+        ratio = Decimal(str(request.data.get('ratio', 10) or 10))
         
         customer.balance += amount
         customer.coins += coins
@@ -163,7 +159,10 @@ class CustomerViewSet(BaseModelViewSet):
             payment_method=request.data.get('payment_method', 'balance'),
             status='completed',
             operator=request.user,
-            remark=request.data.get('remark', ''),
+            remark=request.data.get('remark', '') or (
+                f"充值优惠：实充{matched_offer['amount']}元，到账{matched_offer['coins']}黑钻，赠送{matched_offer['bonus_coins']}黑钻"
+                if matched_offer else ''
+            ),
         )
         
         CustomerConsumeRecord.objects.create(
@@ -175,6 +174,7 @@ class CustomerViewSet(BaseModelViewSet):
         return success_response(msg='充值成功', data={
             'customer_id': customer.id,
             'recharged_coins': coins,
+            'bonus_coins': matched_offer['bonus_coins'] if matched_offer else 0,
             'coins': int(customer.coins),
             'balance': float(customer.balance),
         })
