@@ -30,12 +30,15 @@ class CustomerSerializer(serializers.ModelSerializer):
     avatar_url = serializers.SerializerMethodField()
     display_id = serializers.SerializerMethodField()
     edit_display_id = serializers.CharField(write_only=True, required=False)
+    coins_frozen = serializers.BooleanField(read_only=True)
+    user_banned = serializers.SerializerMethodField()
 
     class Meta:
         model = Customer
         fields = ['id', 'user', 'display_id', 'edit_display_id', 'nickname', 'avatar', 'avatar_url', 'phone', 'email', 'gender',
                   'age', 'wechat', 'qq', 'level', 'level_name', 'level_color',
                   'tags', 'tag_names', 'total_amount', 'total_orders', 'balance', 'coins',
+                  'coins_frozen', 'user_banned',
                   'status', 'source', 'first_order_date', 'last_order_date',
                   'remark', 'address', 'is_blacklisted', 'created_at', 'updated_at']
         read_only_fields = ['id', 'total_amount', 'total_orders',
@@ -55,6 +58,12 @@ class CustomerSerializer(serializers.ModelSerializer):
             return obj.user.display_id
         except Exception:
             return ''
+
+    def get_user_banned(self, obj):
+        try:
+            return bool(obj.user and obj.user.is_banned_active())
+        except Exception:
+            return False
 
     def validate_edit_display_id(self, value):
         value = validate_display_id(value)

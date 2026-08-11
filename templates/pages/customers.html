@@ -173,6 +173,41 @@
     </div>
 </div>
 
+<!-- 封禁弹窗 -->
+<div class="modal-overlay" id="banModal">
+    <div class="modal" style="max-width: 420px;">
+        <div class="modal-header">
+            <div class="modal-title">封禁账号</div>
+            <div class="modal-close" onclick="hideModal('banModal')">&times;</div>
+        </div>
+        <div class="modal-body">
+            <p style="color:#666;margin-bottom:15px;">封禁后，<b id="banTargetName"></b>将无法登录。请选择封禁时长：</p>
+            <input type="hidden" id="banTargetId">
+            <div class="form-group">
+                <label>封禁时长</label>
+                <select id="banDurationType" onchange="toggleBanDuration()">
+                    <option value="hours">按小时</option>
+                    <option value="days">按天</option>
+                    <option value="forever" selected>永久封禁</option>
+                </select>
+            </div>
+            <div class="form-group" id="banDurationWrap" style="display:none;">
+                <label>时长数值</label>
+                <input type="number" id="banDuration" min="1" value="1">
+            </div>
+            <div class="form-group">
+                <label>封禁原因（可选）</label>
+                <input type="text" id="banReason" placeholder="如：违规行为">
+            </div>
+        </div>
+        <div class="modal-footer">
+            <button class="btn btn-default" onclick="hideModal('banModal')">取消</button>
+            <button class="btn btn-danger" onclick="confirmBan()">确认封禁</button>
+        </div>
+    </div>
+</div>
+
+
 <script>
     let customerLevels = [];
     let currentViewingId = null;
@@ -239,6 +274,12 @@
                     const statusBadge = cust.status
                         ? '<span class="badge badge-success">正常</span>'
                         : '<span class="badge badge-danger">禁用</span>';
+                    const banBadge = cust.user_banned
+                        ? '<span class="badge badge-danger">已封禁</span>'
+                        : '';
+                    const freezeBadge = cust.coins_frozen
+                        ? '<span class="badge badge-warning">💎已冻结</span>'
+                        : '';
                     const levelBadge = cust.level
                         ? `<span class="badge" style="background:${cust.level_color || '#1890ff'};color:white;">${cust.level_name || getLevelText(cust.level)}</span>`
                         : '<span class="badge badge-info">未设置</span>';
@@ -251,13 +292,16 @@
                             <td>${cust.phone || '-'}</td>
                             <td>${levelBadge}</td>
                             <td>¥${Number(totalSpent).toFixed(2)}</td>
-                            <td><span class="badge badge-warning">💎 ${cust.coins || 0}</span></td>
+                            <td><span class="badge badge-warning">💎 ${cust.coins || 0}</span> ${freezeBadge}</td>
                             <td>${cust.total_orders || cust.order_count || 0}</td>
-                            <td>${statusBadge}</td>
+                            <td>${statusBadge} ${banBadge}</td>
                             <td>
                                 <button class="btn btn-default btn-sm" onclick="viewCustomer(${cust.id})">查看</button>
                                 <button class="btn btn-primary btn-sm" onclick="editCustomer(${cust.id})">编辑</button>
-                                <button class="btn btn-danger btn-sm" onclick="deleteCustomer(${cust.id})">删除</button>
+                                ${cust.user_banned
+                                    ? `<button class="btn btn-warning btn-sm" onclick="unbanCustomer(${cust.id})">解封</button>`
+                                    : `<button class="btn btn-warning btn-sm" onclick="openBanModal(${cust.id}, '${cust.nickname || '客户'}')">封禁</button>`}
+                                <button class="btn btn-info btn-sm" onclick="toggleFreezeCoins(${cust.id}, ${cust.coins_frozen ? 'false' : 'true'})">${cust.coins_frozen ? '解冻黑钻' : '冻结黑钻'}</button>
                             </td>
                         </tr>
                     `;
@@ -454,6 +498,76 @@
                 await loadCustomers();
             } else {
                 showToast(result.msg || '删除失败', 'error');
+            }
+        } catch (error) {
+            showToast(error.message, 'error');
+        }
+    }
+
+    // ============ 封禁 / 冻结 ============
+    let banApiPrefix = '/customer/customers';
+    let banUnbanPath = (id) => `${banApiPrefix}/${id}/ban/`;
+
+    function openBanModal(id, name) {
+        document.getElementById('banTargetId').value = id;
+        document.getElementById('banTargetName').textContent = name;
+        document.getElementById('banDurationType').value = 'forever';
+        document.getElementById('banDurationWrap').style.display = 'none';
+        document.getElementById('banReason').value = '';
+        showModal('banModal');
+    }
+
+    function toggleBanDuration() {
+        const type = document.getElementById('banDurationType').value;
+        document.getElementById('banDurationWrap').style.display = type === 'forever' ? 'none' : 'block';
+    }
+
+    async function confirmBan() {
+        const id = document.getElementById('banTargetId').value;
+        const durationType = document.getElementById('banDurationType').value;
+        const duration = document.getElementById('banDuration').value;
+        const reason = document.getElementById('banReason').value.trim();
+        try {
+            const result = await post(`${banApiPrefix}/${id}/ban/`, {
+                duration_type: durationType,
+                duration: duration || 1,
+                reason: reason,
+            });
+            if (result.code === 200) {
+                showToast('封禁成功', 'success');
+                hideModal('banModal');
+                await loadCustomers();
+            } else {
+                showToast(result.msg || '封禁失败', 'error');
+            }
+        } catch (error) {
+            showToast(error.message, 'error');
+        }
+    }
+
+    async function unbanCustomer(id) {
+        if (!confirm('确定要解封该客户吗？')) return;
+        try {
+            const result = await post(`/customer/customers/${id}/unban/`, {});
+            if (result.code === 200) {
+                showToast('已解封', 'success');
+                await loadCustomers();
+            } else {
+                showToast(result.msg || '解封失败', 'error');
+            }
+        } catch (error) {
+            showToast(error.message, 'error');
+        }
+    }
+
+    async function toggleFreezeCoins(id, frozen) {
+        try {
+            const result = await post(`/customer/customers/${id}/freeze-coins/`, { frozen: !!frozen });
+            if (result.code === 200) {
+                showToast(frozen ? '黑钻已冻结' : '黑钻已解冻', 'success');
+                await loadCustomers();
+            } else {
+                showToast(result.msg || '操作失败', 'error');
             }
         } catch (error) {
             showToast(error.message, 'error');

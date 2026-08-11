@@ -103,6 +103,10 @@ class User(AbstractUser, BaseModel):
         validators=[RegexValidator(r'^\d{1,9}$', '黑金ID只能包含1至9位数字')],
         verbose_name='黑金ID',
     )
+    # 封禁：is_banned 为封禁标记，ban_until 为截止时间（None=永久封禁，已过=自动解封）
+    is_banned = models.BooleanField(default=False, verbose_name='是否封禁')
+    ban_until = models.DateTimeField(null=True, blank=True, verbose_name='封禁截止时间')
+    ban_reason = models.CharField(max_length=200, blank=True, verbose_name='封禁原因')
 
     class Meta:
         db_table = 'sys_user'
@@ -143,6 +147,21 @@ class User(AbstractUser, BaseModel):
 
     def get_role_codes(self):
         return list(self.roles.filter(status=True, is_deleted=False).values_list('code', flat=True))
+
+    def is_banned_active(self):
+        """是否处于封禁状态；封禁到期自动解封。"""
+        from django.utils import timezone
+        if not self.is_banned:
+            return False
+        if self.ban_until is None:
+            return True  # 永久封禁
+        if self.ban_until > timezone.now():
+            return True
+        # 封禁已到期：自动解封
+        type(self).objects.filter(pk=self.pk).update(is_banned=False, ban_until=None, ban_reason='')
+        self.is_banned = False
+        self.ban_until = None
+        return False
 
     @staticmethod
     def _is_active_identity(identity):

@@ -405,6 +405,7 @@ class Employee(BaseModel):
     fans_count = models.IntegerField(default=0, verbose_name='粉丝数')
     commission_balance = models.DecimalField(max_digits=12, decimal_places=2, default=0,
                                              verbose_name='佣金余额(可提现)')
+    commission_frozen = models.BooleanField(default=False, verbose_name='佣金是否冻结')
     platform_commission_rate = models.DecimalField(
         max_digits=5, decimal_places=2, default=20,
         validators=[

@@ -93,6 +93,39 @@ class CustomerViewSet(BaseModelViewSet):
         customer.save(update_fields=['status'])
         return success_response(msg='已移出黑名单')
 
+    @action(detail=True, methods=['post'], url_path='ban')
+    def ban_customer(self, request, pk=None):
+        """封禁客户（登录拦截）：duration_type=hours|days|forever"""
+        customer = self.get_object()
+        if not customer.user:
+            return success_response(code=400, msg='该客户未绑定用户，无法封禁')
+        from apps.account.ban_utils import apply_ban
+        apply_ban(
+            customer.user,
+            request.data.get('duration_type', 'forever'),
+            request.data.get('duration'),
+            request.data.get('reason', ''),
+        )
+        return success_response(msg='封禁成功')
+
+    @action(detail=True, methods=['post'], url_path='unban')
+    def unban_customer(self, request, pk=None):
+        """解封客户"""
+        customer = self.get_object()
+        if customer.user:
+            from apps.account.ban_utils import remove_ban
+            remove_ban(customer.user)
+        return success_response(msg='已解封')
+
+    @action(detail=True, methods=['post'], url_path='freeze-coins')
+    def freeze_coins(self, request, pk=None):
+        """冻结/解冻客户黑钻"""
+        customer = self.get_object()
+        frozen = request.data.get('frozen') is True or request.data.get('frozen') in (True, 'true', 1, '1')
+        customer.coins_frozen = bool(frozen)
+        customer.save(update_fields=['coins_frozen'])
+        return success_response(msg='黑钻已冻结' if frozen else '黑钻已解冻')
+
     @action(detail=True, methods=['post'], url_path='recharge')
     def recharge(self, request, pk=None):
         from decimal import Decimal

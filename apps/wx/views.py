@@ -648,6 +648,10 @@ def wx_login(request):
 
     user.ensure_display_id()
 
+    # 封禁拦截：封禁中的用户不允许登录
+    if user.is_banned_active():
+        return error_response(msg='账号已被封禁，无法登录', code=403)
+
     # 判断用户类型
     is_dasher = bool(user.get_active_employee())
 
@@ -1501,6 +1505,8 @@ def create_self_service_order(request):
         coin_cost = unit_coin_cost * preset_quantity
         total_price = (preset_price * preset_quantity).quantize(Decimal('0.01'))
         charged_amount = (Decimal(coin_cost) / Decimal('10')).quantize(Decimal('0.01'))
+        if customer.coins_frozen:
+            return error_response(msg='黑钻已被冻结，无法下单', code=403)
         if coin_cost > 0 and (customer.coins or 0) < coin_cost:
             return error_response(msg=f'黑钻不足，需要{coin_cost}黑钻，当前仅有{customer.coins or 0}黑钻')
         import random
@@ -1861,7 +1867,9 @@ def create_self_service_order(request):
         **choice_snapshot,
     }
 
-    # === 扣费前置校验：黑钻是否充足 ===
+    # === 扣费前置校验：黑钻是否冻结、是否充足 ===
+    if customer.coins_frozen:
+        return error_response(msg='黑钻已被冻结，无法下单', code=403)
     if coin_cost > 0 and (customer.coins or 0) < coin_cost:
         return error_response(msg=f'黑钻不足，需要{coin_cost}黑钻，当前仅有{customer.coins or 0}黑钻')
 

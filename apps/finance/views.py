@@ -168,6 +168,9 @@ class WithdrawViewSet(BaseModelViewSet):
             raise serializers.ValidationError({'amount': '提现金额必须大于0'})
         if fee < 0 or fee > amount:
             raise serializers.ValidationError({'fee': '手续费不能小于0或超过提现金额'})
+        # 佣金冻结时不允许提现
+        if getattr(employee, 'commission_frozen', False):
+            raise serializers.ValidationError({'amount': '佣金已被冻结，暂时无法提现'})
         wallet, _ = EmployeeWallet.objects.select_for_update().get_or_create(
             employee=employee
         )
@@ -220,6 +223,9 @@ class WithdrawViewSet(BaseModelViewSet):
         withdraw = Withdraw.objects.select_for_update().get(pk=pk, is_deleted=False)
         if withdraw.status != 'approved':
             return error_response(msg='提现状态不正确')
+        employee = Employee.objects.select_for_update().get(pk=withdraw.employee_id)
+        if getattr(employee, 'commission_frozen', False):
+            return error_response(msg='佣金已被冻结，无法完成提现', code=403)
         wallet = EmployeeWallet.objects.select_for_update().filter(
             employee=withdraw.employee
         ).first()

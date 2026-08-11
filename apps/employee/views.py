@@ -60,6 +60,39 @@ class EmployeeViewSet(BaseModelViewSet):
             return success_response(msg='状态更新成功')
         return success_response(code=400, msg='无效的状态')
 
+    @action(detail=True, methods=['post'], url_path='ban')
+    def ban_employee(self, request, pk=None):
+        """封禁打手（登录拦截）：duration_type=hours|days|forever"""
+        employee = self.get_object()
+        if not employee.user:
+            return success_response(code=400, msg='该打手未绑定用户，无法封禁')
+        from apps.account.ban_utils import apply_ban
+        apply_ban(
+            employee.user,
+            request.data.get('duration_type', 'forever'),
+            request.data.get('duration'),
+            request.data.get('reason', ''),
+        )
+        return success_response(msg='封禁成功')
+
+    @action(detail=True, methods=['post'], url_path='unban')
+    def unban_employee(self, request, pk=None):
+        """解封打手"""
+        employee = self.get_object()
+        if employee.user:
+            from apps.account.ban_utils import remove_ban
+            remove_ban(employee.user)
+        return success_response(msg='已解封')
+
+    @action(detail=True, methods=['post'], url_path='freeze-commission')
+    def freeze_commission(self, request, pk=None):
+        """冻结/解冻打手佣金"""
+        employee = self.get_object()
+        frozen = request.data.get('frozen') is True or request.data.get('frozen') in (True, 'true', 1, '1')
+        employee.commission_frozen = bool(frozen)
+        employee.save(update_fields=['commission_frozen'])
+        return success_response(msg='佣金已冻结' if frozen else '佣金已解冻')
+
     @action(detail=True, methods=['get'], url_path='skills')
     def employee_skills(self, request, pk=None):
         employee = self.get_object()

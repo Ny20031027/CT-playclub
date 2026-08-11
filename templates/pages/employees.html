@@ -114,8 +114,7 @@
         <div class="modal-header">
             <div class="modal-title">添加打手（从客户中选择）</div>
             <div class="modal-close" onclick="hideModal('addEmployeeModal')">&times;</div>
-        </div>
-        <div class="modal-body">
+        </div>        <div class="modal-body">
             <div class="form-group">
                 <label>搜索客户</label>
                 <input type="text" id="customerSearchInput" placeholder="输入昵称/手机号搜索" oninput="searchCustomers()">
@@ -156,6 +155,40 @@
         <div class="modal-footer">
             <button class="btn btn-default" onclick="hideModal('addEmployeeModal')">取消</button>
             <button class="btn btn-primary" onclick="convertToEmployee()" id="confirmBtn" disabled>确认转换</button>
+        </div>
+    </div>
+</div>
+
+<!-- 封禁弹窗 -->
+<div class="modal-overlay" id="banModal">
+    <div class="modal" style="max-width: 420px;">
+        <div class="modal-header">
+            <div class="modal-title">封禁账号</div>
+            <div class="modal-close" onclick="hideModal('banModal')">&times;</div>
+        </div>
+        <div class="modal-body">
+            <p style="color:#666;margin-bottom:15px;">封禁后，<b id="banTargetName"></b>将无法登录。请选择封禁时长：</p>
+            <input type="hidden" id="banTargetId">
+            <div class="form-group">
+                <label>封禁时长</label>
+                <select id="banDurationType" onchange="toggleBanDuration()">
+                    <option value="hours">按小时</option>
+                    <option value="days">按天</option>
+                    <option value="forever" selected>永久封禁</option>
+                </select>
+            </div>
+            <div class="form-group" id="banDurationWrap" style="display:none;">
+                <label>时长数值</label>
+                <input type="number" id="banDuration" min="1" value="1">
+            </div>
+            <div class="form-group">
+                <label>封禁原因（可选）</label>
+                <input type="text" id="banReason" placeholder="如：违规行为">
+            </div>
+        </div>
+        <div class="modal-footer">
+            <button class="btn btn-default" onclick="hideModal('banModal')">取消</button>
+            <button class="btn btn-danger" onclick="confirmBan()">确认封禁</button>
         </div>
     </div>
 </div>
@@ -560,6 +593,12 @@
                     const starBadge = emp.is_star
                         ? `<span class="badge star-badge"><i class="fa-solid fa-star"></i> 明星 · ${Number(emp.star_sort) || 0}</span>`
                         : '<span class="category-badge muted">普通</span>';
+                    const banBadge = emp.user_banned
+                        ? '<span class="badge badge-danger">已封禁</span>'
+                        : '';
+                    const freezeBadge = emp.commission_frozen
+                        ? '<span class="badge badge-warning">佣金冻结</span>'
+                        : '';
                     return `
                     <tr>
                         <td>${emp.id}</td>
@@ -568,14 +607,18 @@
                         <td>${emp.real_name || '-'}</td>
                         <td><div class="category-badges">${categoryBadges}</div></td>
                         <td>${levelText}</td>
-                        <td><span class="badge ${status.class}">${status.text}</span></td>
-                        <td><span class="badge ${workStatusClass}">${workStatusText}</span></td>
+                        <td><span class="badge ${status.class}">${status.text}</span> ${banBadge}</td>
+                        <td><span class="badge ${workStatusClass}">${workStatusText}</span> ${freezeBadge}</td>
                         <td>${starBadge}</td>
                         <td><span class="badge badge-info">${formatRate(emp.platform_commission_rate, 20)}%</span></td>
                         <td>${emp.rating || 0.0}</td>
                         <td>${emp.order_count || 0}</td>
                         <td>
                             <button class="btn btn-default" onclick="editEmployee(${emp.id})">编辑</button>
+                            ${emp.user_banned
+                                ? `<button class="btn btn-warning" onclick="unbanEmployee(${emp.id})">解封</button>`
+                                : `<button class="btn btn-warning" onclick="openBanModal(${emp.id}, '${emp.nickname || '打手'}')">封禁</button>`}
+                            <button class="btn btn-info" onclick="toggleFreezeCommission(${emp.id}, ${emp.commission_frozen ? 'false' : 'true'})">${emp.commission_frozen ? '解冻佣金' : '冻结佣金'}</button>
                             <button class="btn btn-danger" onclick="dismissEmployee(${emp.id})">解聘</button>
                         </td>
                     </tr>
@@ -693,6 +736,73 @@
                 await loadEmployees();
             } else {
                 showToast(result.msg, 'error');
+            }
+        } catch (error) {
+            showToast(error.message, 'error');
+        }
+    }
+
+    // ============ 封禁 / 冻结（打手） ============
+    function openBanModal(id, name) {
+        document.getElementById('banTargetId').value = id;
+        document.getElementById('banTargetName').textContent = name;
+        document.getElementById('banDurationType').value = 'forever';
+        document.getElementById('banDurationWrap').style.display = 'none';
+        document.getElementById('banReason').value = '';
+        showModal('banModal');
+    }
+
+    function toggleBanDuration() {
+        const type = document.getElementById('banDurationType').value;
+        document.getElementById('banDurationWrap').style.display = type === 'forever' ? 'none' : 'block';
+    }
+
+    async function confirmBan() {
+        const id = document.getElementById('banTargetId').value;
+        const durationType = document.getElementById('banDurationType').value;
+        const duration = document.getElementById('banDuration').value;
+        const reason = document.getElementById('banReason').value.trim();
+        try {
+            const result = await post(`/employee/employees/${id}/ban/`, {
+                duration_type: durationType,
+                duration: duration || 1,
+                reason: reason,
+            });
+            if (result.code === 200) {
+                showToast('封禁成功', 'success');
+                hideModal('banModal');
+                await loadEmployees();
+            } else {
+                showToast(result.msg || '封禁失败', 'error');
+            }
+        } catch (error) {
+            showToast(error.message, 'error');
+        }
+    }
+
+    async function unbanEmployee(id) {
+        if (!confirm('确定要解封该打手吗？')) return;
+        try {
+            const result = await post(`/employee/employees/${id}/unban/`, {});
+            if (result.code === 200) {
+                showToast('已解封', 'success');
+                await loadEmployees();
+            } else {
+                showToast(result.msg || '解封失败', 'error');
+            }
+        } catch (error) {
+            showToast(error.message, 'error');
+        }
+    }
+
+    async function toggleFreezeCommission(id, frozen) {
+        try {
+            const result = await post(`/employee/employees/${id}/freeze-commission/`, { frozen: !!frozen });
+            if (result.code === 200) {
+                showToast(frozen ? '佣金已冻结' : '佣金已解冻', 'success');
+                await loadEmployees();
+            } else {
+                showToast(result.msg || '操作失败', 'error');
             }
         } catch (error) {
             showToast(error.message, 'error');
