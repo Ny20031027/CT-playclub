@@ -2182,14 +2182,8 @@ def order_detail(request, order_id):
     employee = user.get_active_employee()
     is_dasher = bool(employee)
 
-    # 判断是否为客服
-    is_cs = False
-    try:
-        from apps.customer.models import CustomerService
-        CustomerService.objects.get(customer__user=user)
-        is_cs = True
-    except CustomerService.DoesNotExist:
-        pass
+    # 判断是否为客服（与群组等接口一致：按用户角色码判断）
+    is_cs = 'cs' in user.get_role_codes()
 
     try:
         if is_cs:
