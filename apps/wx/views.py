@@ -3106,13 +3106,26 @@ def start_order(request, order_id):
     return success_response(msg='订单已开始')
 
 
+def _is_cs_user(user):
+    """判断用户是否为客服：优先角色码，兜底 CustomerService 记录。"""
+    if 'cs' in user.get_role_codes():
+        return True
+    try:
+        from apps.customer.models import CustomerService
+        return CustomerService.objects.filter(
+            customer__user=user, is_deleted=False
+        ).exists()
+    except Exception:
+        return False
+
+
 @api_view(['GET'])
 @permission_classes([IsAuthenticated])
 def order_chat_groups(request):
     """当前用户的有效订单群；客服可查看全部订单群，客户/打手仅自己的；查询时清理已到期群。"""
     OrderChatGroup.objects.filter(expires_at__lte=timezone.now()).delete()
     user = request.user
-    is_cs = 'cs' in user.get_role_codes()
+    is_cs = _is_cs_user(user)
     if is_cs:
         groups = OrderChatGroup.objects.filter(
             is_active=True, is_deleted=False,
@@ -3127,6 +3140,7 @@ def order_chat_groups(request):
         last_message = group.messages.filter(is_deleted=False).order_by('-created_at').first()
         data.append({
             'id': group.id, 'name': group.name,
+            'title': group.order.title if group.order and group.order.title else group.name,
             'order_id': group.order_id, 'order_no': group.order.order_no,
             'member_count': group.members.filter(is_deleted=False).count(),
             'last_message': last_message.content if last_message else '',
@@ -3146,7 +3160,7 @@ def order_chat_group_detail(request, group_id):
     if group.expires_at <= timezone.now():
         group.delete()
         return error_response(msg='群组已到期并自动删除')
-    is_cs = 'cs' in request.user.get_role_codes()
+    is_cs = _is_cs_user(request.user)
     if not is_cs and not group.members.filter(user=request.user, is_deleted=False).exists():
         return error_response(msg='您不在该群组中')
     if request.method == 'POST':
@@ -3158,7 +3172,10 @@ def order_chat_group_detail(request, group_id):
     messages = group.messages.filter(is_deleted=False).select_related('sender')
     order_card = None
     order = group.order if group.order_id else None
+    title = group.name
     if order is not None:
+        if order.title:
+            title = order.title
         members = []
         for m in order.order_members.filter(is_deleted=False):
             if m.employee is None:
@@ -3182,7 +3199,7 @@ def order_chat_group_detail(request, group_id):
             'members': members,
         }
     return success_response({
-        'id': group.id, 'name': group.name,
+        'id': group.id, 'name': title,
         'expires_at': _as_localtime(group.expires_at).strftime('%Y-%m-%d %H:%M'),
         'order_card': order_card,
         'messages': [{
