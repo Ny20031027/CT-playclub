@@ -39,6 +39,8 @@ class ConfigViewSet(BaseModelViewSet):
             defaults = {'value': value, 'name': key}
             if key == 'recharge_offers':
                 defaults.update({'name': '充值优惠', 'type': 'json', 'group': 'discount'})
+            if key == 'mini_agreements':
+                defaults.update({'name': '小程序协议设置', 'type': 'json', 'group': 'agreement'})
             obj, _ = Config.objects.get_or_create(
                 key=key, defaults=defaults
             )
@@ -48,6 +50,11 @@ class ConfigViewSet(BaseModelViewSet):
                 obj.name = '充值优惠'
                 obj.type = 'json'
                 obj.group = 'discount'
+                obj.save(update_fields=['value', 'name', 'type', 'group', 'is_deleted', 'updated_at'])
+            elif key == 'mini_agreements':
+                obj.name = '小程序协议设置'
+                obj.type = 'json'
+                obj.group = 'agreement'
                 obj.save(update_fields=['value', 'name', 'type', 'group', 'is_deleted', 'updated_at'])
             else:
                 obj.save(update_fields=['value', 'is_deleted', 'updated_at'])
@@ -314,4 +321,3 @@ class CSKeywordRuleViewSet(BaseModelViewSet):
             if not _ensure_cs_tables():
                 return _cs_tables_unavailable_response()
             return super().update(request, *args, **kwargs)
-

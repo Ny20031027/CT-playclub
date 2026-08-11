@@ -67,7 +67,17 @@
     .recharge-offer-preview .amount { margin-top: 8px; color: #5d8b6c; font-weight: 700; }
     .recharge-offer-preview .bonus { position: absolute; right: 10px; top: 8px; padding: 4px 9px; border-radius: 999px; color: #fff; background: #ff5a5f; font-size: 12px; font-weight: 700; }
     .recharge-offer-actions { white-space: nowrap; }
-    @media (max-width: 768px) { .preset-editor { grid-template-columns: 1fr; } }
+    .agreement-editor-list { display: grid; grid-template-columns: repeat(auto-fit, minmax(360px, 1fr)); gap: 18px; }
+    .agreement-card { border: 1px solid #ebeef5; border-radius: 12px; background: linear-gradient(180deg, #fff, #fbfcff); padding: 18px; box-shadow: 0 8px 24px rgba(15, 23, 42, .04); }
+    .agreement-card-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; margin-bottom: 14px; }
+    .agreement-card-title { display: flex; align-items: center; gap: 10px; color: #303133; font-size: 16px; font-weight: 700; }
+    .agreement-card-title i { color: #6c58ef; }
+    .agreement-card-summary { margin: 6px 0 0; color: #909399; font-size: 12px; line-height: 1.5; }
+    .agreement-status { display: inline-flex; align-items: center; gap: 6px; padding: 5px 10px; border-radius: 999px; color: #67c23a; background: rgba(103, 194, 58, .12); font-size: 12px; white-space: nowrap; }
+    .agreement-card .form-group { margin-bottom: 12px; }
+    .agreement-card textarea { min-height: 260px; line-height: 1.65; resize: vertical; font-family: inherit; }
+    .agreement-actions { display: flex; justify-content: flex-end; align-items: center; gap: 10px; margin-top: 18px; }
+    @media (max-width: 768px) { .preset-editor, .agreement-editor-list { grid-template-columns: 1fr; } }
 </style>
 <script>
     document.getElementById('pageTitle').textContent = '系统设置';
@@ -87,6 +97,7 @@
     <div class="tab-item" onclick="switchTab('gameBanner')">游戏轮播</div>
     <div class="tab-item" onclick="switchTab('selfService')">自助下单</div>
     <div class="tab-item" onclick="switchTab('discount')">折扣优惠</div>
+    <div class="tab-item" onclick="switchTab('agreement')">协议设置</div>
 </div>
 
 <div id="configTab" style="display: block;">
@@ -526,6 +537,24 @@
                 </table>
             </div>
             <div id="rechargeOfferPreview" class="recharge-offer-grid"></div>
+        </div>
+    </div>
+</div>
+
+<div id="agreementTab" style="display: none;">
+    <div class="card">
+        <div class="card-header">
+            <div>
+                <div class="card-title">小程序协议设置</div>
+                <p class="offer-note">统一管理小程序登录、充值、打手入驻等页面使用到的协议内容。用户点击具体协议时，将进入新的协议详情页查看完整内容。</p>
+            </div>
+            <div class="card-actions">
+                <button class="btn btn-default" onclick="resetAgreementEditors()"><i class="fa-solid fa-rotate-left"></i> 恢复默认</button>
+                <button class="btn btn-success" onclick="saveAgreements()"><i class="fa-solid fa-floppy-disk"></i> 保存协议</button>
+            </div>
+        </div>
+        <div class="card-body" style="padding: 20px;">
+            <div id="agreementEditorList" class="agreement-editor-list"></div>
         </div>
     </div>
 </div>
@@ -1072,7 +1101,7 @@
         document.getElementById('selfServiceSkillSearchInput').addEventListener('input', debounce(renderSelfServiceSkillTable, 200));
 
         var hash = window.location.hash.substring(1);
-        if (hash === 'gameBanner' || hash === 'selfService' || hash === 'discount') {
+        if (hash === 'gameBanner' || hash === 'selfService' || hash === 'discount' || hash === 'agreement') {
             switchTab(hash);
         }
     });
@@ -1080,7 +1109,7 @@
     function switchTab(tab) {
         document.querySelectorAll('.tab-item').forEach(t => t.classList.remove('active'));
         var tabItems = document.querySelectorAll('.tab-item');
-        var tabIndexMap = { config: 0, banner: 1, announcement: 2, gameCategory: 3, dictionary: 4, skill: 5, tag: 6, cs: 7, welcomeKeyword: 8, logs: 9, gameBanner: 10, selfService: 11, discount: 12 };
+        var tabIndexMap = { config: 0, banner: 1, announcement: 2, gameCategory: 3, dictionary: 4, skill: 5, tag: 6, cs: 7, welcomeKeyword: 8, logs: 9, gameBanner: 10, selfService: 11, discount: 12, agreement: 13 };
         var idx = tabIndexMap[tab];
         if (idx !== undefined && tabItems[idx]) {
             tabItems[idx].classList.add('active');
@@ -1099,6 +1128,7 @@
         document.getElementById('gameBannerTab').style.display = tab === 'gameBanner' ? 'block' : 'none';
         document.getElementById('selfServiceTab').style.display = tab === 'selfService' ? 'block' : 'none';
         document.getElementById('discountTab').style.display = tab === 'discount' ? 'block' : 'none';
+        document.getElementById('agreementTab').style.display = tab === 'agreement' ? 'block' : 'none';
 
         if (tab === 'cs') loadCSConfig();
         if (tab === 'welcomeKeyword') { loadWelcomeConfig(); loadGroupWelcome(); loadKeywordRules(); }
@@ -1121,6 +1151,41 @@
         { amount: 100, coins: 1000, bonus_coins: 150 },
         { amount: 500, coins: 5000, bonus_coins: 1000 },
     ];
+    const DEFAULT_AGREEMENTS = [
+        {
+            key: 'user_agreement',
+            title: '用户协议',
+            summary: '适用于登录、充值、下单等平台基础服务。',
+            content: '欢迎使用黑金电竞陪玩平台。\\n\\n1. 您在使用本平台服务前，应仔细阅读并充分理解本协议内容。\\n2. 您应保证提交的账号资料、联系方式及订单信息真实、准确、完整。\\n3. 您不得利用平台从事违法违规、损害他人权益或破坏平台秩序的行为。\\n4. 平台将根据订单规则、服务说明及实际履约情况处理订单、售后与争议。\\n5. 如您继续使用本平台，即表示您已阅读并同意本协议。',
+            sort: 0,
+            status: true,
+        },
+        {
+            key: 'privacy_policy',
+            title: '隐私政策',
+            summary: '说明平台如何收集、使用与保护您的个人信息。',
+            content: '我们重视并保护您的个人信息与隐私安全。\\n\\n1. 平台可能收集您的微信身份标识、昵称、头像、联系方式、游戏账号、订单信息等必要数据。\\n2. 上述信息仅用于登录认证、订单履约、客服沟通、安全风控及平台服务改进。\\n3. 未经您授权或法律法规要求，平台不会向无关第三方泄露您的个人信息。\\n4. 您可以在小程序内管理个人资料与游戏账号信息。\\n5. 如对隐私保护有疑问，可联系平台客服处理。',
+            sort: 1,
+            status: true,
+        },
+        {
+            key: 'recharge_agreement',
+            title: '充值协议',
+            summary: '适用于黑钻充值、到账、赠送与消费规则。',
+            content: '请在充值前仔细阅读本协议。\\n\\n1. 黑钻为平台虚拟权益，可用于平台内订单消费。\\n2. 充值档位、到账黑钻和赠送黑钻以充值页面展示及后台配置为准。\\n3. 充值成功后黑钻通常立即到账，如遇异常请及时联系客服。\\n4. 黑钻不支持私下交易、转卖或用于平台外用途。\\n5. 因用户操作错误造成的充值或消费，请第一时间联系客服协助核实。',
+            sort: 2,
+            status: true,
+        },
+        {
+            key: 'dasher_entry_agreement',
+            title: '打手入驻协议',
+            summary: '适用于打手提交入驻资料、接单与履约规范。',
+            content: '请在提交打手入驻申请前仔细阅读本协议。\\n\\n1. 您应保证提交的身份、联系方式、游戏能力等资料真实有效。\\n2. 入驻审核通过后，应按照平台规则接单、履约并保持良好服务态度。\\n3. 接单后不得私下交易、恶意弃单、泄露客户账号信息或从事违规行为。\\n4. 平台可根据订单完成情况、客户评价、违规记录等调整接单权限。\\n5. 如您提交入驻申请，即表示您已阅读并同意本协议。',
+            sort: 3,
+            status: true,
+        },
+    ];
+    let agreements = DEFAULT_AGREEMENTS.map(item => ({ ...item }));
 
     function showAddConfigModal() {
         editingConfigId = null;
@@ -1132,7 +1197,7 @@
 
     async function loadConfigs() {
         try {
-            const result = await get('/system/configs/');
+            const result = await get('/system/configs/', { page_size: 500 });
             if (result.code === 200) {
                 const configs = result.data.results || [];
                 const tbody = document.getElementById('configList');
@@ -1159,9 +1224,113 @@
 
                 const rechargeOfferCfg = configs.find(c => c.key === 'recharge_offers');
                 hydrateRechargeOffers(rechargeOfferCfg && rechargeOfferCfg.value);
+
+                const agreementCfg = configs.find(c => c.key === 'mini_agreements');
+                hydrateAgreements(agreementCfg && agreementCfg.value);
             }
         } catch (error) {
             console.error('加载配置失败:', error);
+        }
+    }
+
+    function hydrateAgreements(rawValue) {
+        agreements = DEFAULT_AGREEMENTS.map(item => ({ ...item }));
+        if (rawValue) {
+            try {
+                const parsed = JSON.parse(rawValue);
+                if (Array.isArray(parsed)) {
+                    const map = new Map(agreements.map(item => [item.key, item]));
+                    parsed.forEach((item, index) => {
+                        if (!item || !item.key) return;
+                        const fallback = map.get(item.key) || {};
+                        map.set(item.key, {
+                            key: item.key,
+                            title: item.title || fallback.title || item.key,
+                            summary: item.summary || fallback.summary || '',
+                            content: item.content || fallback.content || '',
+                            sort: Number.isInteger(Number(item.sort)) ? Number(item.sort) : index,
+                            status: item.status !== false,
+                        });
+                    });
+                    agreements = Array.from(map.values()).sort((a, b) => (a.sort || 0) - (b.sort || 0));
+                }
+            } catch (e) {
+                console.warn('协议配置解析失败，使用默认协议', e);
+            }
+        }
+        renderAgreementEditors();
+    }
+
+    function renderAgreementEditors() {
+        const wrap = document.getElementById('agreementEditorList');
+        if (!wrap) return;
+        wrap.innerHTML = agreements.map((item, index) => `
+            <div class="agreement-card">
+                <div class="agreement-card-head">
+                    <div>
+                        <div class="agreement-card-title"><i class="fa-solid fa-file-signature"></i>${escHtml(item.title || '')}</div>
+                        <p class="agreement-card-summary">${escHtml(item.summary || '')}</p>
+                    </div>
+                    <span class="agreement-status"><i class="fa-solid fa-circle-check"></i>小程序启用</span>
+                </div>
+                <div class="form-group">
+                    <label>协议标题</label>
+                    <input type="text" value="${escAttr(item.title || '')}" onchange="updateAgreement(${index}, 'title', this.value)" placeholder="请输入协议标题">
+                </div>
+                <div class="form-group">
+                    <label>协议说明</label>
+                    <input type="text" value="${escAttr(item.summary || '')}" onchange="updateAgreement(${index}, 'summary', this.value)" placeholder="用于后台备注和接口列表说明">
+                </div>
+                <div class="form-group">
+                    <label>协议内容</label>
+                    <textarea rows="12" onchange="updateAgreement(${index}, 'content', this.value)" placeholder="请输入协议完整内容，支持换行">${escHtml(item.content || '')}</textarea>
+                </div>
+            </div>
+        `).join('');
+    }
+
+    function updateAgreement(index, field, value) {
+        if (!agreements[index]) return;
+        agreements[index][field] = value;
+    }
+
+    function resetAgreementEditors() {
+        if (!confirm('确定恢复为默认协议内容吗？当前未保存的修改会被覆盖。')) return;
+        agreements = DEFAULT_AGREEMENTS.map(item => ({ ...item }));
+        renderAgreementEditors();
+    }
+
+    async function saveAgreements() {
+        for (const item of agreements) {
+            if (!String(item.title || '').trim()) {
+                showToast('协议标题不能为空', 'error');
+                return;
+            }
+            if (!String(item.content || '').trim()) {
+                showToast(`${item.title || '协议'}内容不能为空`, 'error');
+                return;
+            }
+        }
+        const items = agreements.map((item, index) => ({
+            key: item.key,
+            title: String(item.title || '').trim(),
+            summary: String(item.summary || '').trim(),
+            content: String(item.content || '').trim(),
+            sort: index,
+            status: true,
+        }));
+        try {
+            const result = await post('/system/configs/batch-update/', {
+                items: { mini_agreements: JSON.stringify(items) },
+            });
+            if (result.code === 200) {
+                showToast('协议设置已保存', 'success');
+                await loadConfigs();
+            } else {
+                showToast(result.msg || '保存失败', 'error');
+            }
+        } catch (error) {
+            showToast(error.message || '保存失败', 'error');
         }
     }
 

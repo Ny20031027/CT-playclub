@@ -201,6 +201,33 @@ class RechargeOfferTests(TestCase):
         self.assertEqual(response['data']['list'][0]['total_coins'], 550)
 
 
+class AgreementTests(TestCase):
+    def setUp(self):
+        self.client = APIClient()
+
+    def test_agreement_detail_is_public_and_has_default_content(self):
+        response = self.client.get('/api/wx/agreements/user_agreement/').json()
+        self.assertEqual(response['code'], 200)
+        self.assertEqual(response['data']['key'], 'user_agreement')
+        self.assertEqual(response['data']['title'], '用户协议')
+        self.assertIn('黑金电竞陪玩平台', response['data']['content'])
+
+    def test_agreement_detail_reads_system_config(self):
+        Config.objects.create(
+            key='mini_agreements',
+            value='[{"key":"privacy_policy","title":"新版隐私政策","summary":"新版摘要","content":"新版内容","sort":0,"status":true}]',
+            name='小程序协议设置',
+            type='json',
+            group='agreement',
+        )
+
+        response = self.client.get('/api/wx/agreements/privacy_policy/').json()
+        self.assertEqual(response['code'], 200)
+        self.assertEqual(response['data']['title'], '新版隐私政策')
+        self.assertEqual(response['data']['summary'], '新版摘要')
+        self.assertEqual(response['data']['content'], '新版内容')
+
+
 class BlackGoldSearchTests(TestCase):
     def setUp(self):
         self.client = APIClient()

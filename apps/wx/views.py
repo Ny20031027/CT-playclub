@@ -35,6 +35,7 @@ from apps.order.services import (
     OrderCompletionError, complete_order_and_settle,
 )
 from apps.notice.models import Notice, UserNotice
+from apps.system.agreements import get_agreement, get_agreements
 from apps.system.recharge_offers import get_recharge_offers
 from apps.finance.models import Wallet, Transaction
 from apps.upload.models import UploadFile
@@ -970,6 +971,29 @@ def game_list(request):
 def recharge_offers(request):
     """充值优惠套餐"""
     return success_response({'list': get_recharge_offers(active_only=True)})
+
+
+@api_view(['GET'])
+@permission_classes([AllowAny])
+def agreements(request, slug=None):
+    """小程序协议列表/详情，登录前也允许访问。"""
+    if slug:
+        agreement = get_agreement(slug)
+        if not agreement:
+            return error_response(msg='协议不存在或已停用', code=404)
+        return success_response(agreement)
+    items = get_agreements(active_only=True)
+    return success_response({
+        'list': [
+            {
+                'key': item['key'],
+                'title': item['title'],
+                'summary': item.get('summary', ''),
+                'sort': item.get('sort', 0),
+            }
+            for item in items
+        ]
+    })
 
 
 @api_view(['GET'])

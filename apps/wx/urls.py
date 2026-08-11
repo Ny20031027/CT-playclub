@@ -76,6 +76,8 @@ urlpatterns = [
     # 个人中心
     path('profile/', user_profile, name='wx-profile'),
     path('profile/update/', views.update_profile, name='wx-update-profile'),
+    path('agreements/', views.agreements, name='wx-agreements'),
+    path('agreements/<slug:slug>/', views.agreements, name='wx-agreement-detail'),
     path('recharge-offers/', views.recharge_offers, name='wx-recharge-offers'),
     path('skills/my/', views.get_my_skills, name='wx-get-my-skills'),
     path('skills/self-service/', views.get_self_service_catalog, name='wx-self-service-catalog'),
