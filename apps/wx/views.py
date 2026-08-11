@@ -1023,14 +1023,27 @@ def employee_list(request):
     # 排序
     sort_map = {
         'rating': '-rating',
+        'hot': '-order_count',
         'order_count': '-order_count',
         'price': 'skill_relations__unit_price',
         'new': '-created_at',
     }
-    order_field = sort_map.get(sort_by, '-rating')
+    is_star_filter = sort_by == 'star'
+    if is_star_filter:
+        # 明星打手筛选：只看 is_star，按 star_sort 排序
+        queryset = queryset.filter(is_star=True)
+        order_field = 'star_sort'
+    else:
+        order_field = sort_map.get(sort_by, '-rating')
     queryset = queryset.order_by(order_field).distinct()
 
     total = queryset.count()
+    # 当前筛选条件下明星打手总数（供前端判断是否显示"明星"筛选入口）
+    star_total = 0
+    if not is_star_filter:
+        star_total = Employee.objects.filter(
+            status__in=['idle', 'busy'], is_deleted=False, is_star=True,
+        ).filter(id__in=queryset.values('id')).count()
     start = (page - 1) * page_size
     employees = queryset[start:start + page_size]
 
@@ -1080,12 +1093,14 @@ def employee_list(request):
             'tags': tags,
             'game_categories': game_categories,
             'is_online': emp.online_status,
+            'is_star': emp.is_star,
         })
 
     return success_response({
         'total': total,
         'page': page,
         'page_size': page_size,
+        'star_total': star_total,
         'list': employee_list,
     })
 
