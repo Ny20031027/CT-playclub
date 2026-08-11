@@ -648,9 +648,20 @@ def wx_login(request):
 
     user.ensure_display_id()
 
-    # 封禁拦截：封禁中的用户不允许登录
+    # 封禁拦截：封禁中的用户不允许登录，明确返回封禁原因与截止时间
     if user.is_banned_active():
-        return error_response(msg='账号已被封禁，无法登录', code=403)
+        from apps.account.ban_utils import ban_info
+        info = ban_info(user)
+        return error_response(
+            msg='账号已被封禁，无法登录',
+            code=4010,
+            data={
+                'banned': True,
+                'permanent': info.get('permanent', False),
+                'ban_until': info.get('ban_until'),
+                'ban_reason': info.get('ban_reason', ''),
+            },
+        )
 
     # 判断用户类型
     is_dasher = bool(user.get_active_employee())

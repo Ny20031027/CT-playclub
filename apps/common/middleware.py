@@ -27,8 +27,19 @@ class BanCheckMiddleware(MiddlewareMixin):
                 logger.warning('BanCheck is_banned_active error: %s', exc)
                 banned = False
             if banned:
+                from apps.account.ban_utils import ban_info
+                info = ban_info(user)
                 from apps.common.response import error_response
-                return error_response(msg='账号已被封禁，无法操作', code=4010)
+                return error_response(
+                    msg='账号已被封禁，无法操作',
+                    code=4010,
+                    data={
+                        'banned': True,
+                        'permanent': info.get('permanent', False),
+                        'ban_until': info.get('ban_until'),
+                        'ban_reason': info.get('ban_reason', ''),
+                    },
+                )
         return None
 
 
