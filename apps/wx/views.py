@@ -2203,13 +2203,13 @@ def order_detail(request, order_id):
                 'order_members__employee', 'comments'
             ).first()
         elif is_dasher:
-            # 打手可以查看：可接取的订单(published/transferring) + 自己已接取的订单
+            # 打手可查看：大厅可接取的订单(published/transferring) + 自己参与的所有订单
+            # （含待开始/进行中/已完成/已评价，member 记录存在且未删除即可，不限 member.status）
             order_qs = Order.objects.filter(
                 Q(id=order_id) & (
                     Q(status__in=['published', 'transferring']) | Q(
                         order_members__employee=employee,
                         order_members__is_deleted=False,
-                        order_members__status__in=ACTIVE_ORDER_MEMBER_STATUSES,
                     )
                 ),
                 is_deleted=False
