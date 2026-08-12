@@ -10,7 +10,7 @@ from apps.customer.models import Customer, CustomerService
 from apps.employee.models import Employee, EmployeeGameRank, EmployeeSkill, EmployeeSkillRelation, GameRank, GameplayPresetItem, SkillGameplay
 from apps.notice.models import UserNotice
 from apps.order.models import Order, OrderCandidate, OrderComment, OrderMember
-from apps.system.models import Config
+from apps.system.models import Config, Coupon, UserCoupon
 from apps.wx.models import Announcement, GameAccount, GameCategory, PreOrder, WxUser
 
 
@@ -143,6 +143,54 @@ class CustomerServicePreOrderTests(TestCase):
         self.assertNotIn('verify', session.get.call_args_list[0].kwargs)
         self.assertFalse(session.get.call_args_list[1].kwargs['verify'])
         self.assertFalse(session.get.call_args_list[1].kwargs['allow_redirects'])
+
+
+class SelfServiceCouponCheckoutTests(TestCase):
+    def setUp(self):
+        self.client = APIClient()
+        self.game = GameCategory.objects.create(name='优惠券测试游戏', status=True)
+        self.skill = EmployeeSkill.objects.create(
+            name='优惠券测试服务', game_category=self.game,
+            self_service_enabled=True, status=True,
+        )
+        self.gameplay = SkillGameplay.objects.create(
+            skill=self.skill, name='预制玩法', order_mode='preset', status=True,
+        )
+        self.preset = GameplayPresetItem.objects.create(
+            gameplay=self.gameplay, name='1000黑钻套餐', display_image='/media/test.png',
+            content='套餐内容', price=Decimal('100.00'), required_people=2, status=True,
+        )
+        self.user = User.objects.create_user(username='coupon_checkout_user')
+        self.customer = Customer.objects.create(user=self.user, nickname='优惠券用户', coins=1000)
+        self.client.force_authenticate(user=self.user)
+
+    def test_discount_coupon_pay_amount_is_used_on_order_detail(self):
+        coupon = Coupon.objects.create(name='七折券', discount_rate=Decimal('70.00'))
+        user_coupon = UserCoupon.objects.create(customer=self.customer, coupon=coupon)
+
+        created = self.client.post('/api/wx/orders/create-self-service/', {
+            'gameplay_id': self.gameplay.id,
+            'preset_item_id': self.preset.id,
+            'quantity': 1,
+            'coupon_id': user_coupon.id,
+        }, format='json').json()
+
+        self.assertEqual(created['code'], 200)
+        self.assertEqual(created['data']['total_amount'], 100.0)
+        self.assertEqual(created['data']['pay_amount'], 70.0)
+        self.assertEqual(created['data']['total_coins'], 700)
+
+        order = Order.objects.get(id=created['data']['order_id'])
+        self.assertEqual(order.total_amount, Decimal('100.00'))
+        self.assertEqual(order.discount_amount, Decimal('30.00'))
+        self.assertEqual(order.pay_amount, Decimal('70.00'))
+
+        detail = self.client.get(f'/api/wx/orders/{order.id}/').json()
+        self.assertEqual(detail['code'], 200)
+        self.assertEqual(detail['data']['total_amount'], 100.0)
+        self.assertEqual(detail['data']['discount_amount'], 30.0)
+        self.assertEqual(detail['data']['pay_amount'], 70.0)
+        self.assertEqual(detail['data']['self_service_snapshot']['total_coins'], 700)
 
 
 class OfficialAnnouncementTests(TestCase):

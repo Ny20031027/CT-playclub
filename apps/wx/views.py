@@ -6785,12 +6785,7 @@ def _apply_coupon(total_amount, coupon_id, user):
     if not coupon_id:
         return True, '', Decimal('0')
 
-    from apps.system.models import UserCoupon, Coupon
-
-    try:
-        coupon = Coupon.objects.get(id=coupon_id, is_deleted=False, is_enabled=True)
-    except Coupon.DoesNotExist:
-        return False, '优惠券不存在或已失效', Decimal('0')
+    from apps.system.models import UserCoupon
 
     try:
         customer = user.customer
@@ -6799,11 +6794,12 @@ def _apply_coupon(total_amount, coupon_id, user):
 
     user_coupon = UserCoupon.objects.filter(
         id=coupon_id, customer=customer, status='unused', is_deleted=False,
-        coupon=coupon,
-    ).first()
+        coupon__is_deleted=False, coupon__is_enabled=True,
+    ).select_related('coupon').first()
     if not user_coupon:
-        return False, '优惠券不可用', Decimal('0')
+        return False, '优惠券不存在或已失效', Decimal('0')
 
+    coupon = user_coupon.coupon
     pay_amount = max(_money(total_amount), Decimal('0'))
 
     # 检查最低订单金额
