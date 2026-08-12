@@ -1572,6 +1572,18 @@ def create_self_service_order_legacy(request):
 
     total_amount = total_amount * quantity
 
+    # 优惠券处理
+    coupon_id = request.data.get('coupon_id')
+    coupon_discount = Decimal('0')
+    if coupon_id:
+        ok, coupon_msg, coupon_discount = _apply_coupon(Decimal(str(total_amount)), coupon_id, user)
+        if not ok and coupon_msg:
+            return error_response(msg=coupon_msg)
+
+    pay_amount = round(Decimal(str(total_amount)) - coupon_discount, 2)
+    if pay_amount < 0:
+        pay_amount = Decimal('0')
+
     # 自动生成标题：游戏名 + 技能数
     auto_title = f'{game_name}自助下单' if game_name else '自助下单'
 
@@ -1590,7 +1602,9 @@ def create_self_service_order_legacy(request):
         quantity=quantity,
         unit_price=total_amount / total_duration * 60 if total_duration else 0,
         total_amount=total_amount,
-        pay_amount=total_amount,
+        discount_amount=round(coupon_discount, 2),
+        coupon_discount=round(coupon_discount, 2),
+        pay_amount=round(pay_amount, 2),
         game_id=game_id,
         game_name=game_name,
         remark=content,
@@ -1613,6 +1627,17 @@ def create_self_service_order_legacy(request):
             amount=item['amount'] * quantity,
             status='assigned',
             remark=item['skill_name'],
+        )
+
+    # 使用优惠券后标记为已使用
+    if coupon_id and coupon_discount > 0:
+        from apps.system.models import UserCoupon
+        UserCoupon.objects.filter(
+            id=coupon_id, customer=customer, status='unused'
+        ).update(
+            status='used',
+            used_at=timezone.now(),
+            used_order_no=order_no,
         )
 
     return success_response({
