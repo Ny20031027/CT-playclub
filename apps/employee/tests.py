@@ -469,6 +469,7 @@ class SkillSystemTests(TestCase):
                     'content': '一局完整护航服务，提交后等待打手接单。',
                     'remark': '不支持临时更换项目内容',
                     'price': '29.90',
+                    'required_people': 3,
                     'sort': 0,
                     'status': True,
                 },
@@ -501,6 +502,7 @@ class SkillSystemTests(TestCase):
         self.assertEqual(preset['preset_items'][0]['remark'], '不支持临时更换项目内容')
         self.assertEqual(preset['preset_items'][0]['price'], 29.9)
         self.assertEqual(preset['preset_items'][0]['coin_price'], 299)
+        self.assertEqual(preset['preset_items'][0]['required_people'], 3)
         preset_item_id = preset['preset_items'][0]['id']
 
         customer = Customer.objects.create(
@@ -539,11 +541,13 @@ class SkillSystemTests(TestCase):
         self.assertEqual(response['data']['snapshot']['gameplay_name'], '护航')
         self.assertEqual(response['data']['snapshot']['preset_item_name'], '航天护航')
         self.assertEqual(response['data']['snapshot']['quantity'], 2)
+        self.assertEqual(response['data']['snapshot']['required_people'], 3)
         self.assertEqual(response['data']['snapshot']['game_account_name'], '玩家-测试账号')
         self.assertEqual(response['data']['snapshot']['assigned_employee_id'], self.employee.id)
         order = Order.objects.get(id=response['data']['order_id'])
         self.assertEqual(order.status, 'published')
         self.assertEqual(order.assigned_employee, self.employee)
+        self.assertEqual(order.quantity, 3)
         self.assertEqual(order.purchase_quantity, Decimal('2'))
         self.assertEqual(order.total_amount, Decimal('59.80'))
         self.assertEqual(order.self_service_snapshot['preset_content'], '一局完整护航服务，提交后等待打手接单。')

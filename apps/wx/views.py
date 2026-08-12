@@ -1658,16 +1658,28 @@ def create_self_service_order(request):
             return error_response(msg='请选择有效的预制单项目')
         if not preset_item.display_image or not preset_item.content:
             return error_response(msg='该预制单配置不完整，请联系管理员')
-        # 数量锁定为预制单所需人数（最低1），打手由系统/在线打手自由接单匹配
-        preset_quantity = preset_item.required_people or 1
+        try:
+            purchase_quantity = Decimal(str(request.data.get('quantity', 1)))
+        except (InvalidOperation, TypeError, ValueError):
+            return error_response(msg='购买数量需为1至999之间的整数')
+        if (
+            not purchase_quantity.is_finite()
+            or purchase_quantity < 1
+            or purchase_quantity > 999
+            or purchase_quantity % 1 != 0
+        ):
+            return error_response(msg='购买数量需为1至999之间的整数')
+        purchase_quantity_int = int(purchase_quantity)
+        # 购买数量与所需打手人数是两件事：数量由用户选择，人数由后台预制项目配置。
+        required_people = max(1, int(preset_item.required_people or 1))
         preset_price = Decimal(preset_item.price).quantize(Decimal('0.01'), rounding=ROUND_HALF_UP)
         if preset_price < 0:
             return error_response(msg='该预制单价格配置无效，请联系管理员')
         unit_coin_cost = int(
             (preset_price * Decimal('10')).quantize(Decimal('1'), rounding=ROUND_HALF_UP)
         )
-        coin_cost = unit_coin_cost * preset_quantity
-        total_price = (preset_price * preset_quantity).quantize(Decimal('0.01'))
+        coin_cost = unit_coin_cost * purchase_quantity_int
+        total_price = (preset_price * purchase_quantity).quantize(Decimal('0.01'))
         charged_amount = (Decimal(coin_cost) / Decimal('10')).quantize(Decimal('0.01'))
         if customer.coins_frozen:
             return error_response(msg='黑钻已被冻结，无法下单', code=403)
@@ -1691,8 +1703,8 @@ def create_self_service_order(request):
             'display_image': build_media_url(preset_item.display_image, request),
             'preset_content': preset_item.content,
             'preset_remark': preset_item.remark,
-            'quantity': preset_quantity,
-            'required_people': preset_quantity,
+            'quantity': purchase_quantity_int,
+            'required_people': required_people,
             'unit_price': float(preset_price),
             'unit_coins': unit_coin_cost,
             'total_amount': float(total_price),
@@ -1709,8 +1721,8 @@ def create_self_service_order(request):
             title=f'{skill.name} · {gameplay.name} · {preset_item.name}',
             order_type='self_service',
             duration=0,
-            quantity=1,
-            purchase_quantity=preset_quantity,
+            quantity=required_people,
+            purchase_quantity=purchase_quantity,
             settlement_unit='item',
             self_service_snapshot=snapshot,
             unit_price=preset_price,
@@ -4685,6 +4697,7 @@ def get_self_service_catalog(request):
                         'remark': item.remark,
                         'price': float(item.price),
                         'coin_price': price_to_coins(item.price),
+                        'required_people': int(item.required_people or 1),
                         'sort': item.sort,
                     }
                     for item in gameplay.preset_items.all()
