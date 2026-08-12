@@ -1482,6 +1482,7 @@ def create_order(request):
         unit_price=unit_price,
         total_amount=round(total_amount, 2),
         discount_amount=round(coupon_discount, 2),
+        coupon_discount=round(coupon_discount, 2),
         pay_amount=round(pay_amount, 2),
         game_id=game_id,
         game_name=game_name,

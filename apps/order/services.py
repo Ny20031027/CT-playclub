@@ -60,7 +60,8 @@ def settle_order_commission(order):
             'platform_commission_total': Decimal('0.00'),
         }
 
-    gross_total = max(_money(locked_order.pay_amount), Decimal('0.00'))
+    # 佣金计算基数 = 实付金额 + 优惠券折扣（打手佣金不受优惠券影响）
+    gross_total = max(_money(locked_order.pay_amount) + _money(locked_order.coupon_discount), Decimal('0.00'))
     gross_shares = _split_evenly(gross_total, len(members))
     settled_count = 0
     commission_total = Decimal('0.00')
