@@ -163,4 +163,62 @@ class CSKeywordRule(BaseModel):
         return f"{self.keyword} → {self.reply_text[:20]}"
 
 
+class Coupon(BaseModel):
+    """优惠券模板"""
+    COUPON_TYPE_CHOICES = [
+        ('discount', '减免券'),
+    ]
+
+    name = models.CharField(max_length=100, verbose_name='券名', help_text='如"七折券"')
+    coupon_type = models.CharField(max_length=20, default='discount', choices=COUPON_TYPE_CHOICES,
+                                   verbose_name='券类型')
+    discount_rate = models.DecimalField(max_digits=5, decimal_places=2, default=70.00,
+                                        verbose_name='折扣比例(%)',
+                                        help_text='如70表示打七折，实际支付金额 × 70%')
+    min_order_amount = models.DecimalField(max_digits=10, decimal_places=2, default=0,
+                                           verbose_name='最低订单金额',
+                                           help_text='满多少元可用，0表示不限')
+    max_discount_amount = models.DecimalField(max_digits=10, decimal_places=2, default=0,
+                                              verbose_name='最大优惠金额(元)',
+                                              help_text='单次最多优惠多少元，0表示不限')
+    is_enabled = models.BooleanField(default=True, verbose_name='是否启用')
+    description = models.CharField(max_length=500, blank=True, verbose_name='使用说明')
+
+    class Meta:
+        db_table = 'sys_coupon'
+        verbose_name = '优惠券模板'
+        verbose_name_plural = verbose_name
+        ordering = ['-created_at']
+
+    def __str__(self):
+        return f"{self.name}（{self.discount_rate}%）"
+
+
+class UserCoupon(BaseModel):
+    """用户持有的优惠券"""
+    customer = models.ForeignKey('customer.Customer', on_delete=models.CASCADE,
+                                 related_name='coupons', verbose_name='客户')
+    coupon = models.ForeignKey(Coupon, on_delete=models.CASCADE,
+                               related_name='user_coupons', verbose_name='券模板')
+    status = models.CharField(max_length=20, default='unused', choices=[
+        ('unused', '未使用'),
+        ('used', '已使用'),
+        ('expired', '已过期'),
+    ], verbose_name='状态')
+    used_at = models.DateTimeField(null=True, blank=True, verbose_name='使用时间')
+    used_order_no = models.CharField(max_length=50, blank=True, verbose_name='使用订单号')
+    expire_time = models.DateTimeField(null=True, blank=True, verbose_name='过期时间')
+    operator = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, blank=True,
+                                 related_name='issued_coupons', verbose_name='发放人')
+
+    class Meta:
+        db_table = 'sys_user_coupon'
+        verbose_name = '用户优惠券'
+        verbose_name_plural = verbose_name
+        ordering = ['-created_at']
+
+    def __str__(self):
+        return f"{self.customer.nickname} - {self.coupon.name}"
+
+
 

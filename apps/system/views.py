@@ -6,14 +6,14 @@ from apps.common.response import success_response, error_response
 from apps.common.viewsets import BaseModelViewSet
 from .models import (
     Config, Dictionary, DictionaryItem, OperationLog, ErrorLog,
-    CSWelcomeConfig, CSKeywordRule
+    CSWelcomeConfig, CSKeywordRule, Coupon, UserCoupon
 )
 from .serializers import (
     ConfigSerializer, DictionarySerializer, DictionaryItemSerializer,
     OperationLogSerializer, ErrorLogSerializer, DictionarySimpleSerializer,
     BannerManageSerializer, AnnouncementManageSerializer,
     CSWelcomeConfigSerializer, CSKeywordRuleSerializer,
-    GameBannerManageSerializer
+    GameBannerManageSerializer, CouponSerializer, UserCouponSerializer
 )
 from apps.wx.models import Banner, Announcement, GameBanner
 
@@ -321,3 +321,62 @@ class CSKeywordRuleViewSet(BaseModelViewSet):
             if not _ensure_cs_tables():
                 return _cs_tables_unavailable_response()
             return super().update(request, *args, **kwargs)
+
+
+class CouponViewSet(BaseModelViewSet):
+    """优惠券模板管理"""
+    queryset = Coupon.objects.all()
+    serializer_class = CouponSerializer
+    filterset_fields = ['coupon_type', 'is_enabled']
+    search_fields = ['name']
+    ordering_fields = ['discount_rate', 'created_at']
+
+
+class UserCouponViewSet(BaseModelViewSet):
+    """用户优惠券管理"""
+    queryset = UserCoupon.objects.select_related('customer', 'coupon').all()
+    serializer_class = UserCouponSerializer
+    filterset_fields = ['customer', 'coupon', 'status']
+    search_fields = ['customer__nickname', 'coupon__name']
+    ordering_fields = ['status', 'created_at']
+
+    @action(detail=False, methods=['post'], url_path='issue')
+    def issue_coupons(self, request):
+        """批量发放优惠券给指定客户"""
+        customer_id = request.data.get('customer_id')
+        coupon_id = request.data.get('coupon_id')
+        quantity = int(request.data.get('quantity', 1))
+
+        if not customer_id or not coupon_id:
+            return error_response(msg='缺少客户ID或优惠券ID')
+
+        try:
+            from apps.customer.models import Customer
+            customer = Customer.objects.get(id=customer_id, is_deleted=False)
+        except Exception:
+            return error_response(msg='客户不存在')
+
+        try:
+            coupon = Coupon.objects.get(id=coupon_id, is_deleted=False)
+        except Coupon.DoesNotExist:
+            return error_response(msg='优惠券不存在')
+
+        if not coupon.is_enabled:
+            return error_response(msg='该优惠券已禁用')
+
+        if quantity < 1 or quantity > 1000:
+            return error_response(msg='发放数量需在1-1000之间')
+
+        created = []
+        for _ in range(quantity):
+            uc = UserCoupon.objects.create(
+                customer=customer,
+                coupon=coupon,
+                operator=request.user,
+            )
+            created.append(uc.id)
+
+        return success_response({
+            'issued': len(created),
+            'ids': created,
+        }, msg=f'成功向 {customer.nickname} 发放 {len(created)} 张{coupon.name}')

@@ -1450,6 +1450,21 @@ def create_order(request):
 
     total_amount = Decimal(str(unit_price)) * purchase_quantity * quantity if unit_price else Decimal('0')
 
+    # 优惠券处理
+    coupon_id = request.data.get('coupon_id')
+    coupon_discount = Decimal('0')
+    coupon_msg = ''
+    if coupon_id:
+        ok, coupon_msg, coupon_discount = _apply_coupon(total_amount, coupon_id, user)
+        if ok and coupon_discount > 0:
+            pass  # discount calculated
+        elif not ok and coupon_msg:
+            return error_response(msg=coupon_msg)
+
+    pay_amount = round(total_amount - coupon_discount, 2)
+    if pay_amount < 0:
+        pay_amount = Decimal('0')
+
     # 生成订单号（包含随机数避免重复）
     import random
     random_suffix = random.randint(1000, 9999)
@@ -1466,7 +1481,8 @@ def create_order(request):
         settlement_unit=skill.pricing_unit,
         unit_price=unit_price,
         total_amount=round(total_amount, 2),
-        pay_amount=round(total_amount, 2),
+        discount_amount=round(coupon_discount, 2),
+        pay_amount=round(pay_amount, 2),
         game_id=game_id,
         game_name=game_name,
         server=server,
@@ -1474,6 +1490,17 @@ def create_order(request):
         platform='mini_program',
         assigned_employee_id=employee_id if employee_id else None,
     )
+
+    # 使用优惠券后标记为已使用
+    if coupon_id and coupon_discount > 0:
+        from apps.system.models import UserCoupon
+        UserCoupon.objects.filter(
+            id=coupon_id, customer=customer, status='unused'
+        ).update(
+            status='used',
+            used_at=timezone.now(),
+            used_order_no=order_no,
+        )
 
     return success_response({
         'order_id': order.id,
@@ -6598,3 +6625,90 @@ def dasher_income(request):
         'commission_balance': float(employee.commission_balance),
         'list': records,
     })
+
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def my_coupons(request):
+    """客户查询自己可用的优惠券"""
+    user = request.user
+    try:
+        customer = user.customer
+    except Exception:
+        return error_response(msg='仅客户可查看优惠券')
+
+    from apps.system.models import UserCoupon
+
+    coupons = UserCoupon.objects.filter(
+        customer=customer,
+        status='unused',
+        is_deleted=False,
+        coupon__is_enabled=True,
+        coupon__is_deleted=False,
+    ).select_related('coupon').order_by('-created_at')
+
+    result = []
+    for uc in coupons:
+        result.append({
+            'id': uc.id,
+            'coupon_id': uc.coupon_id,
+            'name': uc.coupon.name,
+            'coupon_type': uc.coupon.coupon_type,
+            'discount_rate': float(uc.coupon.discount_rate),
+            'min_order_amount': float(uc.coupon.min_order_amount),
+            'max_discount_amount': float(uc.coupon.max_discount_amount),
+            'description': uc.coupon.description or '',
+        })
+
+    return success_response({'list': result, 'count': len(result)})
+
+
+def _apply_coupon(total_amount, coupon_id, user):
+    """应用优惠券：验证并计算折扣金额。total_amount 为订单总金额（Decimal）。
+    返回 (success, msg, discount_amount)"""
+    if not coupon_id:
+        return True, '', Decimal('0')
+
+    from apps.system.models import UserCoupon, Coupon
+
+    try:
+        coupon = Coupon.objects.get(id=coupon_id, is_deleted=False, is_enabled=True)
+    except Coupon.DoesNotExist:
+        return False, '优惠券不存在或已失效', Decimal('0')
+
+    try:
+        customer = user.customer
+    except Exception:
+        return False, '仅客户可使用优惠券', Decimal('0')
+
+    user_coupon = UserCoupon.objects.filter(
+        id=coupon_id, customer=customer, status='unused', is_deleted=False,
+        coupon=coupon,
+    ).first()
+    if not user_coupon:
+        return False, '优惠券不可用', Decimal('0')
+
+    pay_amount = max(_money(total_amount), Decimal('0'))
+
+    # 检查最低订单金额
+    if coupon.min_order_amount > 0 and pay_amount < _money(coupon.min_order_amount):
+        return False, f'订单金额需满¥{coupon.min_order_amount}才能使用此券', Decimal('0')
+
+    # 计算折扣后金额
+    if coupon.coupon_type == 'discount':
+        discount_rate = _money(coupon.discount_rate) / Decimal('100')
+        discounted = (pay_amount * discount_rate).quantize(MONEY_STEP, rounding=ROUND_HALF_UP)
+        discount_amount = pay_amount - discounted
+
+        # 检查最大优惠金额限制
+        if coupon.max_discount_amount > 0:
+            max_discount = _money(coupon.max_discount_amount)
+            if discount_amount > max_discount:
+                discount_amount = max_discount
+    else:
+        return False, '未知券类型', Decimal('0')
+
+    if discount_amount <= 0:
+        return False, '该券不适用于当前订单', Decimal('0')
+
+    return True, '', discount_amount

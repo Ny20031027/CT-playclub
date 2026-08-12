@@ -103,6 +103,9 @@ urlpatterns = [
     path('dasher/income/', views.dasher_income, name='wx-dasher-income'),
     path('work-status/toggle/', views.toggle_work_status, name='wx-toggle-work-status'),
 
+    # 优惠券
+    path('coupons/my/', views.my_coupons, name='wx-my-coupons'),
+
     # 照片墙
     path('employee/photos/upload/', views.upload_employee_photo, name='wx-upload-photo'),
     path('employee/photos/delete/', views.delete_employee_photo, name='wx-delete-photo'),

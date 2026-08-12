@@ -4,7 +4,7 @@ from .views import (
     ConfigViewSet, DictionaryViewSet, DictionaryItemViewSet,
     OperationLogViewSet, ErrorLogViewSet, BannerManageViewSet,
     AnnouncementManageViewSet, CSWelcomeConfigViewSet, CSKeywordRuleViewSet,
-    GameBannerManageViewSet
+    GameBannerManageViewSet, CouponViewSet, UserCouponViewSet
 )
 from apps.wx.views import GameCategoryViewSet
 
@@ -20,6 +20,8 @@ router.register(r'announcements', AnnouncementManageViewSet, basename='sys-annou
 router.register(r'game-banners', GameBannerManageViewSet, basename='sys-game-banner')
 router.register(r'cs-welcome', CSWelcomeConfigViewSet, basename='sys-cs-welcome')
 router.register(r'cs-keywords', CSKeywordRuleViewSet, basename='sys-cs-keyword')
+router.register(r'coupons', CouponViewSet, basename='sys-coupon')
+router.register(r'user-coupons', UserCouponViewSet, basename='sys-user-coupon')
 
 urlpatterns = [
     path('', include(router.urls)),

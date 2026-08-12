@@ -539,6 +539,41 @@
             <div id="rechargeOfferPreview" class="recharge-offer-grid"></div>
         </div>
     </div>
+
+    <!-- 折扣券管理 -->
+    <div class="card" style="margin-top: 20px;">
+        <div class="card-header">
+            <div>
+                <div class="card-title">折扣券管理</div>
+                <p class="offer-note">创建折扣券模板，发放给客户后可在下单时使用。折扣比例为实际支付比例，如70表示打七折（支付 原价×70%）。</p>
+            </div>
+            <div class="card-actions">
+                <button class="btn btn-primary" onclick="showCouponModal()"><i class="fa-solid fa-plus"></i> 新建券</button>
+            </div>
+        </div>
+        <div class="card-body" style="padding: 20px;">
+            <div class="table-container">
+                <table>
+                    <thead>
+                        <tr>
+                            <th>ID</th>
+                            <th>券名</th>
+                            <th>类型</th>
+                            <th>折扣比例</th>
+                            <th>最低订单金额</th>
+                            <th>已发放</th>
+                            <th>已使用</th>
+                            <th>状态</th>
+                            <th>操作</th>
+                        </tr>
+                    </thead>
+                    <tbody id="couponList">
+                        <tr><td colspan="9" class="empty-state"><i class="fa-solid fa-spinner fa-spin"></i><br>加载中...</td></tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
 </div>
 
 <div id="agreementTab" style="display: none;">
@@ -1087,6 +1122,60 @@
     </div>
 </div>
 
+<!-- 折扣券编辑弹窗 -->
+<div class="modal-overlay" id="couponModal">
+    <div class="modal" style="width: 560px; max-width: 95%;">
+        <div class="modal-header">
+            <div class="modal-title" id="couponModalTitle">新建折扣券</div>
+            <div class="modal-close" onclick="hideModal('couponModal')">&times;</div>
+        </div>
+        <div class="modal-body">
+            <input type="hidden" id="couponId">
+            <div class="form-group">
+                <label>券名 <span style="color:red;">*</span></label>
+                <input type="text" id="couponName" placeholder="如：七折券" maxlength="100">
+                <span class="hint">客户看到的券名称，建议简洁明了</span>
+            </div>
+            <div class="form-group">
+                <label>券类型</label>
+                <select id="couponType">
+                    <option value="discount">减免券</option>
+                </select>
+            </div>
+            <div class="form-group">
+                <label>折扣比例（%） <span style="color:red;">*</span></label>
+                <input type="number" id="couponDiscountRate" value="70" min="1" max="99" step="0.01">
+                <span class="hint">实付 = 原价 × 折扣比例%。如70表示打七折，实付 = 原价 × 70%</span>
+            </div>
+            <div class="form-group">
+                <label>最低订单金额（元）</label>
+                <input type="number" id="couponMinOrderAmount" value="0" min="0" step="0.01">
+                <span class="hint">0表示不限金额</span>
+            </div>
+            <div class="form-group">
+                <label>最大优惠金额（元）</label>
+                <input type="number" id="couponMaxDiscountAmount" value="0" min="0" step="0.01">
+                <span class="hint">单次最多优惠多少元，0表示不限</span>
+            </div>
+            <div class="form-group">
+                <label>是否启用</label>
+                <select id="couponEnabled">
+                    <option value="true">启用</option>
+                    <option value="false">禁用</option>
+                </select>
+            </div>
+            <div class="form-group">
+                <label>使用说明</label>
+                <textarea id="couponDescription" rows="3" placeholder="如：仅限新用户首单使用" style="width: 100%; padding: 8px; border: 1px solid #dcdfe6; border-radius: 6px;"></textarea>
+            </div>
+        </div>
+        <div class="modal-footer">
+            <button class="btn btn-default" onclick="hideModal('couponModal')">取消</button>
+            <button class="btn btn-primary" onclick="saveCoupon()">保存</button>
+        </div>
+    </div>
+</div>
+
 <script>
     document.addEventListener('DOMContentLoaded', async function() {
         await loadConfigs();
@@ -1141,6 +1230,9 @@
         if (tab === 'selfService' && !window._selfServiceLoaded) {
             loadSelfServiceSkills();
             window._selfServiceLoaded = true;
+        }
+        if (tab === 'discount') {
+            loadCoupons();
         }
     }
 
@@ -3987,6 +4079,136 @@
             showToast(e.message || '保存失败', 'error');
         }
     }
+
+// ========== 折扣券管理 ==========
+let couponListData = [];
+
+async function loadCoupons() {
+    try {
+        const result = await get('/system/coupons/');
+        if (result.code === 200) {
+            couponListData = result.data.results || result.data || [];
+            renderCouponList();
+        }
+    } catch (e) {
+        console.error('加载优惠券失败', e);
+    }
+}
+
+function renderCouponList() {
+    const tbody = document.getElementById('couponList');
+    if (!couponListData.length) {
+        tbody.innerHTML = '<tr><td colspan="9" class="empty-state"><i class="fa-solid fa-inbox"></i><br>暂无折扣券</td></tr>';
+        return;
+    }
+    tbody.innerHTML = couponListData.map(c => {
+        const statusBadge = c.is_enabled
+            ? '<span class="badge badge-success">启用</span>'
+            : '<span class="badge badge-danger">禁用</span>';
+        const typeName = c.coupon_type === 'discount' ? '减免券' : c.coupon_type;
+        return `<tr>
+            <td>${c.id}</td>
+            <td><strong>${escHtml(c.name)}</strong></td>
+            <td>${typeName}</td>
+            <td>${c.discount_rate}%（实付${(100 - c.discount_rate).toFixed(0)}%off）</td>
+            <td>${c.min_order_amount > 0 ? '满¥' + c.min_order_amount : '不限'}</td>
+            <td>${c.issued_count || 0}</td>
+            <td>${c.used_count || 0}</td>
+            <td>${statusBadge}</td>
+            <td>
+                <button class="btn btn-primary btn-sm" onclick="editCoupon(${c.id})">编辑</button>
+                <button class="btn btn-danger btn-sm" onclick="deleteCoupon(${c.id})">删除</button>
+            </td>
+        </tr>`;
+    }).join('');
+}
+
+function showCouponModal() {
+    document.getElementById('couponId').value = '';
+    document.getElementById('couponModalTitle').textContent = '新建折扣券';
+    document.getElementById('couponName').value = '';
+    document.getElementById('couponType').value = 'discount';
+    document.getElementById('couponDiscountRate').value = '70';
+    document.getElementById('couponMinOrderAmount').value = '0';
+    document.getElementById('couponMaxDiscountAmount').value = '0';
+    document.getElementById('couponEnabled').value = 'true';
+    document.getElementById('couponDescription').value = '';
+    showModal('couponModal');
+}
+
+async function editCoupon(id) {
+    try {
+        const result = await get(`/system/coupons/${id}/`);
+        if (result.code === 200) {
+            const c = result.data;
+            document.getElementById('couponId').value = c.id;
+            document.getElementById('couponModalTitle').textContent = '编辑折扣券';
+            document.getElementById('couponName').value = c.name || '';
+            document.getElementById('couponType').value = c.coupon_type || 'discount';
+            document.getElementById('couponDiscountRate').value = c.discount_rate || 70;
+            document.getElementById('couponMinOrderAmount').value = c.min_order_amount || 0;
+            document.getElementById('couponMaxDiscountAmount').value = c.max_discount_amount || 0;
+            document.getElementById('couponEnabled').value = c.is_enabled ? 'true' : 'false';
+            document.getElementById('couponDescription').value = c.description || '';
+            showModal('couponModal');
+        }
+    } catch (e) {
+        showToast('加载优惠券失败', 'error');
+    }
+}
+
+async function saveCoupon() {
+    const id = document.getElementById('couponId').value;
+    const name = document.getElementById('couponName').value.trim();
+    const couponType = document.getElementById('couponType').value;
+    const discountRate = parseFloat(document.getElementById('couponDiscountRate').value) || 70;
+    const minOrderAmount = parseFloat(document.getElementById('couponMinOrderAmount').value) || 0;
+    const maxDiscountAmount = parseFloat(document.getElementById('couponMaxDiscountAmount').value) || 0;
+    const isEnabled = document.getElementById('couponEnabled').value === 'true';
+    const description = document.getElementById('couponDescription').value.trim();
+
+    if (!name) { showToast('请输入券名', 'error'); return; }
+    if (discountRate <= 0 || discountRate >= 100) { showToast('折扣比例需在1-99之间', 'error'); return; }
+
+    const payload = {
+        name, coupon_type: couponType, discount_rate: discountRate,
+        min_order_amount: minOrderAmount, max_discount_amount: maxDiscountAmount,
+        is_enabled: isEnabled, description
+    };
+
+    try {
+        let result;
+        if (id) {
+            result = await put(`/system/coupons/${id}/`, payload);
+        } else {
+            result = await post('/system/coupons/', payload);
+        }
+        if (result.code === 200) {
+            showToast(id ? '更新成功' : '创建成功', 'success');
+            hideModal('couponModal');
+            await loadCoupons();
+        } else {
+            showToast(result.msg || '保存失败', 'error');
+        }
+    } catch (e) {
+        showToast(e.message || '保存失败', 'error');
+    }
+}
+
+async function deleteCoupon(id) {
+    if (!confirm('确定要删除该折扣券吗？已发放的券不受影响。')) return;
+    try {
+        const result = await del(`/system/coupons/${id}/`);
+        if (result.code === 200) {
+            showToast('已删除', 'success');
+            await loadCoupons();
+        } else {
+            showToast(result.msg || '删除失败', 'error');
+        }
+    } catch (e) {
+        showToast(e.message || '删除失败', 'error');
+    }
+}
 
 </script>
 {% endblock %}
