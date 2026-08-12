@@ -9,7 +9,7 @@ class OrderStatus(models.TextChoices):
     PUBLISHED = 'published', '可领取'
     TRANSFERRING = 'transferring', '转单中'
     CLAIMED = 'claimed', '待开始'
-    CONFIRMING = 'confirming', '待双方确认'
+    CONFIRMING = 'confirming', '待客户确认'
     IN_PROGRESS = 'in_progress', '进行中'
     COMPLETED = 'completed', '已结束'
     REVIEWED = 'reviewed', '已评价'

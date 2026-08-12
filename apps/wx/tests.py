@@ -9,7 +9,7 @@ from apps.account.models import User
 from apps.customer.models import Customer, CustomerService
 from apps.employee.models import Employee, EmployeeGameRank, EmployeeSkill, EmployeeSkillRelation, GameRank, GameplayPresetItem, SkillGameplay
 from apps.notice.models import UserNotice
-from apps.order.models import Order, OrderComment, OrderMember
+from apps.order.models import Order, OrderCandidate, OrderComment, OrderMember
 from apps.system.models import Config
 from apps.wx.models import Announcement, GameAccount, GameCategory, PreOrder, WxUser
 
@@ -486,6 +486,17 @@ class MultiPersonOrderFlowTests(TestCase):
         self.post_as(self.leader.user, f'/api/wx/orders/{order.id}/claim/', {'slots': 1})
         self.post_as(self.member.user, f'/api/wx/orders/{order.id}/claim/', {'slots': 1})
 
+        leader_candidate = OrderCandidate.objects.get(order=order, employee=self.leader)
+        member_candidate = OrderCandidate.objects.get(order=order, employee=self.member)
+        self.post_as(self.customer_user, f'/api/wx/orders/{order.id}/select-candidate/', {
+            'candidate_id': leader_candidate.id,
+        })
+        self.post_as(self.customer_user, f'/api/wx/orders/{order.id}/select-candidate/', {
+            'candidate_id': member_candidate.id,
+        })
+        order.refresh_from_db()
+        self.assertEqual(order.status, 'confirming')
+
         non_leader_give_up = self.post_as(self.member.user, f'/api/wx/orders/{order.id}/give-up/')
         self.assertNotEqual(non_leader_give_up['code'], 200)
 
@@ -501,7 +512,13 @@ class MultiPersonOrderFlowTests(TestCase):
         self.assertEqual(order.status, 'in_progress')
         self.assertEqual(set(order.order_members.values_list('status', flat=True)), {'in_progress'})
 
-        ended = self.post_as(self.customer_user, f'/api/wx/orders/{order.id}/end/')
+        customer_end = self.post_as(self.customer_user, f'/api/wx/orders/{order.id}/end/')
+        self.assertNotEqual(customer_end['code'], 200)
+
+        non_leader_complete = self.post_as(self.member.user, f'/api/wx/orders/{order.id}/complete/')
+        self.assertNotEqual(non_leader_complete['code'], 200)
+
+        ended = self.post_as(self.leader.user, f'/api/wx/orders/{order.id}/complete/')
         self.assertEqual(ended['code'], 200)
         order.refresh_from_db()
         self.assertEqual(order.status, 'completed')

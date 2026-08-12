@@ -7,7 +7,7 @@ from apps.account.models import User
 from apps.customer.models import Customer
 from apps.employee.models import Employee, EmployeeSkill
 from apps.notice.models import Notice
-from apps.order.models import Order
+from apps.order.models import Order, OrderCandidate
 
 
 class Command(BaseCommand):
@@ -53,15 +53,26 @@ class Command(BaseCommand):
             self.assert_api(client, member.user, f'/api/wx/orders/{order.id}/claim/', {'slots': 2}, 400, '禁止单人多席')
             self.assert_api(client, member.user, f'/api/wx/orders/{order.id}/claim/', {'slots': 1}, 200, '成员接取第2席')
 
+            leader_candidate = OrderCandidate.objects.get(order=order, employee=leader)
+            member_candidate = OrderCandidate.objects.get(order=order, employee=member)
+            self.assert_api(client, customer_user, f'/api/wx/orders/{order.id}/select-candidate/', {
+                'candidate_id': leader_candidate.id,
+            }, 200, '客户选择队长')
+            self.assert_api(client, customer_user, f'/api/wx/orders/{order.id}/select-candidate/', {
+                'candidate_id': member_candidate.id,
+            }, 200, '客户选择成员')
+
             order.refresh_from_db()
             if order.status != 'confirming' or order.locked_slots != 2 or order.leader_id != leader.id:
                 raise AssertionError('席位满员后订单未进入正式接取状态')
 
             self.assert_api(client, member.user, f'/api/wx/orders/{order.id}/give-up/', {}, 400, '正式接取后非队长禁止放弃')
-            self.assert_api(client, customer_user, f'/api/wx/orders/{order.id}/confirm/', {}, 200, '客户确认订单')
+            self.assert_api(client, customer_user, f'/api/wx/orders/{order.id}/confirm/', {}, 200, '客户确认开始')
             self.assert_api(client, member.user, f'/api/wx/orders/{order.id}/start/', {}, 400, '非队长禁止开始')
             self.assert_api(client, leader.user, f'/api/wx/orders/{order.id}/start/', {}, 200, '队长开始服务')
-            self.assert_api(client, customer_user, f'/api/wx/orders/{order.id}/end/', {}, 200, '客户结束订单')
+            self.assert_api(client, customer_user, f'/api/wx/orders/{order.id}/end/', {}, 400, '客户禁止结束订单')
+            self.assert_api(client, member.user, f'/api/wx/orders/{order.id}/complete/', {}, 400, '非队长禁止结束订单')
+            self.assert_api(client, leader.user, f'/api/wx/orders/{order.id}/complete/', {}, 200, '队长结束订单')
 
             order.refresh_from_db()
             if order.status != 'completed':

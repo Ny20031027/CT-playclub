@@ -574,6 +574,7 @@ def build_dasher_order_flags(order, employee):
             order.status == 'published' or (order.status in ['confirming', 'claimed'] and is_leader)
         ),
         'can_start': order.status == 'claimed' and is_leader,
+        'can_complete': order.status == 'in_progress' and is_leader,
         'can_transfer': order.status in ['claimed', 'in_progress'] and is_member,
         'can_discount': order.status in ['claimed', 'in_progress'] and is_member,
         'can_manage_order': is_leader or is_member,
@@ -3007,6 +3008,9 @@ def give_up_order(request, order_id):
     is_leader = order.leader_id == employee.id
     is_formal_order = order.status in ['confirming', 'claimed']
 
+    if is_formal_order and not is_leader:
+        return error_response(msg='正式接单后仅队长可以操作放弃')
+
     # 队长放弃正式接取的订单 → 删除所有成员，回退到 published
     if is_formal_order and is_leader:
         OrderMember.objects.filter(order=order, is_deleted=False, status__in=ACTIVE_ORDER_MEMBER_STATUSES).delete()
@@ -3057,7 +3061,7 @@ def give_up_order(request, order_id):
 @api_view(['POST'])
 @permission_classes([IsAuthenticated])
 def confirm_order(request, order_id):
-    """客户确认订单（打手接取后，客户确认变为待开始）"""
+    """客户确认开始订单（选定打手后，客户确认变为待开始）"""
     user = request.user
 
     try:
@@ -3487,28 +3491,8 @@ def order_chat_group_detail(request, group_id):
 @api_view(['POST'])
 @permission_classes([IsAuthenticated])
 def end_order(request, order_id):
-    """客户结束订单"""
-    user = request.user
-    try:
-        customer = user.customer
-    except Exception:
-        return error_response(msg='用户不存在')
-
-    try:
-        order = Order.objects.get(id=order_id, customer=customer, status='in_progress', is_deleted=False)
-    except Order.DoesNotExist:
-        return error_response(msg='订单不存在或状态不正确')
-
-    try:
-        _, settlement = complete_order_and_settle(order.id)
-    except OrderCompletionError as exc:
-        return error_response(msg=str(exc))
-
-    return success_response(data={
-        'settled_count': settlement['settled_count'],
-        'commission_total': float(settlement['commission_total']),
-        'platform_commission_total': float(settlement['platform_commission_total']),
-    }, msg='订单已结束，佣金已结算')
+    """客户不再拥有结束订单权限，订单结束统一由打手队长操作。"""
+    return error_response(msg='订单结束由打手操作，客户无需结束订单', code=403)
 
 
 @api_view(['POST'])
