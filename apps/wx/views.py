@@ -573,6 +573,43 @@ def build_dasher_order_flags(order, employee):
     }
 
 
+def order_requires_trial_voice(order):
+    snapshot = order.self_service_snapshot or {}
+    return bool(snapshot.get('trial_requested'))
+
+
+def validate_trial_voice_payload(request):
+    upload_id = request.data.get('trial_voice_upload_id') or request.data.get('voice_upload_id')
+    voice_url = str(request.data.get('trial_voice_url') or request.data.get('voice_url') or '').strip()
+    duration_raw = request.data.get('trial_voice_duration') or request.data.get('voice_duration') or 0
+    try:
+        duration = int(duration_raw)
+    except (TypeError, ValueError):
+        duration = 0
+    if duration < 1 or duration > 30:
+        return None, error_response(msg='试音语音时长需为1至30秒')
+
+    upload = None
+    if upload_id:
+        upload = UploadFile.objects.filter(
+            pk=upload_id, uploader=request.user, category='audio',
+            is_deleted=False,
+        ).first()
+    elif voice_url:
+        upload = UploadFile.objects.filter(
+            url=voice_url, uploader=request.user, category='audio',
+            is_deleted=False,
+        ).first()
+    if not upload or not upload.url:
+        return None, error_response(msg='请先录制并上传试音语音')
+
+    return {
+        'url': upload.url,
+        'duration': duration,
+        'upload_id': upload.id,
+    }, None
+
+
 def get_wx_openid(code):
     """通过 code 换取 openid"""
     import logging
@@ -1607,6 +1644,11 @@ def create_self_service_order(request):
             assigned_employee.nickname or assigned_employee.real_name
         ) if assigned_employee else '',
     }
+    trial_requested = bool(request.data.get('trial_requested', False))
+    if skill.trial_mode == 'required':
+        trial_requested = True
+    elif skill.trial_mode == 'disabled':
+        trial_requested = False
     if gameplay.order_mode == 'preset':
         preset_item = GameplayPresetItem.objects.select_for_update().filter(
             id=request.data.get('preset_item_id'), gameplay=gameplay,
@@ -1656,6 +1698,7 @@ def create_self_service_order(request):
             'total_amount': float(total_price),
             'pay_amount': float(charged_amount),
             'total_coins': coin_cost,
+            'trial_requested': trial_requested,
             **choice_snapshot,
         }
         order = Order.objects.create(
@@ -1796,11 +1839,8 @@ def create_self_service_order(request):
     if len(remark) > 500:
         return error_response(msg='备注不能超过500个字')
 
-    trial_requested = bool(request.data.get('trial_requested', False))
     if skill.trial_mode == 'required' and not trial_requested:
         return error_response(msg='该技能下单前必须选择试音')
-    if skill.trial_mode == 'disabled':
-        trial_requested = False
 
     def parse_selected_ids(field_name):
         raw_ids = request.data.get(field_name) or []
@@ -2172,6 +2212,8 @@ def dispatch_hall(request):
             'assigned_employee_name': o.assigned_employee.nickname if o.assigned_employee else '',
             'order_type': o.order_type,
             'order_items': order_items,
+            'trial_requested': order_requires_trial_voice(o),
+            'requires_trial_voice': order_requires_trial_voice(o),
         })
 
     return success_response({
@@ -2450,6 +2492,9 @@ def order_detail(request, order_id):
                     'employee_id': c.employee.id,
                     'employee_name': c.employee.nickname or c.employee.real_name,
                     'employee_avatar': employee_avatar_url(c.employee),
+                    'trial_voice': build_media_url(c.trial_voice, request) if c.trial_voice else '',
+                    'trial_voice_url': build_media_url(c.trial_voice, request) if c.trial_voice else '',
+                    'trial_voice_duration': c.trial_voice_duration or 0,
                     'applied_at': c.created_at.strftime('%Y-%m-%d %H:%M'),
                 })
 
@@ -2488,6 +2533,8 @@ def order_detail(request, order_id):
         'purchase_quantity': float(order.purchase_quantity),
         'settlement_unit': order.settlement_unit,
         'self_service_snapshot': visible_snapshot,
+        'trial_requested': bool(visible_snapshot.get('trial_requested')),
+        'requires_trial_voice': order_requires_trial_voice(order),
         'customer_game_account_id': customer_game_account_id,
         'customer_game_account_name': customer_game_account_name,
         'customer_game_account_category': customer_game_account_category,
@@ -2640,13 +2687,32 @@ def claim_order(request, order_id):
     if existing_member:
         return error_response(msg='您已经是该订单的打手')
 
+    trial_voice_data = None
+    if order_requires_trial_voice(order):
+        trial_voice_data, trial_error = validate_trial_voice_payload(request)
+        if trial_error:
+            return trial_error
+
     # 创建或恢复选秀候选人记录
     if existing_candidate and existing_candidate.is_deleted:
         existing_candidate.is_deleted = False
-        existing_candidate.save(update_fields=['is_deleted', 'updated_at'])
+        update_fields = ['is_deleted', 'updated_at']
+        if trial_voice_data:
+            existing_candidate.trial_voice = trial_voice_data['url']
+            existing_candidate.trial_voice_duration = trial_voice_data['duration']
+            existing_candidate.trial_voice_upload_id = trial_voice_data['upload_id']
+            update_fields.extend(['trial_voice', 'trial_voice_duration', 'trial_voice_upload_id'])
+        existing_candidate.save(update_fields=update_fields)
         candidate = existing_candidate
     else:
-        candidate = OrderCandidate.objects.create(order=order, employee=employee)
+        candidate_kwargs = {'order': order, 'employee': employee}
+        if trial_voice_data:
+            candidate_kwargs.update({
+                'trial_voice': trial_voice_data['url'],
+                'trial_voice_duration': trial_voice_data['duration'],
+                'trial_voice_upload_id': trial_voice_data['upload_id'],
+            })
+        candidate = OrderCandidate.objects.create(**candidate_kwargs)
 
     # 如果该打手在活跃队伍中，把所有活跃队友也一并加入选秀队列
     team_applied_count = 1  # 已申请人数（含自己）
@@ -2685,15 +2751,31 @@ def claim_order(request, order_id):
                 elif ec.is_deleted:
                     # 软删除记录，恢复
                     ec.is_deleted = False
-                    ec.save(update_fields=['is_deleted', 'updated_at'])
+                    if trial_voice_data:
+                        ec.trial_voice = trial_voice_data['url']
+                        ec.trial_voice_duration = trial_voice_data['duration']
+                        ec.trial_voice_upload_id = trial_voice_data['upload_id']
+                        ec.save(update_fields=[
+                            'is_deleted', 'trial_voice', 'trial_voice_duration',
+                            'trial_voice_upload_id', 'updated_at',
+                        ])
+                    else:
+                        ec.save(update_fields=['is_deleted', 'updated_at'])
                     team_applied_count += 1
                 # else: 已在选秀队列（is_deleted=False），跳过
 
             # 批量新建完全没有记录的队友
             if apply_ids:
-                new_candidates = [
-                    OrderCandidate(order=order, employee_id=tid) for tid in apply_ids
-                ]
+                new_candidates = []
+                for tid in apply_ids:
+                    candidate_kwargs = {'order': order, 'employee_id': tid}
+                    if trial_voice_data:
+                        candidate_kwargs.update({
+                            'trial_voice': trial_voice_data['url'],
+                            'trial_voice_duration': trial_voice_data['duration'],
+                            'trial_voice_upload_id': trial_voice_data['upload_id'],
+                        })
+                    new_candidates.append(OrderCandidate(**candidate_kwargs))
                 OrderCandidate.objects.bulk_create(new_candidates)
                 team_applied_count += len(apply_ids)
 

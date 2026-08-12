@@ -153,6 +153,9 @@ class OrderCandidate(BaseModel):
                               related_name='candidates', verbose_name='订单')
     employee = models.ForeignKey(Employee, on_delete=models.SET_NULL, null=True, blank=True,
                                  related_name='order_candidates', verbose_name='陪玩师')
+    trial_voice = models.CharField(max_length=500, blank=True, verbose_name='试音语音URL')
+    trial_voice_duration = models.IntegerField(default=0, verbose_name='试音语音时长(秒)')
+    trial_voice_upload_id = models.IntegerField(null=True, blank=True, verbose_name='试音上传文件ID')
 
     class Meta:
         db_table = 'ord_order_candidate'
