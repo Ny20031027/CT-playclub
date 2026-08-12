@@ -73,6 +73,11 @@ WX_SECRET = getattr(settings, 'WX_SECRET', '')
 
 ACTIVE_ORDER_MEMBER_STATUSES = ['accepted', 'in_progress']
 FORMAL_ORDER_STATUSES = ['confirming', 'claimed', 'in_progress', 'completed', 'reviewed']
+MONEY_STEP = Decimal('0.01')
+
+
+def _money(value):
+    return Decimal(str(value or 0)).quantize(MONEY_STEP, rounding=ROUND_HALF_UP)
 
 
 def amount_to_coins(amount):
@@ -1494,14 +1499,7 @@ def create_order(request):
 
     # 使用优惠券后标记为已使用
     if coupon_id and coupon_discount > 0:
-        from apps.system.models import UserCoupon
-        UserCoupon.objects.filter(
-            id=coupon_id, customer=customer, status='unused'
-        ).update(
-            status='used',
-            used_at=timezone.now(),
-            used_order_no=order_no,
-        )
+        _consume_user_coupon(coupon_id, customer, order_no)
 
     return success_response({
         'order_id': order.id,
@@ -1631,14 +1629,7 @@ def create_self_service_order_legacy(request):
 
     # 使用优惠券后标记为已使用
     if coupon_id and coupon_discount > 0:
-        from apps.system.models import UserCoupon
-        UserCoupon.objects.filter(
-            id=coupon_id, customer=customer, status='unused'
-        ).update(
-            status='used',
-            used_at=timezone.now(),
-            used_order_no=order_no,
-        )
+        _consume_user_coupon(coupon_id, customer, order_no)
 
     return success_response({
         'order_id': order.id,
@@ -1860,10 +1851,7 @@ def create_self_service_order(request):
             )
         # 使用优惠券后标记为已使用
         if coupon_id and coupon_discount > 0:
-            from apps.system.models import UserCoupon
-            UserCoupon.objects.filter(
-                id=coupon_id, customer=customer, status='unused'
-            ).update(status='used', used_at=timezone.now(), used_order_no=order_no)
+            _consume_user_coupon(coupon_id, customer, order_no)
         _mark_preorder_used(checkout_preorder)
         return success_response({
             'order_id': order.id,
@@ -2228,10 +2216,7 @@ def create_self_service_order(request):
 
     # 使用优惠券后标记为已使用
     if coupon_id and coupon_discount > 0:
-        from apps.system.models import UserCoupon
-        UserCoupon.objects.filter(
-            id=coupon_id, customer=customer, status='unused'
-        ).update(status='used', used_at=timezone.now(), used_order_no=order_no)
+        _consume_user_coupon(coupon_id, customer, order_no)
 
     _mark_preorder_used(checkout_preorder)
     return success_response({
@@ -6828,3 +6813,15 @@ def _apply_coupon(total_amount, coupon_id, user):
         return False, '该券不适用于当前订单', Decimal('0')
 
     return True, '', discount_amount
+
+
+def _consume_user_coupon(coupon_id, customer, order_no):
+    if not coupon_id:
+        return 0
+    from apps.system.models import UserCoupon
+    return UserCoupon.objects.filter(
+        id=coupon_id,
+        customer=customer,
+        status='unused',
+        is_deleted=False,
+    ).update(status='used', used_at=timezone.now(), used_order_no=order_no)

@@ -184,6 +184,9 @@ class SelfServiceCouponCheckoutTests(TestCase):
         self.assertEqual(order.total_amount, Decimal('100.00'))
         self.assertEqual(order.discount_amount, Decimal('30.00'))
         self.assertEqual(order.pay_amount, Decimal('70.00'))
+        user_coupon.refresh_from_db()
+        self.assertEqual(user_coupon.status, 'used')
+        self.assertEqual(user_coupon.used_order_no, order.order_no)
 
         detail = self.client.get(f'/api/wx/orders/{order.id}/').json()
         self.assertEqual(detail['code'], 200)
