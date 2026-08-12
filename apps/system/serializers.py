@@ -1,7 +1,7 @@
 from rest_framework import serializers
 from .models import (
     Config, Dictionary, DictionaryItem, OperationLog, ErrorLog,
-    CSWelcomeConfig, CSKeywordRule
+    CSWelcomeConfig, CSKeywordRule, Coupon, UserCoupon
 )
 from apps.wx.models import Banner, Announcement, GameBanner
 
@@ -126,7 +126,7 @@ class CouponSerializer(serializers.ModelSerializer):
     used_count = serializers.SerializerMethodField()
 
     class Meta:
-        model = None  # runtime set
+        model = Coupon
         fields = ['id', 'name', 'coupon_type', 'coupon_type_display', 'discount_rate',
                   'min_order_amount', 'max_discount_amount', 'is_enabled', 'description',
                   'issued_count', 'used_count', 'created_at', 'updated_at']
@@ -138,12 +138,6 @@ class CouponSerializer(serializers.ModelSerializer):
     def get_used_count(self, obj):
         return obj.user_coupons.filter(is_deleted=False, status='used').count()
 
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
-        if self.Meta.model is None:
-            from .models import Coupon
-            self.Meta.model = Coupon
-
 
 class UserCouponSerializer(serializers.ModelSerializer):
     coupon_name = serializers.CharField(source='coupon.name', read_only=True)
@@ -154,7 +148,7 @@ class UserCouponSerializer(serializers.ModelSerializer):
     customer_name = serializers.CharField(source='customer.nickname', read_only=True)
 
     class Meta:
-        model = None  # runtime set
+        model = UserCoupon
         fields = ['id', 'customer', 'customer_name', 'coupon', 'coupon_name',
                   'coupon_type', 'discount_rate', 'min_order_amount',
                   'max_discount_amount', 'status', 'used_at', 'used_order_no',
@@ -169,11 +163,5 @@ class UserCouponSerializer(serializers.ModelSerializer):
 
     def get_max_discount_amount(self, obj):
         return float(obj.coupon.max_discount_amount)
-
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
-        if self.Meta.model is None:
-            from .models import UserCoupon
-            self.Meta.model = UserCoupon
 
 
