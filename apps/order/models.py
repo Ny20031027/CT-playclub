@@ -85,6 +85,7 @@ class Order(BaseModel):
                                                related_name='transferred_out_orders',
                                                verbose_name='转出打手')
     discount_reason = models.CharField(max_length=500, blank=True, verbose_name='免单原因')
+    completion_images = models.TextField(blank=True, verbose_name='完成凭证图片(逗号分隔URL)')
     assigner = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, blank=True,
                                  related_name='assigned_orders', verbose_name='派单员')
     game_id = models.CharField(max_length=100, blank=True, verbose_name='游戏ID')

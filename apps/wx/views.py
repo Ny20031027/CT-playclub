@@ -3413,6 +3413,15 @@ def complete_order(request, order_id):
     if order.leader_id != employee.id:
         return error_response(msg='只有队长可以完结订单')
 
+    # 保存完成凭证图片
+    images = request.data.get('images', [])
+    if isinstance(images, str):
+        images = [images]
+    if images:
+        valid_images = [str(img).strip() for img in images if str(img).strip()]
+        order.completion_images = ','.join(valid_images)
+        order.save(update_fields=['completion_images', 'updated_at'])
+
     try:
         _, settlement = complete_order_and_settle(order.id)
     except OrderCompletionError as exc:
