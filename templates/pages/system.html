@@ -1138,14 +1138,20 @@
             </div>
             <div class="form-group">
                 <label>券类型</label>
-                <select id="couponType">
+                <select id="couponType" onchange="onCouponTypeChange()">
                     <option value="discount">减免券</option>
+                    <option value="deduction">抵扣券</option>
                 </select>
             </div>
-            <div class="form-group">
+            <div class="form-group" id="couponDiscountRateGroup">
                 <label>折扣比例（%） <span style="color:red;">*</span></label>
                 <input type="number" id="couponDiscountRate" value="70" min="1" max="99" step="0.01">
-                <span class="hint">实付 = 原价 × 折扣比例%。如70表示打七折，实付 = 原价 × 70%</span>
+                <span class="hint">减免券：实付 = 原价 × 折扣比例%。如70表示打七折</span>
+            </div>
+            <div class="form-group" id="couponDeductionCoinsGroup" style="display:none;">
+                <label>抵扣黑钻数 <span style="color:red;">*</span></label>
+                <input type="number" id="couponDeductionCoins" value="500" min="1" step="1">
+                <span class="hint">抵扣券：直接抵扣对应黑钻数，如500表示抵扣500黑钻（等值50元）</span>
             </div>
             <div class="form-group">
                 <label>最低订单金额（元）</label>
@@ -4105,12 +4111,15 @@ function renderCouponList() {
         const statusBadge = c.is_enabled
             ? '<span class="badge badge-success">启用</span>'
             : '<span class="badge badge-danger">禁用</span>';
-        const typeName = c.coupon_type === 'discount' ? '减免券' : c.coupon_type;
+        const typeName = c.coupon_type === 'deduction' ? '抵扣券' : '减免券';
+        const faceValue = c.coupon_type === 'deduction' 
+            ? `<b>${c.deduction_coins || 0}黑钻</b>` 
+            : `${c.discount_rate}%（${(100 - c.discount_rate).toFixed(0)}%off）`;
         return `<tr>
             <td>${c.id}</td>
             <td><strong>${escHtml(c.name)}</strong></td>
             <td>${typeName}</td>
-            <td>${c.discount_rate}%（实付${(100 - c.discount_rate).toFixed(0)}%off）</td>
+            <td>${faceValue}</td>
             <td>${c.min_order_amount > 0 ? '满¥' + c.min_order_amount : '不限'}</td>
             <td>${c.issued_count || 0}</td>
             <td>${c.used_count || 0}</td>
@@ -4129,11 +4138,19 @@ function showCouponModal() {
     document.getElementById('couponName').value = '';
     document.getElementById('couponType').value = 'discount';
     document.getElementById('couponDiscountRate').value = '70';
+    document.getElementById('couponDeductionCoins').value = '500';
     document.getElementById('couponMinOrderAmount').value = '0';
     document.getElementById('couponMaxDiscountAmount').value = '0';
     document.getElementById('couponEnabled').value = 'true';
     document.getElementById('couponDescription').value = '';
+    onCouponTypeChange();
     showModal('couponModal');
+}
+
+function onCouponTypeChange() {
+    const type = document.getElementById('couponType').value;
+    document.getElementById('couponDiscountRateGroup').style.display = type === 'deduction' ? 'none' : 'block';
+    document.getElementById('couponDeductionCoinsGroup').style.display = type === 'deduction' ? 'block' : 'none';
 }
 
 async function editCoupon(id) {
@@ -4146,10 +4163,12 @@ async function editCoupon(id) {
             document.getElementById('couponName').value = c.name || '';
             document.getElementById('couponType').value = c.coupon_type || 'discount';
             document.getElementById('couponDiscountRate').value = c.discount_rate || 70;
+            document.getElementById('couponDeductionCoins').value = c.deduction_coins || 0;
             document.getElementById('couponMinOrderAmount').value = c.min_order_amount || 0;
             document.getElementById('couponMaxDiscountAmount').value = c.max_discount_amount || 0;
             document.getElementById('couponEnabled').value = c.is_enabled ? 'true' : 'false';
             document.getElementById('couponDescription').value = c.description || '';
+            onCouponTypeChange();
             showModal('couponModal');
         }
     } catch (e) {
@@ -4162,16 +4181,19 @@ async function saveCoupon() {
     const name = document.getElementById('couponName').value.trim();
     const couponType = document.getElementById('couponType').value;
     const discountRate = parseFloat(document.getElementById('couponDiscountRate').value) || 70;
+    const deductionCoins = parseInt(document.getElementById('couponDeductionCoins').value) || 0;
     const minOrderAmount = parseFloat(document.getElementById('couponMinOrderAmount').value) || 0;
     const maxDiscountAmount = parseFloat(document.getElementById('couponMaxDiscountAmount').value) || 0;
     const isEnabled = document.getElementById('couponEnabled').value === 'true';
     const description = document.getElementById('couponDescription').value.trim();
 
     if (!name) { showToast('请输入券名', 'error'); return; }
-    if (discountRate <= 0 || discountRate >= 100) { showToast('折扣比例需在1-99之间', 'error'); return; }
+    if (couponType === 'discount' && (discountRate <= 0 || discountRate >= 100)) { showToast('折扣比例需在1-99之间', 'error'); return; }
+    if (couponType === 'deduction' && (!deductionCoins || deductionCoins <= 0)) { showToast('请输入有效的抵扣黑钻数', 'error'); return; }
 
     const payload = {
         name, coupon_type: couponType, discount_rate: discountRate,
+        deduction_coins: deductionCoins,
         min_order_amount: minOrderAmount, max_discount_amount: maxDiscountAmount,
         is_enabled: isEnabled, description
     };

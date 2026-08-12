@@ -6681,6 +6681,7 @@ def my_coupons(request):
             'name': uc.coupon.name,
             'coupon_type': uc.coupon.coupon_type,
             'discount_rate': float(uc.coupon.discount_rate),
+            'deduction_coins': uc.coupon.deduction_coins or 0,
             'min_order_amount': float(uc.coupon.min_order_amount),
             'max_discount_amount': float(uc.coupon.max_discount_amount),
             'description': uc.coupon.description or '',
@@ -6731,6 +6732,10 @@ def _apply_coupon(total_amount, coupon_id, user):
             max_discount = _money(coupon.max_discount_amount)
             if discount_amount > max_discount:
                 discount_amount = max_discount
+    elif coupon.coupon_type == 'deduction':
+        # 抵扣券：1元=10黑钻，直接抵扣对应黑钻数的等值金额
+        deduction_yuan = _money(coupon.deduction_coins) / Decimal('10')
+        discount_amount = min(deduction_yuan, pay_amount)
     else:
         return False, '未知券类型', Decimal('0')
 

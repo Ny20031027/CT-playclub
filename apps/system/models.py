@@ -167,14 +167,18 @@ class Coupon(BaseModel):
     """优惠券模板"""
     COUPON_TYPE_CHOICES = [
         ('discount', '减免券'),
+        ('deduction', '抵扣券'),
     ]
 
-    name = models.CharField(max_length=100, verbose_name='券名', help_text='如"七折券"')
+    name = models.CharField(max_length=100, verbose_name='券名', help_text='如"七折券"或"500黑钻券"')
     coupon_type = models.CharField(max_length=20, default='discount', choices=COUPON_TYPE_CHOICES,
                                    verbose_name='券类型')
     discount_rate = models.DecimalField(max_digits=5, decimal_places=2, default=70.00,
                                         verbose_name='折扣比例(%)',
-                                        help_text='如70表示打七折，实际支付金额 × 70%')
+                                        help_text='减免券专用：如70表示打七折，实际支付金额 × 70%')
+    deduction_coins = models.IntegerField(default=0,
+                                          verbose_name='抵扣黑钻数',
+                                          help_text='抵扣券专用：直接抵扣的黑钻数量，如500表示抵扣500黑钻')
     min_order_amount = models.DecimalField(max_digits=10, decimal_places=2, default=0,
                                            verbose_name='最低订单金额',
                                            help_text='满多少元可用，0表示不限')
@@ -191,6 +195,8 @@ class Coupon(BaseModel):
         ordering = ['-created_at']
 
     def __str__(self):
+        if self.coupon_type == 'deduction':
+            return f"{self.name}（抵扣{self.deduction_coins}黑钻）"
         return f"{self.name}（{self.discount_rate}%）"
 
 

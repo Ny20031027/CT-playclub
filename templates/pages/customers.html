@@ -327,7 +327,6 @@
                             <td>${cust.total_orders || cust.order_count || 0}</td>
                             <td>${statusBadge} ${banBadge}</td>
                             <td>
-                                <button class="btn btn-default btn-sm" onclick="viewCustomer(${cust.id})">查看</button>
                                 <button class="btn btn-primary btn-sm" onclick="editCustomer(${cust.id})">编辑</button>
                                 ${cust.user_banned
                                     ? `<button class="btn btn-warning btn-sm" onclick="unbanCustomer(${cust.id})">解封</button>`
@@ -617,7 +616,12 @@
             const coupons = result.code === 200 ? (result.data.results || result.data || []) : [];
             const sel = document.getElementById('issueCouponId');
             sel.innerHTML = '<option value="">-- 请选择 --</option>' +
-                coupons.map(c => `<option value="${c.id}">${c.name}（${c.discount_rate}%折扣）</option>`).join('');
+                coupons.map(c => {
+                    const desc = c.coupon_type === 'deduction' 
+                        ? `抵扣${c.deduction_coins || 0}黑钻` 
+                        : `${c.discount_rate}%折扣`;
+                    return `<option value="${c.id}">${c.name}（${desc}）</option>`;
+                }).join('');
         } catch (e) {
             console.error('加载优惠券失败', e);
         }
