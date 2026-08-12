@@ -464,7 +464,7 @@
             const [custRes, orderRes, recordRes] = await Promise.all([
                 get(`/customer/customers/${id}/`),
                 get(`/customer/customers/${id}/orders/?page_size=5`),
-                get(`/customer/customers/${id}/consume_records/?page_size=5`),
+                get(`/customer/customers/${id}/consume-records/?page_size=5`),
             ]);
 
             const c = custRes.code === 200 ? custRes.data : {};
