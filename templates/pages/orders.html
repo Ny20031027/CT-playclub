@@ -582,11 +582,15 @@
     async function viewOrder(id) {
         try {
             const result = await get(`/order/orders/${id}/`);
-            if (result.code !== 200) {
+            if (result && result.code && result.code !== 200) {
                 showToast(result.msg || '获取订单详情失败', 'error');
                 return;
             }
-            const order = result.data;
+            const order = result && result.data ? result.data : result;
+            if (!order || !order.id) {
+                showToast('获取订单详情失败', 'error');
+                return;
+            }
             currentDetailOrder = order;
             document.getElementById('detailCancelBtn').style.display = canCancel(order) ? '' : 'none';
             document.getElementById('orderDetailBody').innerHTML = `

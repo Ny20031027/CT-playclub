@@ -6,6 +6,14 @@ from .models import (
 )
 
 
+def get_related_user_display_id(obj):
+    try:
+        user = obj.user if obj else None
+    except Exception:
+        user = None
+    return user.display_id if user else ''
+
+
 class OrderMemberSerializer(serializers.ModelSerializer):
     employee_name = serializers.CharField(source='employee.nickname', read_only=True)
     employee_avatar = serializers.SerializerMethodField()
@@ -43,7 +51,7 @@ class OrderSerializer(serializers.ModelSerializer):
         return build_media_url(obj.customer.avatar if obj.customer else '', self.context.get('request'))
 
     def get_customer_display_id(self, obj):
-        return obj.customer.user.display_id if obj.customer and obj.customer.user else ''
+        return get_related_user_display_id(obj.customer)
 
     def get_assigned_employee_name(self, obj):
         if not obj.assigned_employee:
@@ -60,10 +68,7 @@ class OrderSerializer(serializers.ModelSerializer):
         )
 
     def get_assigned_employee_display_id(self, obj):
-        return (
-            obj.assigned_employee.user.display_id
-            if obj.assigned_employee and obj.assigned_employee.user else ''
-        )
+        return get_related_user_display_id(obj.assigned_employee)
 
     def _snapshot_value(self, obj, key):
         snapshot = obj.self_service_snapshot or {}
