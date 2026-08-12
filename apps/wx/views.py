@@ -595,6 +595,15 @@ def build_dasher_order_flags(order, employee):
     }
 
 
+def parse_completion_images(order, request=None):
+    images = [
+        image.strip()
+        for image in (order.completion_images or '').split(',')
+        if image.strip()
+    ]
+    return [build_media_url(image, request) for image in images]
+
+
 def order_requires_trial_voice(order):
     snapshot = order.self_service_snapshot or {}
     return bool(snapshot.get('trial_requested'))
@@ -2263,12 +2272,8 @@ def dispatch_hall(request):
             Q(title__icontains=keyword) | Q(remark__icontains=keyword)
         )
 
-    total = queryset.count()
-    start = (page - 1) * page_size
-    orders = queryset.select_related('customer', 'assigned_employee')[start:start + page_size]
-
     order_list = []
-    for o in orders:
+    for o in queryset.select_related('customer', 'assigned_employee'):
         # 计算剩余席位
         sync_order_seat_state(o)
         if o.status not in ['published', 'transferring']:
@@ -2279,7 +2284,9 @@ def dispatch_hall(request):
             continue
 
         # 如果是预约订单，只显示给被预约的打手
-        if o.assigned_employee_id and current_employee and o.assigned_employee_id != current_employee.id:
+        if o.assigned_employee_id and (
+            not current_employee or o.assigned_employee_id != current_employee.id
+        ):
             continue
 
         # 检查当前打手是否已申请该订单（选秀队列）
@@ -2337,11 +2344,15 @@ def dispatch_hall(request):
             'requires_trial_voice': order_requires_trial_voice(o),
         })
 
+    total = len(order_list)
+    start = (page - 1) * page_size
+    paged_order_list = order_list[start:start + page_size]
+
     return success_response({
-        'total': len(order_list),
+        'total': total,
         'page': page,
         'page_size': page_size,
-        'list': order_list,
+        'list': paged_order_list,
     })
 
 
@@ -2596,10 +2607,17 @@ def order_detail(request, order_id):
 
     # 检查当前打手是否已预订该订单
     my_booking = None
+    can_upload_completion_images = False
     if is_dasher:
         my_booking = OrderMember.objects.filter(
             order=order, employee=employee, is_deleted=False, status__in=['accepted', 'in_progress']
         ).first()
+        can_upload_completion_images = OrderMember.objects.filter(
+            order=order,
+            employee=employee,
+            is_deleted=False,
+            status__in=['accepted', 'in_progress', 'completed'],
+        ).exists()
 
     # 打手端：是否已在选秀队列
     is_candidate = False
@@ -2680,6 +2698,8 @@ def order_detail(request, order_id):
         'discount_amount': float(order.discount_amount),
         'pay_amount': float(order.pay_amount),
         'pay_method': order.pay_method,
+        'completion_images': parse_completion_images(order, request),
+        'can_upload_completion_images': can_upload_completion_images,
         'game_id': order.game_id,
         'game_name': order.game_name,
         'server': order.server,
@@ -3475,6 +3495,52 @@ def complete_order(request, order_id):
         'commission_total': float(settlement['commission_total']),
         'platform_commission_total': float(settlement['platform_commission_total']),
     }, msg='订单已完结，佣金已结算')
+
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def update_completion_images(request, order_id):
+    """上传或更新完成凭证图片，最多9张。"""
+    user = request.user
+    try:
+        employee = user.get_active_employee()
+        if not employee:
+            raise Exception()
+    except Exception:
+        return error_response(msg='您不是打手')
+
+    try:
+        order = Order.objects.get(id=order_id, is_deleted=False)
+    except Order.DoesNotExist:
+        return error_response(msg='订单不存在')
+
+    is_member = OrderMember.objects.filter(
+        order=order,
+        employee=employee,
+        is_deleted=False,
+        status__in=['accepted', 'in_progress', 'completed'],
+    ).exists()
+    if not is_member:
+        return error_response(msg='只有订单打手可以上传完成凭证')
+
+    images = request.data.get('images', [])
+    if isinstance(images, str):
+        images = [images]
+    if not isinstance(images, list):
+        return error_response(msg='图片格式不正确')
+    valid_images = []
+    for image in images:
+        image_url = str(image or '').strip()
+        if image_url and image_url not in valid_images:
+            valid_images.append(image_url)
+        if len(valid_images) >= 9:
+            break
+
+    order.completion_images = ','.join(valid_images)
+    order.save(update_fields=['completion_images', 'updated_at'])
+    return success_response({
+        'completion_images': parse_completion_images(order, request),
+    }, msg='完成凭证已保存')
 
 
 @api_view(['POST'])

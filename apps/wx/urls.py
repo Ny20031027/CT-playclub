@@ -38,6 +38,7 @@ urlpatterns = [
     path('orders/<int:order_id>/start/', views.start_order, name='wx-start-order'),
     path('orders/<int:order_id>/end/', views.end_order, name='wx-end-order'),
     path('orders/<int:order_id>/complete/', views.complete_order, name='wx-complete-order'),
+    path('orders/<int:order_id>/completion-images/', views.update_completion_images, name='wx-update-completion-images'),
     path('orders/<int:order_id>/comment/', views.comment_order, name='wx-comment-order'),
     path('orders/<int:order_id>/transfer/', views.transfer_order, name='wx-transfer-order'),
     path('orders/<int:order_id>/discount/', views.discount_order, name='wx-discount-order'),

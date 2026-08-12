@@ -7,7 +7,10 @@ from rest_framework.test import APIClient
 
 from apps.account.models import User
 from apps.customer.models import Customer, CustomerService
-from apps.employee.models import Employee, EmployeeGameRank, EmployeeSkill, EmployeeSkillRelation, GameRank, GameplayPresetItem, SkillGameplay
+from apps.employee.models import (
+    Employee, EmployeeGameRank, EmployeeSkill, EmployeeSkillRelation, GameRank,
+    GameplayLevelOption, GameplayPresetItem, GameplayService, SkillGameplay,
+)
 from apps.notice.models import UserNotice
 from apps.order.models import Order, OrderCandidate, OrderComment, OrderMember
 from apps.system.models import Config, Coupon, UserCoupon
@@ -221,6 +224,104 @@ class SelfServiceCouponCheckoutTests(TestCase):
         self.assertEqual(selected['code'], 200)
         member = OrderMember.objects.get(order=order, employee=dasher)
         self.assertEqual(member.amount, Decimal('50.00'))
+
+
+class SelfServiceDispatchHallTests(TestCase):
+    def setUp(self):
+        self.client = APIClient()
+        self.game = GameCategory.objects.create(name='自选单大厅测试游戏', status=True)
+        self.skill = EmployeeSkill.objects.create(
+            name='自选单大厅测试服务', game_category=self.game,
+            self_service_enabled=True, status=True,
+        )
+        self.gameplay = SkillGameplay.objects.create(
+            skill=self.skill, name='自选玩法', order_mode='custom',
+            companion_mode='single', settlement_unit='hour',
+            min_quantity=Decimal('1.00'), quantity_step=Decimal('1.00'),
+            base_price=Decimal('0.00'), status=True,
+        )
+        self.level = GameplayLevelOption.objects.create(
+            gameplay=self.gameplay, name='黄金', status=True,
+        )
+        self.service = GameplayService.objects.create(
+            gameplay=self.gameplay, name='上分', status=True,
+        )
+        self.customer_user = User.objects.create_user(username='dispatch_customer')
+        Customer.objects.create(user=self.customer_user, nickname='大厅客户', coins=0)
+        self.dasher_user = User.objects.create_user(username='dispatch_dasher')
+        self.dasher = Employee.objects.create(
+            user=self.dasher_user, employee_no='DISPATCH-DASHER-001',
+            real_name='大厅打手', nickname='大厅打手',
+            status='idle', online_status=True,
+        )
+
+    def test_custom_self_service_order_without_reserved_dasher_is_listed(self):
+        self.client.force_authenticate(user=self.customer_user)
+        created = self.client.post('/api/wx/orders/create-self-service/', {
+            'gameplay_id': self.gameplay.id,
+            'level_id': self.level.id,
+            'service_id': self.service.id,
+            'companion_type': 'single',
+            'quantity': 1,
+        }, format='json').json()
+
+        self.assertEqual(created['code'], 200)
+        order = Order.objects.get(id=created['data']['order_id'])
+        self.assertEqual(order.status, 'published')
+        self.assertEqual(order.order_type, 'self_service')
+        self.assertIsNone(order.assigned_employee_id)
+
+        self.client.force_authenticate(user=self.dasher_user)
+        hall = self.client.get('/api/wx/orders/dispatch-hall/').json()
+
+        self.assertEqual(hall['code'], 200)
+        listed = [item for item in hall['data']['list'] if item['id'] == order.id]
+        self.assertEqual(len(listed), 1)
+        self.assertEqual(listed[0]['order_type'], 'self_service')
+        self.assertEqual(listed[0]['remaining_slots'], 1)
+        self.assertTrue(listed[0]['can_claim'])
+
+    def test_dispatch_hall_paginates_after_visibility_filtering(self):
+        other_user = User.objects.create_user(username='dispatch_reserved_dasher')
+        other_dasher = Employee.objects.create(
+            user=other_user, employee_no='DISPATCH-DASHER-002',
+            real_name='预约打手', nickname='预约打手',
+            status='idle', online_status=True,
+        )
+        for index in range(10):
+            Order.objects.create(
+                order_no=f'DISPATCH-HIDDEN-{index}',
+                customer=self.customer_user.customer,
+                skill=self.skill,
+                status='published',
+                title=f'不可见指定单{index}',
+                order_type='self_service',
+                quantity=1,
+                unit_price=Decimal('0.00'),
+                total_amount=Decimal('0.00'),
+                pay_amount=Decimal('0.00'),
+                game_name=self.game.name,
+                assigned_employee=other_dasher,
+            )
+
+        self.client.force_authenticate(user=self.customer_user)
+        created = self.client.post('/api/wx/orders/create-self-service/', {
+            'gameplay_id': self.gameplay.id,
+            'level_id': self.level.id,
+            'service_id': self.service.id,
+            'companion_type': 'single',
+            'quantity': 1,
+        }, format='json').json()
+        order = Order.objects.get(id=created['data']['order_id'])
+        order.created_at = order.created_at.replace(year=2000)
+        order.save(update_fields=['created_at'])
+
+        self.client.force_authenticate(user=self.dasher_user)
+        hall = self.client.get('/api/wx/orders/dispatch-hall/?page=1&page_size=10').json()
+
+        self.assertEqual(hall['code'], 200)
+        self.assertEqual(hall['data']['total'], 1)
+        self.assertEqual([item['id'] for item in hall['data']['list']], [order.id])
 
 
 class OfficialAnnouncementTests(TestCase):
@@ -600,6 +701,31 @@ class MultiPersonOrderFlowTests(TestCase):
         self.assertEqual(ended['code'], 200)
         order.refresh_from_db()
         self.assertEqual(order.status, 'completed')
+
+    def test_order_member_can_upload_completion_images_for_detail_viewers(self):
+        order = self.create_multi_order()
+        self.post_as(self.leader.user, f'/api/wx/orders/{order.id}/claim/', {'slots': 1})
+        leader_candidate = OrderCandidate.objects.get(order=order, employee=self.leader)
+        self.post_as(self.customer_user, f'/api/wx/orders/{order.id}/select-candidate/', {
+            'candidate_id': leader_candidate.id,
+        })
+
+        saved = self.post_as(self.leader.user, f'/api/wx/orders/{order.id}/completion-images/', {
+            'images': ['/media/complete/1.png', '/media/complete/2.png'],
+        })
+        self.assertEqual(saved['code'], 200)
+        self.assertEqual(len(saved['data']['completion_images']), 2)
+
+        customer_detail = self.get_as(self.customer_user, f'/api/wx/orders/{order.id}/')
+        self.assertEqual(len(customer_detail['data']['completion_images']), 2)
+        self.assertTrue(customer_detail['data']['completion_images'][0].endswith('/media/complete/1.png'))
+
+        too_many = [f'/media/complete/{index}.png' for index in range(12)]
+        trimmed = self.post_as(self.leader.user, f'/api/wx/orders/{order.id}/completion-images/', {
+            'images': too_many,
+        })
+        self.assertEqual(trimmed['code'], 200)
+        self.assertEqual(len(trimmed['data']['completion_images']), 9)
 
     def test_order_invite_sends_notice_without_locking_slot(self):
         order = self.create_multi_order()
