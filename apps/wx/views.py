@@ -5067,7 +5067,7 @@ def create_team(request):
 
     name = request.data.get('name', f'{employee.nickname or employee.real_name}的队伍')
 
-    team = Team.objects.create(name=name, leader=employee)
+    team = Team.objects.create(name=name, leader=employee, max_members=2)
     TeamMember.objects.create(team=team, employee=employee, status='active')
 
     return success_response({'team_id': team.id, 'msg': '创建成功'})
@@ -5166,6 +5166,10 @@ def handle_team_invite(request):
         return error_response(msg='邀请不存在')
 
     if accept:
+        team = membership.team
+        # 检查人数上限（防止并发下超员）
+        if team.member_count >= team.max_members:
+            return error_response(msg='队伍已满，无法加入')
         membership.status = 'active'
         membership.save(update_fields=['status'])
         return success_response(msg='已加入队伍')

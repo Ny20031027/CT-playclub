@@ -574,7 +574,7 @@ class Team(BaseModel):
     leader = models.ForeignKey(Employee, on_delete=models.CASCADE,
                                related_name='led_teams', verbose_name='队长')
     status = models.BooleanField(default=True, verbose_name='状态')
-    max_members = models.IntegerField(default=5, verbose_name='最大人数')
+    max_members = models.IntegerField(default=2, verbose_name='最大人数')
 
     class Meta:
         db_table = 'emp_team'
