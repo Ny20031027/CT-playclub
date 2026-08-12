@@ -553,8 +553,16 @@ def sync_order_seat_state(order):
 
 
 def ensure_order_leader(order):
+    # 校验当前 leader 是否仍在订单活跃成员中，失效则重新分配
     if order.leader_id:
-        return order.leader
+        leader_active = get_active_order_members(order).filter(
+            employee_id=order.leader_id
+        ).exists()
+        if leader_active:
+            return order.leader
+        # leader 已不在活跃成员中，清除后重新分配
+        order.leader = None
+        order.save(update_fields=['leader', 'updated_at'])
     first_member = get_active_order_members(order).select_related('employee').order_by('id').first()
     if first_member:
         order.leader = first_member.employee
@@ -579,7 +587,9 @@ def build_dasher_order_flags(order, employee):
             order.status == 'published' or (order.status in ['confirming', 'claimed'] and is_leader)
         ),
         'can_start': order.status == 'claimed' and is_leader,
-        'can_complete': order.status == 'in_progress' and is_leader,
+        'can_complete': order.status == 'in_progress' and (
+            is_leader or (is_member and order.quantity <= 1)
+        ),
         'can_transfer': order.status in ['claimed', 'in_progress'] and is_member,
         'can_discount': order.status in ['claimed', 'in_progress'] and is_member,
         'can_manage_order': is_leader or is_member,
@@ -3441,7 +3451,13 @@ def complete_order(request, order_id):
         return error_response(msg='订单不存在或状态不正确')
 
     if order.leader_id != employee.id:
-        return error_response(msg='只有队长可以完结订单')
+        # 单人订单：成员即可完结；多人订单：仅队长可完结
+        is_member = OrderMember.objects.filter(
+            order=order, employee=employee, is_deleted=False,
+            status__in=['accepted', 'in_progress']
+        ).exists()
+        if not (is_member and order.quantity <= 1):
+            return error_response(msg='只有队长可以完结订单')
 
     # 保存完成凭证图片
     images = request.data.get('images', [])
