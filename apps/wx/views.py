@@ -75,6 +75,14 @@ ACTIVE_ORDER_MEMBER_STATUSES = ['accepted', 'in_progress']
 FORMAL_ORDER_STATUSES = ['confirming', 'claimed', 'in_progress', 'completed', 'reviewed']
 
 
+def amount_to_coins(amount):
+    try:
+        value = Decimal(str(amount or 0))
+    except (InvalidOperation, TypeError, ValueError):
+        value = Decimal('0')
+    return int((value * Decimal('10')).quantize(Decimal('1'), rounding=ROUND_HALF_UP))
+
+
 def _as_localtime(value):
     return timezone.localtime(value) if timezone.is_aware(value) else value
 
@@ -2198,6 +2206,7 @@ def dispatch_hall(request):
                     'skill_name': m.skill.name if m.skill else (m.remark or ''),
                     'duration': m.duration,
                     'amount': float(m.amount),
+                    'amount_coins': amount_to_coins(m.amount),
                 })
 
         order_list.append({
@@ -2208,12 +2217,16 @@ def dispatch_hall(request):
             'game_name': o.game_name,
             'content': o.remark,
             'price': float(o.unit_price),
+            'price_coins': amount_to_coins(o.unit_price),
             'duration': o.duration,
             'quantity': o.quantity,
             'locked_slots': o.locked_slots,
             'remaining_slots': remaining_slots,
             'is_formally_claimed': False,
             'total_amount': float(o.total_amount),
+            'total_amount_coins': amount_to_coins(o.total_amount),
+            'pay_amount': float(o.pay_amount),
+            'pay_amount_coins': amount_to_coins(o.pay_amount),
             'customer_name': o.customer.nickname if o.customer else '',
             'created_at': o.created_at.strftime('%Y-%m-%d %H:%M'),
             'my_claimed': my_claimed,
@@ -2284,7 +2297,9 @@ def my_orders(request):
             'quantity': o.quantity,
             'locked_slots': o.locked_slots,
             'total_amount': float(o.total_amount),
+            'total_amount_coins': amount_to_coins(o.total_amount),
             'pay_amount': float(o.pay_amount),
+            'pay_amount_coins': amount_to_coins(o.pay_amount),
             'pay_method': o.pay_method,
             'game_name': o.game_name,
             'members': members,
@@ -2353,7 +2368,9 @@ def employee_orders(request):
             'quantity': o.quantity,
             'locked_slots': o.locked_slots,
             'total_amount': float(o.total_amount),
+            'total_amount_coins': amount_to_coins(o.total_amount),
             'pay_amount': float(o.pay_amount),
+            'pay_amount_coins': amount_to_coins(o.pay_amount),
             'pay_method': o.pay_method,
             'game_name': o.game_name,
             'customer_name': o.customer.nickname if o.customer else '',
