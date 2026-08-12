@@ -2649,6 +2649,7 @@ def order_detail(request, order_id):
         'cancel_reason': order.cancel_reason,
         'transfer_reason': (order.transfer_reason or '') if is_dasher else '',
         'is_transfer': bool(order.transfer_reason),
+        'transfer_fee': float(order.transfer_fee) if is_dasher else 0,
         'members': members,
         'candidates': candidates,
         'is_candidate': is_candidate,
@@ -3174,6 +3175,34 @@ def transfer_order(request, order_id):
     if not transfer_reason:
         return error_response(msg='请填写转单原因')
 
+    transfer_fee = Decimal(str(request.data.get('transfer_fee', 0) or 0))
+    if transfer_fee < 0:
+        return error_response(msg='转单费不能为负数')
+    transfer_fee = transfer_fee.quantize(Decimal('0.01'), rounding=ROUND_HALF_UP)
+
+    # 检查转出打手的佣金余额是否够支付转单费
+    transfer_from_emp = None
+    if transfer_fee > 0:
+        from apps.employee.models import Employee as EmpModel
+        from apps.finance.models import Transaction as FinTx
+        transfer_from_emp = EmpModel.objects.select_for_update().get(pk=employee.id)
+        if _money(transfer_from_emp.commission_balance) < transfer_fee:
+            return error_response(msg=f'您的可提现余额不足（当前¥{float(transfer_from_emp.commission_balance):.2f}），无法设置¥{float(transfer_fee):.2f}的转单费')
+        # 立即扣除转单费
+        transfer_from_emp.commission_balance = _money(transfer_from_emp.commission_balance) - transfer_fee
+        transfer_from_emp.save(update_fields=['commission_balance', 'updated_at'])
+        FinTx.objects.create(
+            employee=transfer_from_emp,
+            order_no=order.order_no,
+            transaction_no=f'TRF{order.id:010d}{employee.id:010d}',
+            type='expense',
+            category='transfer_fee_out',
+            amount=-transfer_fee,
+            balance_after=transfer_from_emp.commission_balance,
+            remark=f'订单 {order.order_no} 转单费转出 ¥{float(transfer_fee):.2f}（等待新打手接单）',
+            source='order',
+        )
+
     # 转单表示该小队整体退出，订单重新回到派单大厅。
     active_members = list(OrderMember.objects.filter(
         order=order,
@@ -3194,9 +3223,11 @@ def transfer_order(request, order_id):
     order.customer_confirmed = False
     order.dasher_confirmed = False
     order.transfer_reason = transfer_reason
+    order.transfer_fee = transfer_fee
+    order.transfer_from_employee = employee
     order.save(update_fields=[
         'status', 'locked_slots', 'leader', 'assigned_employee', 'customer_confirmed',
-        'dasher_confirmed', 'transfer_reason', 'updated_at'
+        'dasher_confirmed', 'transfer_reason', 'transfer_fee', 'transfer_from_employee', 'updated_at'
     ])
 
     return success_response(msg='转单成功')

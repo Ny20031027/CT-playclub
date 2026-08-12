@@ -157,6 +157,53 @@ def settle_order_commission(order):
     }
 
 
+def _settle_transfer_fee(locked_order, members):
+    """将转单费分配给当前接单打手"""
+    transfer_fee = _money(locked_order.transfer_fee)
+    if transfer_fee <= 0 or not locked_order.transfer_from_employee_id:
+        return Decimal('0')
+
+    if not members:
+        return Decimal('0')
+
+    from apps.finance.models import Transaction as FinTx
+
+    # 转单费均分给当前成员
+    shares = _split_evenly(transfer_fee, len(members))
+    total_paid = Decimal('0')
+
+    for member, share in zip(members, shares):
+        if share <= 0:
+            continue
+        tx_exists = FinTx.objects.filter(
+            order_no=locked_order.order_no,
+            employee_id=member.employee_id,
+            category='transfer_fee_in',
+        ).exists()
+        if tx_exists:
+            total_paid += share
+            continue
+
+        employee = Employee.objects.select_for_update().get(pk=member.employee_id)
+        employee.commission_balance = _money(employee.commission_balance) + share
+        employee.save(update_fields=['commission_balance', 'updated_at'])
+
+        FinTx.objects.create(
+            employee=employee,
+            order_no=locked_order.order_no,
+            transaction_no=f'TFI{locked_order.id:010d}{member.id:010d}',
+            type='income',
+            category='transfer_fee_in',
+            amount=share,
+            balance_after=employee.commission_balance,
+            remark=f'订单 {locked_order.order_no} 转单费收入 ¥{float(share):.2f}（来自打手转出）',
+            source='order',
+        )
+        total_paid += share
+
+    return total_paid
+
+
 @transaction.atomic
 def complete_order_and_settle(order_id, completed_at=None):
     """原子完成订单、释放打手状态、更新统计并结算佣金。"""
@@ -194,4 +241,5 @@ def complete_order_and_settle(order_id, completed_at=None):
         ])
 
     settlement = settle_order_commission(order)
+    transfer_settled = _settle_transfer_fee(order, members)
     return order, settlement

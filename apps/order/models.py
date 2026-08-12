@@ -78,6 +78,12 @@ class Order(BaseModel):
     cancel_time = models.DateTimeField(null=True, blank=True, verbose_name='取消时间')
     cancel_reason = models.CharField(max_length=500, blank=True, verbose_name='取消原因')
     transfer_reason = models.CharField(max_length=500, blank=True, verbose_name='转单原因')
+    transfer_fee = models.DecimalField(max_digits=10, decimal_places=2, default=0,
+                                       verbose_name='转单费(元)')
+    transfer_from_employee = models.ForeignKey('employee.Employee', on_delete=models.SET_NULL,
+                                               null=True, blank=True,
+                                               related_name='transferred_out_orders',
+                                               verbose_name='转出打手')
     discount_reason = models.CharField(max_length=500, blank=True, verbose_name='免单原因')
     assigner = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, blank=True,
                                  related_name='assigned_orders', verbose_name='派单员')
