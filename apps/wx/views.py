@@ -1244,6 +1244,8 @@ def employee_list(request):
             'game_rank': current_game_rank,
             'game_rank_badge': current_game_rank['badge'],
             'is_online': emp.online_status,
+            'work_status': emp.work_status,
+            'status': emp.status,
             'is_star': emp.is_star,
         })
 
@@ -1363,6 +1365,8 @@ def employee_detail(request, emp_id):
         'comments': comment_list,
         'photos': emp.photos or [],
         'is_online': emp.online_status,
+        'work_status': emp.work_status,
+        'status': emp.status,
     })
 
 
