@@ -141,6 +141,28 @@ class OrderCommissionSettlementTests(TestCase):
         ])
         self.assertEqual(result['commission_total'], Decimal('10.00'))
 
+    def test_coupon_discount_does_not_reduce_employee_commission_base(self):
+        employee = self.create_employee('coupon', Decimal('80.00'))
+        order = self.create_order('SETTLE-ORDER-COUPON', Decimal('70.00'), [employee])
+        order.total_amount = Decimal('100.00')
+        order.discount_amount = Decimal('30.00')
+        order.coupon_discount = Decimal('30.00')
+        order.save(update_fields=['total_amount', 'discount_amount', 'coupon_discount'])
+
+        _, result = complete_order_and_settle(order.id)
+
+        employee.refresh_from_db()
+        member = order.order_members.get(employee=employee)
+        self.assertEqual(result['commission_total'], Decimal('80.00'))
+        self.assertEqual(member.commission_amount, Decimal('80.00'))
+        self.assertEqual(employee.commission_balance, Decimal('80.00'))
+        self.assertEqual(
+            Transaction.objects.get(
+                order_no=order.order_no, employee=employee, category='platform_commission'
+            ).amount,
+            Decimal('20.00'),
+        )
+
     def test_admin_complete_endpoint_also_settles_commission(self):
         employee = self.create_employee('admin', Decimal('70.00'))
         order = self.create_order('SETTLE-ORDER-003', Decimal('50.00'), [employee])

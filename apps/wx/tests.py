@@ -195,6 +195,33 @@ class SelfServiceCouponCheckoutTests(TestCase):
         self.assertEqual(detail['data']['pay_amount'], 70.0)
         self.assertEqual(detail['data']['self_service_snapshot']['total_coins'], 700)
 
+    def test_selected_dasher_member_amount_uses_pre_coupon_total(self):
+        coupon = Coupon.objects.create(name='七折券', discount_rate=Decimal('70.00'))
+        user_coupon = UserCoupon.objects.create(customer=self.customer, coupon=coupon)
+        dasher_user = User.objects.create_user(username='coupon_selected_dasher')
+        dasher = Employee.objects.create(
+            user=dasher_user, employee_no='COUPON-DASHER-001',
+            real_name='优惠券打手', nickname='优惠券打手',
+            status='idle', online_status=True,
+        )
+
+        created = self.client.post('/api/wx/orders/create-self-service/', {
+            'gameplay_id': self.gameplay.id,
+            'preset_item_id': self.preset.id,
+            'quantity': 1,
+            'coupon_id': user_coupon.id,
+        }, format='json').json()
+        order = Order.objects.get(id=created['data']['order_id'])
+        OrderCandidate.objects.create(order=order, employee=dasher)
+
+        selected = self.client.post('/api/wx/orders/{}/select-candidate/'.format(order.id), {
+            'candidate_id': OrderCandidate.objects.get(order=order, employee=dasher).id,
+        }, format='json').json()
+
+        self.assertEqual(selected['code'], 200)
+        member = OrderMember.objects.get(order=order, employee=dasher)
+        self.assertEqual(member.amount, Decimal('50.00'))
+
 
 class OfficialAnnouncementTests(TestCase):
     def setUp(self):
@@ -566,10 +593,10 @@ class MultiPersonOrderFlowTests(TestCase):
         customer_end = self.post_as(self.customer_user, f'/api/wx/orders/{order.id}/end/')
         self.assertNotEqual(customer_end['code'], 200)
 
-        non_leader_complete = self.post_as(self.member.user, f'/api/wx/orders/{order.id}/complete/')
-        self.assertNotEqual(non_leader_complete['code'], 200)
+        member_detail = self.get_as(self.member.user, f'/api/wx/orders/{order.id}/')
+        self.assertTrue(member_detail['data']['can_complete'])
 
-        ended = self.post_as(self.leader.user, f'/api/wx/orders/{order.id}/complete/')
+        ended = self.post_as(self.member.user, f'/api/wx/orders/{order.id}/complete/')
         self.assertEqual(ended['code'], 200)
         order.refresh_from_db()
         self.assertEqual(order.status, 'completed')
