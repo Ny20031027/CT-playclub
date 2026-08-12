@@ -1747,6 +1747,20 @@ def create_self_service_order(request):
         coin_cost = unit_coin_cost * purchase_quantity_int
         total_price = (preset_price * purchase_quantity).quantize(Decimal('0.01'))
         charged_amount = (Decimal(coin_cost) / Decimal('10')).quantize(Decimal('0.01'))
+
+        # 优惠券处理：抵扣黑钻
+        coupon_id = request.data.get('coupon_id')
+        coupon_discount = Decimal('0')
+        if coupon_id:
+            ok, coupon_msg, coupon_discount = _apply_coupon(total_price, coupon_id, user)
+            if not ok:
+                return error_response(msg=coupon_msg)
+            discount_coins = int(
+                (coupon_discount * Decimal('10')).quantize(Decimal('1'), rounding=ROUND_HALF_UP)
+            )
+            coin_cost = max(0, coin_cost - discount_coins)
+            charged_amount = (Decimal(coin_cost) / Decimal('10')).quantize(Decimal('0.01'))
+
         if customer.coins_frozen:
             return error_response(msg='黑钻已被冻结，无法下单', code=403)
         if coin_cost > 0 and (customer.coins or 0) < coin_cost:
@@ -1793,6 +1807,8 @@ def create_self_service_order(request):
             self_service_snapshot=snapshot,
             unit_price=preset_price,
             total_amount=total_price,
+            discount_amount=coupon_discount,
+            coupon_discount=coupon_discount,
             pay_amount=charged_amount,
             game_id=str(skill.game_category_id or ''),
             game_name=game_name,
@@ -1842,6 +1858,12 @@ def create_self_service_order(request):
                 remark=f'预制单扣减 {coin_cost}黑钻',
                 operator=request.user,
             )
+        # 使用优惠券后标记为已使用
+        if coupon_id and coupon_discount > 0:
+            from apps.system.models import UserCoupon
+            UserCoupon.objects.filter(
+                id=coupon_id, customer=customer, status='unused'
+            ).update(status='used', used_at=timezone.now(), used_order_no=order_no)
         _mark_preorder_used(checkout_preorder)
         return success_response({
             'order_id': order.id,
@@ -2067,6 +2089,20 @@ def create_self_service_order(request):
         (total_amount * Decimal('10')).quantize(Decimal('1'), rounding=ROUND_HALF_UP)
     )
     charged_amount = (Decimal(coin_cost) / Decimal('10')).quantize(Decimal('0.01'))
+
+    # 优惠券处理：抵扣黑钻
+    coupon_id = request.data.get('coupon_id')
+    coupon_discount = Decimal('0')
+    if coupon_id:
+        ok, coupon_msg, coupon_discount = _apply_coupon(total_amount, coupon_id, user)
+        if not ok:
+            return error_response(msg=coupon_msg)
+        discount_coins = int(
+            (coupon_discount * Decimal('10')).quantize(Decimal('1'), rounding=ROUND_HALF_UP)
+        )
+        coin_cost = max(0, coin_cost - discount_coins)
+        charged_amount = (Decimal(coin_cost) / Decimal('10')).quantize(Decimal('0.01'))
+
     people_count = 2 if companion_type == 'double' else 1
     duration = int(purchase_quantity * 60) if gameplay.settlement_unit == 'hour' else 0
     game_name = skill.game_category.name if skill.game_category else skill.name
@@ -2132,6 +2168,8 @@ def create_self_service_order(request):
         self_service_snapshot=snapshot,
         unit_price=unit_price,
         total_amount=total_amount,
+        discount_amount=coupon_discount,
+        coupon_discount=coupon_discount,
         pay_amount=charged_amount,
         game_id=str(skill.game_category_id or ''),
         game_name=game_name,
@@ -2187,6 +2225,13 @@ def create_self_service_order(request):
             remark=f'自助下单扣减 {coin_cost}黑钻',
             operator=request.user if hasattr(request, 'user') else None,
         )
+
+    # 使用优惠券后标记为已使用
+    if coupon_id and coupon_discount > 0:
+        from apps.system.models import UserCoupon
+        UserCoupon.objects.filter(
+            id=coupon_id, customer=customer, status='unused'
+        ).update(status='used', used_at=timezone.now(), used_order_no=order_no)
 
     _mark_preorder_used(checkout_preorder)
     return success_response({
