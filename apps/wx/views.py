@@ -2472,6 +2472,7 @@ def order_detail(request, order_id):
             'unit_price': float(m.unit_price),
             'duration': m.duration,
             'amount': float(m.amount),
+            'commission_amount': float(m.commission_amount),
             'slots': slots,
             'status': m.status,
             'status_display': m.get_status_display(),
@@ -2601,6 +2602,7 @@ def order_detail(request, order_id):
             'id': my_booking.id,
             'slots': my_booking_slots,
             'amount': float(my_booking.amount) if my_booking else 0,
+            'commission_amount': float(my_booking.commission_amount) if my_booking else 0,
         } if my_booking else None,
         'created_at': order.created_at.strftime('%Y-%m-%d %H:%M'),
         'pay_time': order.pay_time.strftime('%Y-%m-%d %H:%M') if order.pay_time else None,
@@ -6527,3 +6529,68 @@ def preorder_qrcode(request, po_id):
         # 不输出包含 access_token / app secret 的完整请求 URL 或堆栈。
         logger.warning('生成预下单小程序码失败: %s', type(exc).__name__)
         return error_response(msg='生成小程序码失败，请稍后重试')
+
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def dasher_income(request):
+    """打手收入明细 — 返回该打手所有订单佣金收入流水"""
+    user = request.user
+    employee = user.get_active_employee()
+    if not employee:
+        return error_response(msg='您不是打手')
+
+    page = int(request.GET.get('page', 1))
+    page_size = int(request.GET.get('page_size', 20))
+
+    from apps.finance.models import Transaction
+
+    queryset = Transaction.objects.filter(
+        employee=employee,
+        category='order_settle',
+        type='income',
+    ).order_by('-created_at')
+
+    total = queryset.count()
+    total_income = queryset.aggregate(total=Sum('amount'))['total'] or Decimal('0')
+
+    start = (page - 1) * page_size
+    transactions = queryset[start:start + page_size]
+
+    records = []
+    for tx in transactions:
+        # 尝试获取关联订单的基本信息
+        order_info = {}
+        try:
+            order = Order.objects.filter(order_no=tx.order_no, is_deleted=False).first()
+            if order:
+                order_info = {
+                    'order_id': order.id,
+                    'game_name': order.game_name or '',
+                    'skill_name': order.skill.name if order.skill else '',
+                    'status': order.status,
+                    'status_display': order.get_status_display(),
+                    'completed_at': order.complete_time.strftime('%Y-%m-%d %H:%M') if order.complete_time else '',
+                }
+        except Exception:
+            pass
+
+        records.append({
+            'id': tx.id,
+            'transaction_no': tx.transaction_no,
+            'order_no': tx.order_no,
+            'amount': float(tx.amount),
+            'balance_after': float(tx.balance_after),
+            'remark': tx.remark or '',
+            'created_at': tx.created_at.strftime('%Y-%m-%d %H:%M'),
+            'order_info': order_info if order_info else None,
+        })
+
+    return success_response({
+        'total': total,
+        'page': page,
+        'page_size': page_size,
+        'total_income': float(total_income),
+        'commission_balance': float(employee.commission_balance),
+        'list': records,
+    })

@@ -100,6 +100,7 @@ urlpatterns = [
 
     # 打手数据看板
     path('dasher/dashboard/', views.dasher_dashboard, name='wx-dasher-dashboard'),
+    path('dasher/income/', views.dasher_income, name='wx-dasher-income'),
     path('work-status/toggle/', views.toggle_work_status, name='wx-toggle-work-status'),
 
     # 照片墙
