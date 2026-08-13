@@ -211,9 +211,101 @@
               subtitle="用户最终购买的服务内容，例如技术猛攻单"
               :rows="activeGameplay.services"
               show-description
-              @add="addOption(activeGameplay.services, true)"
+              @add="addServiceOption(activeGameplay.services)"
               @remove="removeOption(activeGameplay.services, $event)"
             />
+
+            <section class="config-section">
+              <div class="section-heading">
+                <div><h3>加购服务</h3><p>显示在小程序“加购服务”，可为每个按钮配置小字说明。</p></div>
+                <el-button type="primary" plain :icon="Plus" @click="addAddon(activeGameplay.value_added_services)">添加加购服务</el-button>
+              </div>
+              <el-table :data="activeGameplay.value_added_services" empty-text="暂无加购服务">
+                <el-table-column label="名称" min-width="150">
+                  <template #default="{ row }"><el-input v-model="row.name" placeholder="如：大坝" /></template>
+                </el-table-column>
+                <el-table-column label="小字描述" min-width="240">
+                  <template #default="{ row }"><el-input v-model="row.description" placeholder="显示在按钮名称下方，如：地图" maxlength="200" /></template>
+                </el-table-column>
+                <el-table-column label="单价（元）" width="150">
+                  <template #default="{ row }"><el-input-number v-model="row.price" :min="0" :precision="2" /></template>
+                </el-table-column>
+                <el-table-column label="排序" width="110">
+                  <template #default="{ row }"><el-input-number v-model="row.sort" :min="0" :precision="0" /></template>
+                </el-table-column>
+                <el-table-column label="启用" width="80">
+                  <template #default="{ row }"><el-switch v-model="row.status" /></template>
+                </el-table-column>
+                <el-table-column label="操作" width="80">
+                  <template #default="{ $index }"><el-button type="danger" link @click="removeOption(activeGameplay.value_added_services, $index)">删除</el-button></template>
+                </el-table-column>
+                <el-table-column type="expand" width="42">
+                  <template #default="{ row }">
+                    <div class="nested-editor">
+                      <div class="nested-heading">
+                        <span>{{ row.name || '该加购服务' }}·更多选项</span>
+                        <el-button type="primary" link :icon="Plus" @click="addValueAdded(row.value_added_services)">添加选项</el-button>
+                      </div>
+                      <el-table :data="row.value_added_services" size="small" empty-text="暂无子选项">
+                        <el-table-column label="名称" min-width="140">
+                          <template #default="{ row: value }"><el-input v-model="value.name" placeholder="如：普通" /></template>
+                        </el-table-column>
+                        <el-table-column label="小字描述" min-width="220">
+                          <template #default="{ row: value }"><el-input v-model="value.description" placeholder="显示在按钮名称下方，如：难度" maxlength="200" /></template>
+                        </el-table-column>
+                        <el-table-column label="单价（元）" width="150">
+                          <template #default="{ row: value }"><el-input-number v-model="value.price" :min="0" :precision="2" /></template>
+                        </el-table-column>
+                        <el-table-column label="排序" width="110">
+                          <template #default="{ row: value }"><el-input-number v-model="value.sort" :min="0" :precision="0" /></template>
+                        </el-table-column>
+                        <el-table-column label="启用" width="80">
+                          <template #default="{ row: value }"><el-switch v-model="value.status" /></template>
+                        </el-table-column>
+                        <el-table-column label="操作" width="80">
+                          <template #default="{ $index }"><el-button type="danger" link @click="removeOption(row.value_added_services, $index)">删除</el-button></template>
+                        </el-table-column>
+                      </el-table>
+                    </div>
+                  </template>
+                </el-table-column>
+              </el-table>
+            </section>
+
+            <section class="config-section">
+              <div class="section-heading">
+                <div><h3>更多服务</h3><p>每个服务选项下独立配置，显示在小程序“更多服务”，支持自定义小字描述。</p></div>
+              </div>
+              <el-empty v-if="!activeGameplay.services.length" description="请先添加服务选项" :image-size="70" />
+              <div v-else class="service-value-list">
+                <div v-for="service in activeGameplay.services" :key="service._key" class="service-value-card">
+                  <div class="nested-heading">
+                    <span>{{ service.name || '未命名服务' }}</span>
+                    <el-button type="primary" link :icon="Plus" @click="addValueAdded(service.value_added_services)">添加更多服务</el-button>
+                  </div>
+                  <el-table :data="service.value_added_services" size="small" empty-text="暂无更多服务">
+                    <el-table-column label="名称" min-width="140">
+                      <template #default="{ row }"><el-input v-model="row.name" placeholder="如：甜甜蜜蜜" /></template>
+                    </el-table-column>
+                    <el-table-column label="小字描述" min-width="240">
+                      <template #default="{ row }"><el-input v-model="row.description" placeholder="显示在按钮名称下方，如：全场甜蜜，腻到你发昏" maxlength="200" /></template>
+                    </el-table-column>
+                    <el-table-column label="单价（元）" width="150">
+                      <template #default="{ row }"><el-input-number v-model="row.price" :min="0" :precision="2" /></template>
+                    </el-table-column>
+                    <el-table-column label="排序" width="110">
+                      <template #default="{ row }"><el-input-number v-model="row.sort" :min="0" :precision="0" /></template>
+                    </el-table-column>
+                    <el-table-column label="启用" width="80">
+                      <template #default="{ row }"><el-switch v-model="row.status" /></template>
+                    </el-table-column>
+                    <el-table-column label="操作" width="80">
+                      <template #default="{ $index }"><el-button type="danger" link @click="removeOption(service.value_added_services, $index)">删除</el-button></template>
+                    </el-table-column>
+                  </el-table>
+                </div>
+              </div>
+            </section>
 
             <section class="config-section">
               <div class="section-heading">
@@ -300,13 +392,15 @@ import { createSkillApi, deleteSkillApi, getSkillListApi, updateSkillApi } from 
 
 const makeKey = () => `${Date.now()}-${Math.random().toString(16).slice(2)}`
 const optionRow = (description = false) => ({ _key: makeKey(), name: '', description: description ? '' : undefined, price_delta: 0, sort: 0, status: true })
+const serviceRow = () => ({ ...optionRow(true), value_added_services: [] })
+const valueAddedRow = () => ({ _key: makeKey(), name: '', description: '', price: 0, sort: 0, status: true })
 const newGameplay = () => ({
   _key: makeKey(), name: '', description: '', difficulty_enabled: false,
   gender_limit: 'unlimited', male_price_delta: 0, female_price_delta: 0,
   companion_mode: 'single', settlement_unit: 'hour',
   min_quantity: 0.5, quantity_step: 0.5, base_price: 0, remark_required: false,
   sort: 0, status: true, difficulties: [], levels: [optionRow(true)],
-  services: [optionRow(true)], price_rules: []
+  services: [serviceRow()], value_added_services: [], price_rules: []
 })
 const emptyForm = () => ({
   name: '', category: '', unit_price: 0, sort: 0, status: true, skill_type: 'primary',
@@ -316,6 +410,8 @@ const emptyForm = () => ({
 })
 const clean = (value) => JSON.parse(JSON.stringify(value, (key, item) => key === '_key' ? undefined : item))
 const normalizeRow = (row, description = false) => ({ ...row, _key: makeKey(), description: description ? (row.description || '') : undefined, price_delta: Number(row.price_delta || 0) })
+const normalizeValueAdded = row => ({ ...valueAddedRow(), ...row, _key: makeKey(), description: row?.description || '', price: Number(row?.price || 0), sort: Number(row?.sort || 0), status: row?.status !== false })
+const normalizeServiceRow = row => ({ ...normalizeRow(row, true), value_added_services: (row?.value_added_services || []).map(normalizeValueAdded) })
 const normalizeGameplay = (row) => ({
   ...newGameplay(), ...row,
   gender_limit: ({ male: 'male_only', female: 'female_only' })[row.gender_limit] || row.gender_limit || 'unlimited',
@@ -324,7 +420,11 @@ const normalizeGameplay = (row) => ({
   quantity_step: Number(row.quantity_step || 0), base_price: Number(row.base_price || 0),
   difficulties: (row.difficulties || []).map(item => normalizeRow(item)),
   levels: (row.levels || []).map(item => normalizeRow(item, true)),
-  services: (row.services || []).map(item => normalizeRow(item, true)),
+  services: (row.services || []).map(normalizeServiceRow),
+  value_added_services: (row.value_added_services || []).map(item => ({
+    ...normalizeValueAdded(item),
+    value_added_services: (item.value_added_services || []).map(normalizeValueAdded)
+  })),
   price_rules: (row.price_rules || []).map(item => ({ ...item, gender_requirement: item.gender_requirement || 'any', _key: makeKey(), unit_price: Number(item.unit_price || 0) }))
 })
 
@@ -417,6 +517,9 @@ const deleteGameplay = async index => {
   form.gameplays.splice(index, 1); activeGameplayIndex.value = Math.max(0, Math.min(index, form.gameplays.length - 1))
 }
 const addOption = (rows, description = false) => rows.push(optionRow(description))
+const addServiceOption = rows => rows.push(serviceRow())
+const addAddon = rows => rows.push({ ...valueAddedRow(), value_added_services: [] })
+const addValueAdded = rows => rows.push(valueAddedRow())
 const removeOption = (rows, index) => rows.splice(index, 1)
 const toggleDifficulty = gameplay => { if (!gameplay.difficulty_enabled) { gameplay.difficulties = []; gameplay.price_rules.forEach(item => item.difficulty_name = '') } else if (!gameplay.difficulties.length) gameplay.difficulties.push(optionRow()) }
 const normalizeSettlement = gameplay => { if (gameplay.settlement_unit === 'hour') { gameplay.min_quantity = Math.max(0.5, Number(gameplay.min_quantity || 0.5)); gameplay.quantity_step = 0.5 } else { gameplay.min_quantity = Math.max(1, Math.ceil(Number(gameplay.min_quantity || 1))); gameplay.quantity_step = 1 } }
@@ -445,6 +548,10 @@ onMounted(loadData)
 .catalog-card { border-radius: 16px; border: 0; }.toolbar { display: flex; gap: 12px; margin-bottom: 18px; }.search-input { width: 320px; }.skill-cell { display: flex; gap: 12px; align-items: center; }.skill-cell div:last-child { display: flex; flex-direction: column; gap: 4px; }.skill-cell span { color: #8790a1; font-size: 12px; }.skill-avatar { width: 42px; height: 42px; display: grid; place-items: center; border-radius: 12px; color: #176e61; background: #dcf4ed; font-weight: 800; }
 .drawer-shell { max-width: 1440px; margin: 0 auto; }.steps { margin: 0 0 26px; padding: 0 10%; }.step-panel { min-height: calc(100vh - 230px); }.basic-panel { max-width: 940px; margin: auto; }.basic-form { padding: 28px; border: 1px solid #e5eaf1; border-radius: 16px; background: #fff; }.form-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0 20px; }.form-grid.three { grid-template-columns: 1.3fr 1fr 1fr; }.form-grid.four { grid-template-columns: repeat(4, minmax(0, 1fr)); }.switch-row { display: flex; align-items: center; justify-content: space-between; padding: 17px 0; border-top: 1px solid #edf0f5; }.switch-row div { display: flex; flex-direction: column; gap: 4px; }.switch-row span { font-size: 12px; color: #9098a8; }
 .gameplay-layout { display: grid; grid-template-columns: 230px minmax(0, 1fr); gap: 18px; }.gameplay-sidebar { align-self: start; position: sticky; top: 0; padding: 14px; border: 1px solid #e5eaf1; border-radius: 14px; background: #f8fafc; }.side-title { display: flex; justify-content: space-between; align-items: center; padding: 4px 6px 12px; font-weight: 700; }.gameplay-nav { width: 100%; display: flex; justify-content: space-between; align-items: center; gap: 8px; margin-bottom: 8px; padding: 13px 11px; text-align: left; border: 1px solid transparent; border-radius: 10px; background: transparent; cursor: pointer; }.gameplay-nav:hover,.gameplay-nav.active { border-color: #9bd8ca; background: #e8f7f3; }.gameplay-nav span { min-width: 0; display: flex; flex-direction: column; gap: 4px; }.gameplay-nav b { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }.gameplay-nav small { color: #7d8798; }.gameplay-editor { min-width: 0; }.editor-heading { display: flex; justify-content: space-between; align-items: center; margin-bottom: 14px; padding: 18px 22px; border-radius: 14px; color: white; background: linear-gradient(120deg, #203753, #2d766b); }.editor-heading > div { display: flex; align-items: center; gap: 12px; }.editor-heading h2 { margin: 0; }.index-badge { width: 30px; height: 30px; display: grid; place-items: center; border-radius: 9px; background: rgba(255,255,255,.16); }.settlement-box { padding: 16px 18px 0; border-radius: 12px; background: #f5f8fb; }.switches-inline { display: flex; gap: 28px; margin: 4px 0 18px; }.config-section { margin-top: 14px; padding: 18px; border: 1px solid #e5eaf1; border-radius: 14px; background: #fff; }.section-heading { display: flex; justify-content: space-between; align-items: center; margin-bottom: 14px; }.section-heading h3 { margin: 0 0 4px; }.section-heading p { margin: 0; color: #8a93a3; font-size: 12px; }.editor-empty { border: 1px dashed #d9dfe8; border-radius: 14px; }
+.nested-editor { padding: 8px 14px 16px 46px; background: #f8fafc; }
+.nested-heading { display: flex; align-items: center; justify-content: space-between; margin-bottom: 10px; font-weight: 700; color: #243047; }
+.service-value-list { display: grid; gap: 14px; }
+.service-value-card { padding: 14px; border: 1px solid #edf0f5; border-radius: 12px; background: #fbfcfe; }
 .preview-layout { display: grid; grid-template-columns: minmax(420px, 1fr) 390px; gap: 50px; max-width: 1050px; margin: 0 auto; }.validation-card { align-self: start; padding: 28px; border-radius: 16px; background: white; border: 1px solid #e5eaf1; }.validation-card h2 { margin-top: 0; }.check-row { display: grid; grid-template-columns: 24px 1fr auto; gap: 10px; align-items: center; padding: 14px 0; border-bottom: 1px solid #edf0f4; }.check-row.ok { color: #1c806b; }.check-row.error { color: #d95050; }.check-row b { font-size: 12px; }.validation-card .el-alert { margin-top: 20px; }.phone-preview { height: 700px; display: flex; flex-direction: column; overflow: hidden; border: 10px solid #172033; border-radius: 36px; background: #f7f8fb; box-shadow: 0 24px 60px rgba(25, 39, 59, .22); }.phone-top { display: flex; justify-content: space-between; padding: 20px 18px 14px; background: white; }.preview-body { flex: 1; overflow: auto; padding: 16px; }.preview-body h2 { margin: 0 0 18px; }.preview-group { display: grid; grid-template-columns: 58px 1fr; gap: 8px; margin-bottom: 15px; }.preview-group > div { display: flex; flex-wrap: wrap; gap: 7px; }.preview-group span { padding: 7px 12px; border-radius: 16px; background: #eff1f5; color: #8e96a5; font-size: 12px; }.preview-group span.active { background: #eae5ff; color: #6542c5; }.quantity-row { display: flex; align-items: center; gap: 12px; margin: 18px 0; }.quantity-row > span { width: 46px; font-weight: 700; }.quantity-row div { padding: 6px 12px; border-radius: 16px; background: #eef0f4; }.quantity-row em { font-style: normal; }.preview-note { min-height: 70px; padding: 12px; border-radius: 10px; color: #a0a6b1; background: #eef0f4; }.preview-submit { display: flex; align-items: center; justify-content: space-between; padding: 12px 16px 18px; background: white; }.preview-submit span { color: #eb714c; font-weight: 800; }.preview-submit button { padding: 12px 28px; border: 0; border-radius: 22px; color: white; background: linear-gradient(100deg,#7553e8,#8a49d9); font-weight: 700; }.drawer-footer { display: flex; justify-content: space-between; width: 100%; }
 @media (max-width: 1100px) { .metrics-grid { grid-template-columns: repeat(2, 1fr); }.form-grid.four { grid-template-columns: repeat(2, 1fr); }.preview-layout { grid-template-columns: 1fr; }.phone-preview { width: 380px; margin: auto; } }
 @media (max-width: 760px) { .hero-panel { align-items: flex-start; gap: 20px; flex-direction: column; }.metrics-grid { grid-template-columns: 1fr; }.toolbar { flex-wrap: wrap; }.search-input { width: 100%; }.gameplay-layout { grid-template-columns: 1fr; }.gameplay-sidebar { position: static; }.form-grid,.form-grid.three,.form-grid.four { grid-template-columns: 1fr; }.switches-inline { align-items: flex-start; flex-direction: column; gap: 8px; } }
