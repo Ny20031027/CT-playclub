@@ -3628,6 +3628,26 @@ def _is_cs_user(user):
         return False
 
 
+def _get_active_cs_profile(user):
+    try:
+        from apps.customer.models import CustomerService
+        return CustomerService.objects.select_related('customer', 'customer__user').get(
+            customer__user=user,
+            is_deleted=False,
+        )
+    except Exception:
+        return None
+
+
+def _require_cs_on_duty(user):
+    cs = _get_active_cs_profile(user)
+    if not cs:
+        return None, error_response(msg='您不是客服')
+    if cs.work_status != 'on_duty':
+        return cs, error_response(msg='当前为下班状态，请先上班后再操作')
+    return cs, None
+
+
 def _get_default_quick_welcome_message():
     try:
         from apps.system.models import Config
@@ -4400,13 +4420,12 @@ def get_cs_unread_count(request):
 @permission_classes([IsAuthenticated])
 def get_cs_chat_list(request):
     """获取客服工单聊天列表"""
-    from apps.customer.models import CSMessage, CustomerService, CustomerServiceConversation
+    from apps.customer.models import CSMessage, CustomerServiceConversation
 
     user = request.user
-    try:
-        cs = CustomerService.objects.get(customer__user=user)
-    except CustomerService.DoesNotExist:
-        return error_response(msg='您不是客服')
+    cs, duty_error = _require_cs_on_duty(user)
+    if duty_error:
+        return duty_error
 
     has_ticket_column = _cs_message_has_ticket_column()
 
@@ -4495,6 +4514,10 @@ def get_cs_chat_messages(request):
     """获取客服聊天消息"""
     from apps.customer.models import CSMessage, Customer
 
+    _, duty_error = _require_cs_on_duty(request.user)
+    if duty_error:
+        return duty_error
+
     customer_id = request.GET.get('customer_id')
     ticket_id = request.GET.get('ticket_id')
     conversation_id = request.GET.get('conversation_id')
@@ -4546,11 +4569,10 @@ def get_cs_chat_messages(request):
 @permission_classes([IsAuthenticated])
 def claim_human_service(request, conversation_id):
     """客服原子接入会话；已有处理人时禁止其他客服抢占。"""
-    from apps.customer.models import CustomerService, CustomerServiceConversation, CSMessage
-    try:
-        CustomerService.objects.get(customer__user=request.user, is_deleted=False)
-    except CustomerService.DoesNotExist:
-        return error_response(msg='您不是客服')
+    from apps.customer.models import CustomerServiceConversation, CSMessage
+    _, duty_error = _require_cs_on_duty(request.user)
+    if duty_error:
+        return duty_error
 
     with transaction.atomic():
         try:
@@ -4604,17 +4626,16 @@ def _get_ticket_order_brief(ticket_id):
 @permission_classes([IsAuthenticated])
 def send_cs_reply(request):
     """客服回复消息"""
-    from apps.customer.models import CSMessage, Customer, CustomerService
+    from apps.customer.models import CSMessage, Customer
 
     user = request.user
     logger.info(f'客服回复消息: user_id={user.id}')
 
-    try:
-        cs = CustomerService.objects.get(customer__user=user)
-        logger.info(f'找到客服记录: cs_id={cs.id}')
-    except CustomerService.DoesNotExist:
-        logger.error(f'用户{user.id}不是客服')
-        return error_response(msg='您不是客服')
+    cs, duty_error = _require_cs_on_duty(user)
+    if duty_error:
+        logger.error(f'用户{user.id}客服下班或无权限')
+        return duty_error
+    logger.info(f'找到客服记录: cs_id={cs.id}')
 
     customer_id = request.data.get('customer_id')
     content = request.data.get('content', '')
@@ -5674,6 +5695,10 @@ def my_tickets(request):
 @permission_classes([IsAuthenticated])
 def cs_ticket_list(request):
     """??????????"""
+    _, duty_error = _require_cs_on_duty(request.user)
+    if duty_error:
+        return duty_error
+
     status = request.GET.get('status', '')
     keyword = request.GET.get('keyword', '')
 
@@ -5729,6 +5754,10 @@ def cs_ticket_list(request):
 @permission_classes([IsAuthenticated])
 def cs_close_ticket(request, ticket_id):
     """客服关闭工单"""
+    _, duty_error = _require_cs_on_duty(request.user)
+    if duty_error:
+        return duty_error
+
     try:
         ticket = SupportTicket.objects.get(id=ticket_id, is_deleted=False)
     except SupportTicket.DoesNotExist:
@@ -5758,15 +5787,12 @@ def cs_cancel_order(request, ticket_id):
     - 取消后订单状态变为"已取消"，工单自动关闭
     - 通知客户
     """
-    from apps.customer.models import CustomerService
-
     user = request.user
 
     # 校验客服身份
-    try:
-        cs = CustomerService.objects.get(customer__user=user)
-    except CustomerService.DoesNotExist:
-        return error_response(msg='您不是客服')
+    _, duty_error = _require_cs_on_duty(user)
+    if duty_error:
+        return duty_error
 
     # 获取工单
     try:
@@ -6250,13 +6276,14 @@ def toggle_work_status(request):
     elif customer_obj and customer_obj.cs_profile and not customer_obj.cs_profile.is_deleted:
         cs = customer_obj.cs_profile
         cs.work_status = new_status
-        cs.save(update_fields=['work_status', 'updated_at'])
+        cs.status = 'online' if new_status == 'on_duty' else 'offline'
+        cs.save(update_fields=['work_status', 'status', 'updated_at'])
 
         # 记录客服打卡
         from apps.customer.models import CSAttendance
         punch_type = 'clock_in' if new_status == 'on_duty' else 'clock_out'
         CSAttendance.objects.create(
-            cs_profile=cs,
+            cs=cs,
             punch_type=punch_type,
             punch_time=timezone.now(),
             location=request.data.get('location') or '',
@@ -6850,8 +6877,9 @@ def _wechat_https_request(session, method, url, **kwargs):
 @permission_classes([IsAuthenticated])
 def preorder_create(request):
     """客服创建预下单"""
-    if not _is_customer_service(request.user):
-        return error_response(msg='仅客服可以创建预下单')
+    _, duty_error = _require_cs_on_duty(request.user)
+    if duty_error:
+        return duty_error
     selections = request.data.get('selections', {})
     if not isinstance(selections, dict) or not selections.get('gameplay_id'):
         return error_response(msg='请选择下单选项')
