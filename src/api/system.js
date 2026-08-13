@@ -4,6 +4,7 @@ export const getConfigListApi = (params) => request.get('/system/configs/', { pa
 export const createConfigApi = (data) => request.post('/system/configs/', data)
 export const updateConfigApi = (id, data) => request.put(`/system/configs/${id}/`, data)
 export const deleteConfigApi = (id) => request.delete(`/system/configs/${id}/`)
+export const batchUpdateConfigApi = (items) => request.post('/system/configs/batch-update/', { items })
 
 export const getDictionaryListApi = (params) => request.get('/system/dictionaries/', { params })
 export const createDictionaryApi = (data) => request.post('/system/dictionaries/', data)

@@ -291,7 +291,7 @@ class EmployeeSerializer(serializers.ModelSerializer):
                   'id_card_verified', 'department', 'department_name', 'level', 'level_num', 'status',
                   'assessment_mode', 'online_status', 'work_status', 'skills', 'game_category_ids',
                   'game_categories_list', 'tags', 'tag_names', 'skill_list',
-                  'intro', 'voice_intro', 'voice_intro_url', 'voice_duration', 'rating', 'order_count', 'total_duration', 'fans_count',
+                  'intro', 'quick_welcome_message', 'quick_welcome_messages', 'voice_intro', 'voice_intro_url', 'voice_duration', 'rating', 'order_count', 'total_duration', 'fans_count',
                   'commission_balance', 'commission_frozen', 'platform_commission_rate', 'join_date',
                   'bank_name', 'bank_card', 'alipay', 'wechat', 'qq', 'sort', 'remark',
                   'is_star', 'star_sort', 'user_banned', 'ban_detail',

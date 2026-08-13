@@ -58,6 +58,8 @@ def _build_profile_payload(user, related, nickname=None, request=None):
             'status': 'busy' if has_in_progress else 'idle',
             'level_num': employee.level_num,
             'intro': employee.intro or '',
+            'quick_welcome_message': employee.quick_welcome_message or '',
+            'quick_welcome_messages': employee.quick_welcome_messages or [],
             'voice_intro': build_media_url(employee.voice_intro, request) if employee.voice_intro else '',
             'voice_duration': employee.voice_duration or 0,
             'commission_balance': float(employee.commission_balance),
@@ -79,6 +81,8 @@ def _build_profile_payload(user, related, nickname=None, request=None):
             'status': 'idle',
             'level_num': 0,
             'intro': '',
+            'quick_welcome_message': '',
+            'quick_welcome_messages': [],
             'commission_balance': 0,
             'tags': [],
         })

@@ -43,6 +43,15 @@
           </div>
         </div>
         <el-divider />
+        <div class="welcome-section">
+          <h3>打手默认快捷欢迎语</h3>
+          <p class="section-desc">打手未设置个人快捷欢迎语时，订单群一键发送此默认文案</p>
+          <el-input v-model="dasherQuickWelcomeText" type="textarea" :rows="3" placeholder="请输入打手默认快捷欢迎语" maxlength="300" show-word-limit />
+          <div style="margin-top: 10px;">
+            <el-button type="primary" @click="saveDasherQuickWelcome">保存默认快捷信息</el-button>
+          </div>
+        </div>
+        <el-divider />
         <div class="keyword-section">
           <h3>关键词自动回复</h3>
           <p class="section-desc">当客户消息包含指定关键词时，系统自动回复预设内容</p>
@@ -142,7 +151,7 @@
 <script setup>
 import { ref, reactive, onMounted } from 'vue'
 import { ElMessage } from 'element-plus'
-import { getConfigListApi, createConfigApi, updateConfigApi, deleteConfigApi } from '@/api/system'
+import { getConfigListApi, createConfigApi, updateConfigApi, deleteConfigApi, batchUpdateConfigApi } from '@/api/system'
 import { getDictionaryListApi, createDictionaryApi, updateDictionaryApi, deleteDictionaryApi } from '@/api/system'
 import { getOperationLogApi, getErrorLogApi } from '@/api/system'
 import { getCsWelcomeApi, saveCsWelcomeApi, updateCsWelcomeApi } from '@/api/system'
@@ -163,6 +172,7 @@ const isEdit = ref(false)
 const formRef = ref(null)
 
 const form = reactive({ id: null, key: '', value: '', description: '' })
+const dasherQuickWelcomeText = ref('')
 
 // 欢迎语相关
 const welcomeForm = reactive({ id: null, welcome_text: '', is_enabled: true })
@@ -174,7 +184,12 @@ const isKeywordEdit = ref(false)
 const keywordForm = reactive({ id: null, keyword: '', reply_text: '', match_type: 'contains', sort: 0, is_enabled: true })
 
 const loadConfig = async () => {
-  try { const res = await getConfigListApi(); configList.value = res.data.results || [] }
+  try {
+    const res = await getConfigListApi()
+    configList.value = res.data.results || []
+    const quick = configList.value.find(item => item.key === 'dasher_default_quick_welcome_message')
+    dasherQuickWelcomeText.value = quick ? (quick.value || '') : ''
+  }
   catch (error) { console.error('获取配置失败', error) }
 }
 
@@ -224,6 +239,16 @@ const saveWelcome = async () => {
       }
     }
     ElMessage.success('保存成功')
+  } catch (error) { ElMessage.error('保存失败') }
+}
+
+const saveDasherQuickWelcome = async () => {
+  try {
+    await batchUpdateConfigApi({
+      dasher_default_quick_welcome_message: dasherQuickWelcomeText.value || '',
+    })
+    ElMessage.success('保存成功')
+    loadConfig()
   } catch (error) { ElMessage.error('保存失败') }
 }
 

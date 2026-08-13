@@ -73,10 +73,12 @@ urlpatterns = [
     path('cs/reply/', views.send_cs_reply, name='wx-cs-reply'),
     path('chat-groups/', views.order_chat_groups, name='wx-chat-groups'),
     path('chat-groups/<int:group_id>/', views.order_chat_group_detail, name='wx-chat-group-detail'),
+    path('chat-groups/<int:group_id>/quick-welcome/', views.send_order_chat_quick_welcome, name='wx-chat-group-quick-welcome'),
 
     # 个人中心
     path('profile/', user_profile, name='wx-profile'),
     path('profile/update/', views.update_profile, name='wx-update-profile'),
+    path('profile/quick-welcome/', views.dasher_quick_welcome, name='wx-dasher-quick-welcome'),
     path('agreements/', views.agreements, name='wx-agreements'),
     path('agreements/<slug:slug>/', views.agreements, name='wx-agreement-detail'),
     path('recharge-offers/', views.recharge_offers, name='wx-recharge-offers'),

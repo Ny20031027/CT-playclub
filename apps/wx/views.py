@@ -3604,6 +3604,49 @@ def _is_cs_user(user):
         return False
 
 
+def _get_default_quick_welcome_message():
+    try:
+        from apps.system.models import Config
+        cfg = Config.objects.filter(
+            key='dasher_default_quick_welcome_message',
+            is_deleted=False,
+        ).first()
+        if cfg and cfg.value and cfg.value.strip():
+            return cfg.value.strip()
+    except Exception:
+        pass
+    return '您好，我是本单打手，已进入订单群，会尽快和您确认服务信息。'
+
+
+def _clean_quick_welcome_messages(messages):
+    cleaned = []
+    if not isinstance(messages, list):
+        return cleaned
+    for item in messages:
+        text = str(item or '').strip()
+        if not text:
+            continue
+        if len(text) > 300:
+            raise ValueError('单条快捷语最多300字')
+        if text not in cleaned:
+            cleaned.append(text)
+        if len(cleaned) >= 10:
+            break
+    return cleaned
+
+
+def _get_employee_quick_welcome_messages(employee, default_message=None):
+    default_message = default_message or _get_default_quick_welcome_message()
+    messages = getattr(employee, 'quick_welcome_messages', None) or []
+    if not isinstance(messages, list):
+        messages = []
+    messages = _clean_quick_welcome_messages(messages)
+    legacy_message = (getattr(employee, 'quick_welcome_message', '') or '').strip()
+    if legacy_message and legacy_message not in messages:
+        messages.insert(0, legacy_message)
+    return messages or [default_message]
+
+
 @api_view(['GET'])
 @permission_classes([IsAuthenticated])
 def order_chat_groups(request):
@@ -3623,11 +3666,44 @@ def order_chat_groups(request):
     data = []
     for group in groups:
         last_message = group.messages.filter(is_deleted=False).order_by('-created_at').first()
+        member_rows = group.members.filter(is_deleted=False).select_related('user').order_by('role', 'id')
+        member_avatars = []
+        for member in member_rows[:4]:
+            avatar = ''
+            try:
+                if member.role == 'customer' and group.order and group.order.customer:
+                    avatar = field_file_url(group.order.customer.avatar)
+                elif member.role == 'dasher':
+                    employee = Employee.objects.filter(user=member.user, is_deleted=False).first()
+                    avatar = employee_avatar_url(employee)
+                else:
+                    avatar = field_file_url(member.user.avatar)
+                    if not avatar and hasattr(member.user, 'wx_user'):
+                        avatar = field_file_url(member.user.wx_user.avatar)
+            except Exception:
+                avatar = ''
+            member_avatars.append({
+                'role': member.role,
+                'avatar': avatar,
+                'name': member.user.nickname or member.user.username or '',
+            })
+        dasher_names = []
+        if group.order_id:
+            for order_member in group.order.order_members.filter(
+                is_deleted=False,
+                employee__isnull=False,
+                status__in=['accepted', 'in_progress'],
+            ).select_related('employee').order_by('id'):
+                name = order_member.employee.nickname or order_member.employee.real_name
+                if name and name not in dasher_names:
+                    dasher_names.append(name)
         data.append({
             'id': group.id, 'name': group.name,
             'title': group.order.title if group.order and group.order.title else group.name,
             'order_id': group.order_id, 'order_no': group.order.order_no,
             'member_count': group.members.filter(is_deleted=False).count(),
+            'member_avatars': member_avatars,
+            'dasher_names': dasher_names,
             'last_message': last_message.content if last_message else '',
             'last_message_time': last_message.created_at.strftime('%m-%d %H:%M') if last_message else '',
             'expires_at': _as_localtime(group.expires_at).strftime('%Y-%m-%d %H:%M'),
@@ -3694,6 +3770,62 @@ def order_chat_group_detail(request, group_id):
             'created_at': _as_localtime(message.created_at).strftime('%m-%d %H:%M'),
         } for message in messages],
     })
+
+
+@api_view(['GET', 'POST'])
+@permission_classes([IsAuthenticated])
+def dasher_quick_welcome(request):
+    employee = request.user.get_active_employee() if hasattr(request.user, 'get_active_employee') else None
+    if not employee:
+        return error_response(msg='仅打手可设置快捷欢迎语')
+    default_message = _get_default_quick_welcome_message()
+    if request.method == 'POST':
+        try:
+            messages = _clean_quick_welcome_messages(request.data.get('messages', []))
+        except ValueError as exc:
+            return error_response(msg=str(exc))
+        employee.quick_welcome_messages = messages
+        employee.quick_welcome_message = messages[0] if messages else ''
+        employee.save(update_fields=['quick_welcome_messages', 'quick_welcome_message', 'updated_at'])
+    messages = _get_employee_quick_welcome_messages(employee, default_message)
+    personal_messages = employee.quick_welcome_messages or []
+    legacy_message = (employee.quick_welcome_message or '').strip()
+    if not personal_messages and legacy_message:
+        personal_messages = [legacy_message]
+    return success_response({
+        'message': messages[0] if messages else default_message,
+        'messages': messages,
+        'personal_messages': personal_messages,
+        'personal_message': employee.quick_welcome_message or '',
+        'default_message': default_message,
+    })
+
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def send_order_chat_quick_welcome(request, group_id):
+    try:
+        group = OrderChatGroup.objects.select_related('order').get(id=group_id, is_deleted=False)
+    except OrderChatGroup.DoesNotExist:
+        return error_response(msg='群组不存在或已删除')
+    if group.expires_at <= timezone.now():
+        group.delete()
+        return error_response(msg='群组已到期并自动删除')
+
+    employee = request.user.get_active_employee() if hasattr(request.user, 'get_active_employee') else None
+    if not employee:
+        return error_response(msg='仅打手可发送快捷欢迎语')
+    if not group.members.filter(user=request.user, role='dasher', is_deleted=False).exists():
+        return error_response(msg='您不是该群组的打手成员')
+
+    content = str(request.data.get('content') or '').strip()
+    if not content:
+        messages = _get_employee_quick_welcome_messages(employee)
+        content = (messages[0] if messages else '').strip()
+    if not content:
+        return error_response(msg='请先设置快捷欢迎语')
+    message = OrderChatMessage.objects.create(group=group, sender=request.user, content=content)
+    return success_response({'message_id': message.id, 'content': content}, msg='发送成功')
 
 
 @api_view(['POST'])
@@ -4610,6 +4742,8 @@ def user_profile(request):
         'work_status': work_status,
         'level_num': employee_obj.level_num if employee_obj else 0,
         'intro': employee_obj.intro if employee_obj else '',
+        'quick_welcome_message': employee_obj.quick_welcome_message if employee_obj else '',
+        'quick_welcome_messages': employee_obj.quick_welcome_messages if employee_obj else [],
         'voice_intro': build_media_url(employee_obj.voice_intro, request) if employee_obj and employee_obj.voice_intro else '',
         'voice_duration': employee_obj.voice_duration if employee_obj else 0,
         'commission_balance': float(employee_obj.commission_balance) if employee_obj else 0,
@@ -4629,6 +4763,7 @@ def update_profile(request):
     nickname = request.data.get('nickname')
     avatar = request.data.get('avatar')
     intro = request.data.get('intro')
+    quick_welcome_message = request.data.get('quick_welcome_message')
     gender = request.data.get('gender')
     voice_intro = request.data.get('voice_intro')
     voice_upload_id = request.data.get('voice_upload_id')
@@ -4681,6 +4816,11 @@ def update_profile(request):
 
         if intro is not None:
             employee.intro = intro
+        if quick_welcome_message is not None:
+            quick_welcome_message = str(quick_welcome_message).strip()
+            if len(quick_welcome_message) > 300:
+                return error_response(msg='快捷欢迎语不能超过300个字')
+            employee.quick_welcome_message = quick_welcome_message
         if parsed_voice_duration is not None:
             employee.voice_duration = parsed_voice_duration
 
@@ -4700,6 +4840,8 @@ def update_profile(request):
 
                 if intro is not None:
                     update_fields.append('intro')
+                if quick_welcome_message is not None:
+                    update_fields.append('quick_welcome_message')
                 if update_fields:
                     employee.save(update_fields=list(dict.fromkeys(update_fields)))
 
@@ -4709,10 +4851,12 @@ def update_profile(request):
             logger.exception('update_profile employee data save failed: %s', e)
             return error_response(msg='个人资料保存失败，请重试')
 
-        employee.refresh_from_db(fields=['voice_intro', 'voice_duration', 'intro'])
+        employee.refresh_from_db(fields=['voice_intro', 'voice_duration', 'intro', 'quick_welcome_message', 'quick_welcome_messages'])
         return success_response({
             'voice_intro': build_media_url(employee.voice_intro, request) if employee.voice_intro else '',
             'voice_duration': employee.voice_duration or 0,
+            'quick_welcome_message': employee.quick_welcome_message or '',
+            'quick_welcome_messages': employee.quick_welcome_messages or [],
         }, msg='更新成功')
 
     sync_profile_tables(user, nickname=nickname, avatar=avatar, gender=gender)

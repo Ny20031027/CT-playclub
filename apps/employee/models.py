@@ -390,6 +390,8 @@ class Employee(BaseModel):
     tags = models.ManyToManyField(EmployeeTag, blank=True, related_name='employees',
                                   verbose_name='标签')
     intro = models.TextField(blank=True, verbose_name='个人简介')
+    quick_welcome_message = models.TextField(blank=True, default='', verbose_name='群聊快捷欢迎语')
+    quick_welcome_messages = models.JSONField(default=list, blank=True, verbose_name='群聊快捷欢迎语列表')
     # 语音文件由统一上传服务托管，这里只保存可访问 URL，不再让 FileField
     # 误以为 Django 需要二次保存文件。
     voice_intro = models.URLField(max_length=500, null=True, blank=True, default='',
