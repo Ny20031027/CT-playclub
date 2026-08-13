@@ -315,16 +315,16 @@ def is_default_nickname(nickname):
     return bool(re.fullmatch(r'用户[\w-]{1,12}', nickname))
 
 
-def field_file_url(value):
+def field_file_url(value, request=None):
     if not value:
         return ''
     value_str = str(value).strip()
     if value_str.startswith('http://') or value_str.startswith('https://'):
         return value_str
-    return ''
+    return build_media_url(value_str, request)
 
 
-def employee_avatar_url(employee):
+def employee_avatar_url(employee, request=None):
     if not employee:
         return ''
     user = getattr(employee, 'user', None)
@@ -340,10 +340,34 @@ def employee_avatar_url(employee):
         candidates.append(user.avatar)
 
     for avatar in candidates:
-        url = field_file_url(avatar)
+        url = field_file_url(avatar, request)
         if url:
             return url
     return ''
+
+
+def user_avatar_url(user, request=None):
+    if not user:
+        return ''
+    candidates = []
+    try:
+        candidates.append(user.wx_user.avatar)
+    except WxUser.DoesNotExist:
+        pass
+    except Exception:
+        pass
+    candidates.append(user.avatar)
+    for avatar in candidates:
+        url = field_file_url(avatar, request)
+        if url:
+            return url
+    return ''
+
+
+def customer_avatar_url(customer, request=None):
+    if not customer:
+        return ''
+    return field_file_url(customer.avatar, request) or user_avatar_url(customer.user, request)
 
 
 def get_profile_wx_user(user):
@@ -3657,51 +3681,76 @@ def order_chat_groups(request):
     if is_cs:
         groups = OrderChatGroup.objects.filter(
             is_active=True, is_deleted=False,
-        ).select_related('order').distinct().order_by('-created_at')
+        ).select_related('order', 'order__customer', 'order__customer__user').prefetch_related(
+            'members__user',
+            'members__user__wx_user',
+            'order__order_members__employee',
+            'order__order_members__employee__user',
+            'order__order_members__employee__user__wx_user',
+        ).distinct().order_by('-created_at')
     else:
         groups = OrderChatGroup.objects.filter(
             members__user=user, members__is_deleted=False,
             is_active=True, is_deleted=False,
-        ).select_related('order').distinct().order_by('-created_at')
+        ).select_related('order', 'order__customer', 'order__customer__user').prefetch_related(
+            'members__user',
+            'members__user__wx_user',
+            'order__order_members__employee',
+            'order__order_members__employee__user',
+            'order__order_members__employee__user__wx_user',
+        ).distinct().order_by('-created_at')
     data = []
     for group in groups:
         last_message = group.messages.filter(is_deleted=False).order_by('-created_at').first()
-        member_rows = group.members.filter(is_deleted=False).select_related('user').order_by('role', 'id')
         member_avatars = []
-        for member in member_rows[:4]:
-            avatar = ''
-            try:
-                if member.role == 'customer' and group.order and group.order.customer:
-                    avatar = field_file_url(group.order.customer.avatar)
-                elif member.role == 'dasher':
-                    employee = Employee.objects.filter(user=member.user, is_deleted=False).first()
-                    avatar = employee_avatar_url(employee)
-                else:
-                    avatar = field_file_url(member.user.avatar)
-                    if not avatar and hasattr(member.user, 'wx_user'):
-                        avatar = field_file_url(member.user.wx_user.avatar)
-            except Exception:
-                avatar = ''
+        dasher_names = []
+        order = group.order if group.order_id else None
+        if order:
+            if order.customer:
+                member_avatars.append({
+                    'role': 'customer',
+                    'avatar': customer_avatar_url(order.customer, request),
+                    'name': order.customer.nickname or '客户',
+                })
+            for order_member in order.order_members.filter(
+                is_deleted=False,
+                employee__isnull=False,
+            ).select_related('employee', 'employee__user').order_by('id'):
+                employee = order_member.employee
+                name = employee.nickname or employee.real_name
+                if name and name not in dasher_names:
+                    dasher_names.append(name)
+                if len(member_avatars) < 4:
+                    member_avatars.append({
+                        'role': 'dasher',
+                        'avatar': employee_avatar_url(employee, request),
+                        'name': name or '打手',
+                    })
+        member_rows = group.members.filter(is_deleted=False).select_related('user').order_by('role', 'id')
+        existing_keys = set((item.get('role'), item.get('name')) for item in member_avatars)
+        for member in member_rows:
+            if len(member_avatars) >= 4:
+                break
+            avatar = user_avatar_url(member.user, request)
+            name = member.user.nickname or member.user.username or ''
+            key = (member.role, name)
+            if key in existing_keys:
+                continue
+            existing_keys.add(key)
             member_avatars.append({
                 'role': member.role,
                 'avatar': avatar,
-                'name': member.user.nickname or member.user.username or '',
+                'name': name,
             })
-        dasher_names = []
-        if group.order_id:
-            for order_member in group.order.order_members.filter(
-                is_deleted=False,
-                employee__isnull=False,
-                status__in=['accepted', 'in_progress'],
-            ).select_related('employee').order_by('id'):
-                name = order_member.employee.nickname or order_member.employee.real_name
-                if name and name not in dasher_names:
-                    dasher_names.append(name)
+        display_member_count = max(
+            group.members.filter(is_deleted=False).count(),
+            (1 if order and order.customer else 0) + len(dasher_names),
+        )
         data.append({
             'id': group.id, 'name': group.name,
-            'title': group.order.title if group.order and group.order.title else group.name,
-            'order_id': group.order_id, 'order_no': group.order.order_no,
-            'member_count': group.members.filter(is_deleted=False).count(),
+            'title': order.title if order and order.title else group.name,
+            'order_id': group.order_id, 'order_no': order.order_no if order else '',
+            'member_count': display_member_count,
             'member_avatars': member_avatars,
             'dasher_names': dasher_names,
             'last_message': last_message.content if last_message else '',
