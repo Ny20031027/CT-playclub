@@ -5133,6 +5133,9 @@ def get_self_service_catalog(request):
                     'order_mode': 'preset',
                     'name': gameplay.name,
                     'description': gameplay.description,
+                    'service_section_desc': gameplay.service_section_desc,
+                    'addon_section_desc': gameplay.addon_section_desc,
+                    'more_service_section_desc': gameplay.more_service_section_desc,
                     'preset_items': preset_items,
                 })
                 continue
@@ -5225,6 +5228,9 @@ def get_self_service_catalog(request):
                 'order_mode': 'custom',
                 'name': gameplay.name,
                 'description': gameplay.description,
+                'service_section_desc': gameplay.service_section_desc,
+                'addon_section_desc': gameplay.addon_section_desc,
+                'more_service_section_desc': gameplay.more_service_section_desc,
                 'difficulty_enabled': gameplay.difficulty_enabled,
                 # Older website builds stored male/female. Keep existing rows usable
                 # by exposing the canonical values expected by the mini program.

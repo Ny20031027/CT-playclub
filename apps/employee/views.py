@@ -493,6 +493,9 @@ class EmployeeSkillViewSet(BaseModelViewSet):
             gameplay.order_mode = order_mode
             gameplay.name = names[index]
             gameplay.description = str(item.get('description', '') or '').strip()
+            gameplay.service_section_desc = str(item.get('service_section_desc', '') or '').strip()
+            gameplay.addon_section_desc = str(item.get('addon_section_desc', '') or '').strip()
+            gameplay.more_service_section_desc = str(item.get('more_service_section_desc', '') or '').strip()
             gameplay.display_image = str(item.get('display_image', '') or '').strip()
             gameplay.preset_content = str(item.get('preset_content', '') or '').strip()
             gameplay.preset_remark = str(item.get('preset_remark', '') or '').strip()

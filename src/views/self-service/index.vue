@@ -171,6 +171,17 @@
                 <el-form-item label="选女加价"><el-input-number v-model="activeGameplay.female_price_delta" :min="0" :precision="2" /></el-form-item>
               </div>
               <el-form-item label="玩法说明"><el-input v-model="activeGameplay.description" maxlength="500" show-word-limit /></el-form-item>
+              <div class="form-grid three">
+                <el-form-item label="服务小字描述">
+                  <el-input v-model="activeGameplay.service_section_desc" maxlength="200" placeholder="如：选择一项服务内容" show-word-limit />
+                </el-form-item>
+                <el-form-item label="加购服务小字描述">
+                  <el-input v-model="activeGameplay.addon_section_desc" maxlength="200" placeholder="如：选择一项服务后，还可继续选择相关内容" show-word-limit />
+                </el-form-item>
+                <el-form-item label="更多服务小字描述">
+                  <el-input v-model="activeGameplay.more_service_section_desc" maxlength="200" placeholder="如：可按需要多选" show-word-limit />
+                </el-form-item>
+              </div>
 
               <div class="form-grid four settlement-box">
                 <el-form-item label="结算单位">
@@ -395,7 +406,11 @@ const optionRow = (description = false) => ({ _key: makeKey(), name: '', descrip
 const serviceRow = () => ({ ...optionRow(true), value_added_services: [] })
 const valueAddedRow = () => ({ _key: makeKey(), name: '', description: '', price: 0, sort: 0, status: true })
 const newGameplay = () => ({
-  _key: makeKey(), name: '', description: '', difficulty_enabled: false,
+  _key: makeKey(), name: '', description: '',
+  service_section_desc: '选择服务内容',
+  addon_section_desc: '选择一项服务后，还可继续选择相关内容',
+  more_service_section_desc: '可按需要多选',
+  difficulty_enabled: false,
   gender_limit: 'unlimited', male_price_delta: 0, female_price_delta: 0,
   companion_mode: 'single', settlement_unit: 'hour',
   min_quantity: 0.5, quantity_step: 0.5, base_price: 0, remark_required: false,
@@ -415,6 +430,9 @@ const normalizeServiceRow = row => ({ ...normalizeRow(row, true), value_added_se
 const normalizeGameplay = (row) => ({
   ...newGameplay(), ...row,
   gender_limit: ({ male: 'male_only', female: 'female_only' })[row.gender_limit] || row.gender_limit || 'unlimited',
+  service_section_desc: row.service_section_desc || '选择服务内容',
+  addon_section_desc: row.addon_section_desc || '选择一项服务后，还可继续选择相关内容',
+  more_service_section_desc: row.more_service_section_desc || '可按需要多选',
   male_price_delta: Number(row.male_price_delta || 0), female_price_delta: Number(row.female_price_delta || 0),
   _key: makeKey(), min_quantity: Number(row.min_quantity || 0),
   quantity_step: Number(row.quantity_step || 0), base_price: Number(row.base_price || 0),

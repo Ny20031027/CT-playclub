@@ -131,6 +131,15 @@ class SkillGameplay(BaseModel):
     )
     name = models.CharField(max_length=100, verbose_name='玩法名称')
     description = models.CharField(max_length=500, blank=True, verbose_name='玩法说明')
+    service_section_desc = models.CharField(
+        max_length=200, blank=True, default='', verbose_name='服务区块小字说明'
+    )
+    addon_section_desc = models.CharField(
+        max_length=200, blank=True, default='', verbose_name='加购服务区块小字说明'
+    )
+    more_service_section_desc = models.CharField(
+        max_length=200, blank=True, default='', verbose_name='更多服务区块小字说明'
+    )
     display_image = models.CharField(max_length=500, blank=True, verbose_name='预制单显示图片')
     preset_content = models.TextField(blank=True, verbose_name='预制单项目内容')
     preset_remark = models.CharField(max_length=500, blank=True, verbose_name='预制单项目备注')
