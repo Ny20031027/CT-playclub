@@ -171,17 +171,6 @@
                 <el-form-item label="选女加价"><el-input-number v-model="activeGameplay.female_price_delta" :min="0" :precision="2" /></el-form-item>
               </div>
               <el-form-item label="玩法说明"><el-input v-model="activeGameplay.description" maxlength="500" show-word-limit /></el-form-item>
-              <div class="form-grid three">
-                <el-form-item label="服务小字描述">
-                  <el-input v-model="activeGameplay.service_section_desc" maxlength="200" placeholder="如：选择一项服务内容" show-word-limit />
-                </el-form-item>
-                <el-form-item label="加购服务小字描述">
-                  <el-input v-model="activeGameplay.addon_section_desc" maxlength="200" placeholder="如：选择一项服务后，还可继续选择相关内容" show-word-limit />
-                </el-form-item>
-                <el-form-item label="更多服务小字描述">
-                  <el-input v-model="activeGameplay.more_service_section_desc" maxlength="200" placeholder="如：可按需要多选" show-word-limit />
-                </el-form-item>
-              </div>
 
               <div class="form-grid four settlement-box">
                 <el-form-item label="结算单位">
@@ -222,6 +211,9 @@
               subtitle="用户最终购买的服务内容，例如技术猛攻单"
               :rows="activeGameplay.services"
               show-description
+              section-desc-label="服务小字描述"
+              section-desc-placeholder="如：选择一项服务内容"
+              v-model:section-desc="activeGameplay.service_section_desc"
               @add="addServiceOption(activeGameplay.services)"
               @remove="removeOption(activeGameplay.services, $event)"
             />
@@ -231,6 +223,11 @@
                 <div><h3>加购服务</h3><p>显示在小程序“加购服务”，可为每个按钮配置小字说明。</p></div>
                 <el-button type="primary" plain :icon="Plus" @click="addAddon(activeGameplay.value_added_services)">添加加购服务</el-button>
               </div>
+              <el-form label-position="top" class="section-desc-form">
+                <el-form-item label="加购服务小字描述">
+                  <el-input v-model="activeGameplay.addon_section_desc" maxlength="200" placeholder="如：选择一项服务后，还可继续选择相关内容" show-word-limit />
+                </el-form-item>
+              </el-form>
               <el-table :data="activeGameplay.value_added_services" empty-text="暂无加购服务">
                 <el-table-column label="名称" min-width="150">
                   <template #default="{ row }"><el-input v-model="row.name" placeholder="如：大坝" /></template>
@@ -287,6 +284,11 @@
               <div class="section-heading">
                 <div><h3>更多服务</h3><p>每个服务选项下独立配置，显示在小程序“更多服务”，支持自定义小字描述。</p></div>
               </div>
+              <el-form label-position="top" class="section-desc-form">
+                <el-form-item label="更多服务小字描述">
+                  <el-input v-model="activeGameplay.more_service_section_desc" maxlength="200" placeholder="如：可按需要多选" show-word-limit />
+                </el-form-item>
+              </el-form>
               <el-empty v-if="!activeGameplay.services.length" description="请先添加服务选项" :image-size="70" />
               <div v-else class="service-value-list">
                 <div v-for="service in activeGameplay.services" :key="service._key" class="service-value-card">
@@ -447,11 +449,21 @@ const normalizeGameplay = (row) => ({
 })
 
 const OptionEditor = defineComponent({
-  props: { title: String, subtitle: String, rows: Array, showDescription: Boolean },
-  emits: ['add', 'remove'],
+  props: { title: String, subtitle: String, rows: Array, showDescription: Boolean, sectionDesc: String, sectionDescLabel: String, sectionDescPlaceholder: String },
+  emits: ['add', 'remove', 'update:sectionDesc'],
   setup(props, { emit }) {
     return () => h('section', { class: 'config-section' }, [
       h('div', { class: 'section-heading' }, [h('div', [h('h3', props.title), h('p', props.subtitle)]), h(ElButton, { type: 'primary', plain: true, icon: Plus, onClick: () => emit('add') }, () => '添加选项')]),
+      props.sectionDescLabel ? h('div', { class: 'section-desc-form' }, [
+        h('label', { class: 'section-desc-label' }, props.sectionDescLabel),
+        h(ElInput, {
+          modelValue: props.sectionDesc,
+          'onUpdate:modelValue': value => emit('update:sectionDesc', value),
+          placeholder: props.sectionDescPlaceholder || '请输入小字描述',
+          maxlength: 200,
+          showWordLimit: true,
+        }),
+      ]) : null,
       h(ElTable, { data: props.rows, emptyText: '暂无选项' }, () => [
         h(ElTableColumn, { label: '名称', minWidth: 160 }, { default: ({ row }) => h(ElInput, { modelValue: row.name, 'onUpdate:modelValue': value => row.name = value, placeholder: '请输入名称' }) }),
         props.showDescription ? h(ElTableColumn, { label: '说明', minWidth: 220 }, { default: ({ row }) => h(ElInput, { modelValue: row.description, 'onUpdate:modelValue': value => row.description = value, placeholder: '可选说明' }) }) : null,
@@ -568,6 +580,8 @@ onMounted(loadData)
 .gameplay-layout { display: grid; grid-template-columns: 230px minmax(0, 1fr); gap: 18px; }.gameplay-sidebar { align-self: start; position: sticky; top: 0; padding: 14px; border: 1px solid #e5eaf1; border-radius: 14px; background: #f8fafc; }.side-title { display: flex; justify-content: space-between; align-items: center; padding: 4px 6px 12px; font-weight: 700; }.gameplay-nav { width: 100%; display: flex; justify-content: space-between; align-items: center; gap: 8px; margin-bottom: 8px; padding: 13px 11px; text-align: left; border: 1px solid transparent; border-radius: 10px; background: transparent; cursor: pointer; }.gameplay-nav:hover,.gameplay-nav.active { border-color: #9bd8ca; background: #e8f7f3; }.gameplay-nav span { min-width: 0; display: flex; flex-direction: column; gap: 4px; }.gameplay-nav b { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }.gameplay-nav small { color: #7d8798; }.gameplay-editor { min-width: 0; }.editor-heading { display: flex; justify-content: space-between; align-items: center; margin-bottom: 14px; padding: 18px 22px; border-radius: 14px; color: white; background: linear-gradient(120deg, #203753, #2d766b); }.editor-heading > div { display: flex; align-items: center; gap: 12px; }.editor-heading h2 { margin: 0; }.index-badge { width: 30px; height: 30px; display: grid; place-items: center; border-radius: 9px; background: rgba(255,255,255,.16); }.settlement-box { padding: 16px 18px 0; border-radius: 12px; background: #f5f8fb; }.switches-inline { display: flex; gap: 28px; margin: 4px 0 18px; }.config-section { margin-top: 14px; padding: 18px; border: 1px solid #e5eaf1; border-radius: 14px; background: #fff; }.section-heading { display: flex; justify-content: space-between; align-items: center; margin-bottom: 14px; }.section-heading h3 { margin: 0 0 4px; }.section-heading p { margin: 0; color: #8a93a3; font-size: 12px; }.editor-empty { border: 1px dashed #d9dfe8; border-radius: 14px; }
 .nested-editor { padding: 8px 14px 16px 46px; background: #f8fafc; }
 .nested-heading { display: flex; align-items: center; justify-content: space-between; margin-bottom: 10px; font-weight: 700; color: #243047; }
+.section-desc-form { margin: -4px 0 14px; }
+.section-desc-label { display: block; margin-bottom: 6px; color: #606a7c; font-size: 13px; font-weight: 600; }
 .service-value-list { display: grid; gap: 14px; }
 .service-value-card { padding: 14px; border: 1px solid #edf0f5; border-radius: 12px; background: #fbfcfe; }
 .preview-layout { display: grid; grid-template-columns: minmax(420px, 1fr) 390px; gap: 50px; max-width: 1050px; margin: 0 auto; }.validation-card { align-self: start; padding: 28px; border-radius: 16px; background: white; border: 1px solid #e5eaf1; }.validation-card h2 { margin-top: 0; }.check-row { display: grid; grid-template-columns: 24px 1fr auto; gap: 10px; align-items: center; padding: 14px 0; border-bottom: 1px solid #edf0f4; }.check-row.ok { color: #1c806b; }.check-row.error { color: #d95050; }.check-row b { font-size: 12px; }.validation-card .el-alert { margin-top: 20px; }.phone-preview { height: 700px; display: flex; flex-direction: column; overflow: hidden; border: 10px solid #172033; border-radius: 36px; background: #f7f8fb; box-shadow: 0 24px 60px rgba(25, 39, 59, .22); }.phone-top { display: flex; justify-content: space-between; padding: 20px 18px 14px; background: white; }.preview-body { flex: 1; overflow: auto; padding: 16px; }.preview-body h2 { margin: 0 0 18px; }.preview-group { display: grid; grid-template-columns: 58px 1fr; gap: 8px; margin-bottom: 15px; }.preview-group > div { display: flex; flex-wrap: wrap; gap: 7px; }.preview-group span { padding: 7px 12px; border-radius: 16px; background: #eff1f5; color: #8e96a5; font-size: 12px; }.preview-group span.active { background: #eae5ff; color: #6542c5; }.quantity-row { display: flex; align-items: center; gap: 12px; margin: 18px 0; }.quantity-row > span { width: 46px; font-weight: 700; }.quantity-row div { padding: 6px 12px; border-radius: 16px; background: #eef0f4; }.quantity-row em { font-style: normal; }.preview-note { min-height: 70px; padding: 12px; border-radius: 10px; color: #a0a6b1; background: #eef0f4; }.preview-submit { display: flex; align-items: center; justify-content: space-between; padding: 12px 16px 18px; background: white; }.preview-submit span { color: #eb714c; font-weight: 800; }.preview-submit button { padding: 12px 28px; border: 0; border-radius: 22px; color: white; background: linear-gradient(100deg,#7553e8,#8a49d9); font-weight: 700; }.drawer-footer { display: flex; justify-content: space-between; width: 100%; }
