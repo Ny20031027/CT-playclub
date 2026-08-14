@@ -302,6 +302,9 @@
                     id: gp.id || null,
                     name: gp.name || '',
                     description: gp.description || '',
+                    service_section_desc: gp.service_section_desc || '选择服务内容',
+                    addon_section_desc: gp.addon_section_desc || '选择一项服务后，还可继续选择相关内容',
+                    more_service_section_desc: gp.more_service_section_desc || '可按需要多选',
                     difficulty_enabled: !!gp.difficulty_enabled,
                     gender_limit: gp.gender_limit === 'male' ? 'male_only' : (gp.gender_limit === 'female' ? 'female_only' : (gp.gender_limit || 'unlimited')),
                     male_price_delta: Number(gp.male_price_delta) || 0,
@@ -438,6 +441,7 @@
         return '<div class="sub-section">' +
             '<div class="sub-section-title"><span>' + title + '</span>' +
             '<button class="btn btn-default btn-sm" onclick="addOption(' + idx + ',\'' + type + '\')">+ 添加</button></div>' +
+            (type === 'services' ? '<div class="form-row"><div class="form-group"><label>服务标题下方小字描述</label><input type="text" maxlength="200" value="' + escAttr(gp.service_section_desc || '') + '" placeholder="如：选择服务内容" onchange="updateGp(' + idx + ',\'service_section_desc\',this.value)"></div></div>' : '') +
             '<table class="sub-table"><thead>' + head + '</thead><tbody>' + body + '</tbody></table>' +
         '</div>';
     }
@@ -490,6 +494,7 @@
         return '<div class="sub-section">' +
             '<div class="sub-section-title"><span>附加项目</span>' +
             '<button class="btn btn-default btn-sm" onclick="addAddon(' + idx + ')">+ 添加</button></div>' +
+            '<div class="form-row"><div class="form-group"><label>加购服务标题下方小字描述</label><input type="text" maxlength="200" value="' + escAttr(gp.addon_section_desc || '') + '" placeholder="如：选择一项服务后，还可继续选择相关内容" onchange="updateGp(' + idx + ',\'addon_section_desc\',this.value)"></div></div>' +
             '<p class="hint">管理员可选添加，非强制；客户下单时也可选非必选，选中后按单价叠加到总价（×数量）。</p>' +
             '<table class="sub-table"><thead>' + head + '</thead><tbody>' + body + '</tbody></table>' +
         '</div>';
@@ -502,6 +507,9 @@
     function addGameplay() {
         gameplays.push({
             name: '', description: '', difficulty_enabled: false,
+            service_section_desc: '选择服务内容',
+            addon_section_desc: '选择一项服务后，还可继续选择相关内容',
+            more_service_section_desc: '可按需要多选',
             gender_limit: 'unlimited', male_price_delta: 0, female_price_delta: 0,
             companion_mode: 'both', settlement_unit: 'hour',
             min_quantity: 1, quantity_step: 1, base_price: 0, remark_required: false,
@@ -640,6 +648,9 @@
                     id: gp.id || null,
                     name: (gp.name || '').trim(),
                     description: gp.description || '',
+                    service_section_desc: gp.service_section_desc || '',
+                    addon_section_desc: gp.addon_section_desc || '',
+                    more_service_section_desc: gp.more_service_section_desc || '',
                     difficulty_enabled: !!gp.difficulty_enabled,
                     gender_limit: gp.gender_limit || 'unlimited',
                     male_price_delta: Number(gp.male_price_delta) || 0,

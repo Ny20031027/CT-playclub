@@ -3356,6 +3356,9 @@
                     status: gp.status !== false,
                     _collapsed: false,
                     difficulties: [],
+                    service_section_desc: gp.service_section_desc || '选择服务内容',
+                    addon_section_desc: gp.addon_section_desc || '选择一项服务后，还可继续选择相关内容',
+                    more_service_section_desc: gp.more_service_section_desc || '可按需要多选',
                     levels: gp.levels || [],
                     services: gp.services || [],
                     price_rules: gp.price_rules || [],
@@ -3590,6 +3593,8 @@
         return '<div class="sub-section">' +
             '<div class="sub-section-title"><span>服务设置</span>' +
             '<button class="btn btn-default btn-sm" onclick="addSelfServiceOption(' + idx + ',\'services\')">+ 添加</button></div>' +
+            '<div class="form-row"><div class="form-group"><label>服务标题下方小字描述</label><input type="text" maxlength="200" value="' + escAttr(gp.service_section_desc || '') + '" placeholder="如：选择服务内容" onchange="updateSelfServiceGp(' + idx + ',\'service_section_desc\',this.value)"></div>' +
+            '<div class="form-group"><label>更多服务标题下方小字描述</label><input type="text" maxlength="200" value="' + escAttr(gp.more_service_section_desc || '') + '" placeholder="如：可按需要多选" onchange="updateSelfServiceGp(' + idx + ',\'more_service_section_desc\',this.value)"></div></div>' +
             '<table class="sub-table"><thead>' + head + '</thead><tbody>' + body + '</tbody></table>' +
         '</div>';
     }
@@ -3693,6 +3698,7 @@
         return '<div class="sub-section">' +
             '<div class="sub-section-title"><span>附加项目</span>' +
             '<button class="btn btn-default btn-sm" onclick="addSelfServiceAddon(' + idx + ')">+ 添加</button></div>' +
+            '<div class="form-row"><div class="form-group"><label>加购服务标题下方小字描述</label><input type="text" maxlength="200" value="' + escAttr(gp.addon_section_desc || '') + '" placeholder="如：选择一项服务后，还可继续选择相关内容" onchange="updateSelfServiceGp(' + idx + ',\'addon_section_desc\',this.value)"></div></div>' +
             '<p class="hint">每个附加项可独立配置附加增值；附加项和附加增值均为客户下单时的可选内容。</p>' +
             '<table class="sub-table"><thead>' + head + '</thead><tbody>' + body + '</tbody></table>' +
         '</div>';
@@ -3791,6 +3797,9 @@
     function addSelfServiceGameplay() {
         selfServiceGameplays.push({
             order_mode: 'custom', name: '', description: '',
+            service_section_desc: '选择服务内容',
+            addon_section_desc: '选择一项服务后，还可继续选择相关内容',
+            more_service_section_desc: '可按需要多选',
             display_image: '', preset_content: '', preset_remark: '', preset_price: 0, difficulty_enabled: false,
             preset_items: [],
             gender_limit: 'unlimited', male_price_delta: 0, female_price_delta: 0,
@@ -3917,6 +3926,9 @@
                     order_mode: gp.order_mode || 'custom',
                     name: (gp.name || '').trim(),
                     description: gp.description || '',
+                    service_section_desc: gp.service_section_desc || '',
+                    addon_section_desc: gp.addon_section_desc || '',
+                    more_service_section_desc: gp.more_service_section_desc || '',
                     display_image: gp.display_image || '',
                     preset_content: gp.preset_content || '',
                     preset_remark: gp.preset_remark || '',
