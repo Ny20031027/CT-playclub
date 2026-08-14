@@ -35,6 +35,7 @@ from apps.order.services import (
     OrderCompletionError, complete_order_and_settle,
 )
 from apps.notice.models import Notice, UserNotice
+from apps.notice.realtime import push_unread_count, push_user_notice
 from apps.system.agreements import get_agreement, get_agreements
 from apps.system.recharge_offers import get_recharge_offers
 from apps.finance.models import Wallet, Transaction
@@ -77,6 +78,10 @@ def _notify_users(users, title, content, notice_type='system', level='info',
     UserNotice.objects.bulk_create([
         UserNotice(notice=notice, user=user) for user in target_users
     ], ignore_conflicts=True)
+    for user_notice in UserNotice.objects.filter(
+        notice=notice, user__in=target_users, is_deleted=False
+    ).select_related('notice', 'user'):
+        push_user_notice(user_notice)
     return notice
 
 
@@ -3225,7 +3230,8 @@ def invite_order_member(request, order_id):
         }),
         publish_time=timezone.now(),
     )
-    UserNotice.objects.create(notice=notice, user=target.user)
+    user_notice = UserNotice.objects.create(notice=notice, user=target.user)
+    push_user_notice(user_notice)
     return success_response(
         msg='邀请已发送，等待该打手接取席位',
         data={'remaining_slots': get_remaining_slots(order)}
@@ -3537,7 +3543,8 @@ def kick_member(request, order_id):
             }, ensure_ascii=False),
             publish_time=timezone.now(),
         )
-        UserNotice.objects.create(notice=notice, user=member.employee.user)
+        user_notice = UserNotice.objects.create(notice=notice, user=member.employee.user)
+        push_user_notice(user_notice)
     except Exception:
         pass
 
@@ -4315,6 +4322,7 @@ def mark_read(request, notice_id):
         notice.save(update_fields=['is_read', 'read_time'])
     except UserNotice.DoesNotExist:
         pass
+    push_unread_count(user.id)
     return success_response(msg='已读')
 
 
@@ -4326,6 +4334,7 @@ def mark_all_read(request):
     UserNotice.objects.filter(user=user, is_read=False, is_deleted=False).update(
         is_read=True, read_time=timezone.now()
     )
+    push_unread_count(user.id)
     return success_response(msg='全部已读')
 
 
@@ -4450,6 +4459,10 @@ def request_human_service(request):
         publish_time=timezone.now(),
     )
     UserNotice.objects.bulk_create([UserNotice(notice=notice, user=user) for user in duty_users])
+    for user_notice in UserNotice.objects.filter(
+        notice=notice, user__in=duty_users, is_deleted=False
+    ).select_related('notice', 'user'):
+        push_user_notice(user_notice)
     return success_response({
         'conversation_id': conversation.id,
         'status': conversation.status,
@@ -5693,7 +5706,8 @@ def invite_to_team(request):
         }),
         publish_time=timezone.now(),
     )
-    UserNotice.objects.create(notice=notice, user=target.user)
+    user_notice = UserNotice.objects.create(notice=notice, user=target.user)
+    push_user_notice(user_notice)
 
     return success_response(msg='邀请已发送')
 
@@ -6070,7 +6084,8 @@ def cs_cancel_order(request, ticket_id):
         }),
         publish_time=timezone.now(),
     )
-    UserNotice.objects.create(notice=notice, user=ticket.customer.user)
+    user_notice = UserNotice.objects.create(notice=notice, user=ticket.customer.user)
+    push_user_notice(user_notice)
 
     return success_response(msg='订单已取消，已通知客户', data={
         'order_id': order.id,
