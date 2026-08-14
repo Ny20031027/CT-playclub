@@ -94,6 +94,7 @@ urlpatterns = [
     path('team/invite/', views.invite_to_team, name='wx-invite-team'),
     path('team/handle-invite/', views.handle_team_invite, name='wx-handle-team-invite'),
     path('team/leave/', views.leave_team, name='wx-leave-team'),
+    path('team/kick/', views.kick_team_member, name='wx-kick-team-member'),
 
     # 打卡
     path('attendance/status/', views.get_attendance_status, name='wx-attendance-status'),

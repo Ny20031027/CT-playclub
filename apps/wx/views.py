@@ -5708,9 +5708,14 @@ def get_my_team(request):
     if not team:
         return success_response({'team': None})
 
-    members = TeamMember.objects.filter(team=team, status='active').select_related('employee')
+    members = TeamMember.objects.filter(team=team, status='active').select_related('employee', 'employee__user')
+    members = sorted(
+        members,
+        key=lambda m: (0 if m.employee_id == team.leader_id else 1, m.id)
+    )
     member_list = [{
         'id': m.employee.id,
+        'user_id': m.employee.user_id,
         'nickname': m.employee.nickname or m.employee.real_name,
         'avatar': employee_avatar_url(m.employee),
         'is_leader': m.employee.id == team.leader_id,
@@ -5721,6 +5726,7 @@ def get_my_team(request):
             'id': team.id,
             'name': team.name,
             'leader_id': team.leader_id,
+            'leader_user_id': team.leader.user_id if team.leader_id else None,
             'member_count': team.member_count,
             'max_members': team.max_members,
             'members': member_list,
@@ -5920,15 +5926,7 @@ def leave_team(request):
     membership = TeamMember.objects.filter(employee=employee, status='active').first()
 
     if team:
-        # 如果是队长，解散队伍
-        affected_user_ids = list(TeamMember.objects.filter(
-            team=team, employee__user__isnull=False
-        ).values_list('employee__user_id', flat=True))
-        team.status = False
-        team.save(update_fields=['status'])
-        TeamMember.objects.filter(team=team).update(status='left')
-        _push_team_update_event(affected_user_ids, team, 'team_disbanded')
-        return success_response(msg='队伍已解散')
+        return error_response(msg='队长不能退出队伍，可移除其他成员')
     elif membership:
         # 普通成员退出
         team = membership.team
@@ -5939,6 +5937,77 @@ def leave_team(request):
         return success_response(msg='已退出队伍')
     else:
         return error_response(msg='您不在任何队伍中')
+
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def kick_team_member(request):
+    """队长移除队伍成员"""
+    user = request.user
+    try:
+        employee = user.get_active_employee()
+        if not employee:
+            raise Exception()
+    except Exception:
+        return error_response(msg='您不是打手')
+
+    team = Team.objects.filter(leader=employee, status=True).first()
+    if not team:
+        return error_response(msg='只有队长可以移除成员')
+
+    target_id = request.data.get('employee_id') or request.data.get('target_id') or request.data.get('member_id')
+    if not target_id:
+        return error_response(msg='请选择要移除的成员')
+
+    try:
+        target_id = int(target_id)
+    except (TypeError, ValueError):
+        return error_response(msg='成员信息错误')
+
+    if target_id == team.leader_id:
+        return error_response(msg='队长不能移除自己')
+
+    try:
+        membership = TeamMember.objects.select_related('employee', 'employee__user').get(
+            team=team,
+            employee_id=target_id,
+            status='active',
+        )
+    except TeamMember.DoesNotExist:
+        return error_response(msg='该成员不在队伍中')
+
+    affected_user_ids = list(TeamMember.objects.filter(
+        team=team,
+        status='active',
+        employee__user__isnull=False,
+    ).values_list('employee__user_id', flat=True))
+
+    target = membership.employee
+    membership.status = 'left'
+    membership.save(update_fields=['status'])
+
+    _notify_users(
+        [target.user],
+        '已被移出队伍',
+        f'你已被移出队伍「{team.name}」。',
+        notice_type='team',
+        level='warning',
+        sender=user,
+        jump_url='/pages/profile/profile',
+        extra={
+            'type': 'team_member_removed',
+            'category': 'team',
+            'team_id': team.id,
+            'team_name': team.name,
+            'employee_id': target.id,
+            'employee_name': target.nickname or target.real_name,
+        },
+    )
+    if target.user_id not in affected_user_ids:
+        affected_user_ids.append(target.user_id)
+    _push_team_update_event(affected_user_ids, team, 'team_member_removed')
+
+    return success_response(msg='已移出队伍')
 
 
 # ============ 售后工单 ============
