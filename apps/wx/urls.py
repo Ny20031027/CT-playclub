@@ -27,6 +27,7 @@ urlpatterns = [
     path('orders/', views.my_orders, name='wx-my-orders'),
     path('orders/employee/', views.employee_orders, name='wx-employee-orders'),
     path('orders/<int:order_id>/', views.order_detail, name='wx-order-detail'),
+    path('orders/<int:order_id>/watch/', views.watch_order_change, name='wx-watch-order-change'),
     path('orders/<int:order_id>/pay/', views.pay_order, name='wx-pay-order'),
     path('orders/<int:order_id>/cancel/', views.cancel_order, name='wx-cancel-order'),
     path('orders/<int:order_id>/claim/', views.claim_order, name='wx-claim-order'),
