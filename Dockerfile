@@ -25,4 +25,4 @@ RUN python manage.py collectstatic --noinput --settings=config.settings.prod || 
 
 EXPOSE 8000
 
-CMD ["sh", "-c", "python manage.py migrate --noinput --settings=config.settings.prod; uvicorn config.asgi:application --host 0.0.0.0 --port 8000 --workers 3 --timeout-keep-alive 120"]
+CMD ["sh", "-c", "python manage.py migrate --noinput --settings=config.settings.prod; uvicorn config.asgi:application --host 0.0.0.0 --port 8000 --workers 1 --timeout-keep-alive 120"]
