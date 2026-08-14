@@ -49,6 +49,56 @@ import logging
 logger = logging.getLogger(__name__)
 
 
+def _notify_users(users, title, content, notice_type='system', level='info',
+                  sender=None, jump_url='', extra=None):
+    """Create one in-app notice and attach it to every valid target user."""
+    target_users = []
+    seen = set()
+    for user in users or []:
+        if not user or not getattr(user, 'id', None) or user.id in seen:
+            continue
+        seen.add(user.id)
+        target_users.append(user)
+    if not target_users:
+        return None
+    payload = extra or {}
+    notice = Notice.objects.create(
+        title=title,
+        content=content,
+        type=notice_type,
+        level=level,
+        sender=sender,
+        target_type='user',
+        target_ids=','.join(str(user.id) for user in target_users),
+        jump_url=jump_url,
+        extra=json.dumps(payload, ensure_ascii=False),
+        publish_time=timezone.now(),
+    )
+    UserNotice.objects.bulk_create([
+        UserNotice(notice=notice, user=user) for user in target_users
+    ], ignore_conflicts=True)
+    return notice
+
+
+def _order_notice_extra(order, subtype, **kwargs):
+    extra = {
+        'type': subtype,
+        'category': 'order_status',
+        'order_id': order.id,
+        'order_no': order.order_no,
+        'order_status': order.status,
+    }
+    extra.update(kwargs)
+    return extra
+
+
+def _order_member_users(order):
+    return [
+        member.employee.user
+        for member in order.order_members.filter(is_deleted=False, employee__user__isnull=False).select_related('employee__user')
+    ]
+
+
 class GameCategoryViewSet(BaseModelViewSet):
     """游戏分类管理（品类设置）"""
     queryset = GameCategory.objects.all()
@@ -2813,6 +2863,16 @@ def cancel_order(request, order_id):
     order.cancel_time = timezone.now()
     order.cancel_reason = reason
     order.save(update_fields=['status', 'cancel_time', 'cancel_reason', 'updated_at'])
+    _notify_users(
+        _order_member_users(order),
+        '订单已取消',
+        f'订单 {order.order_no} 已由客户取消。' + (f'原因：{reason}' if reason else ''),
+        notice_type='order',
+        level='warning',
+        sender=user,
+        jump_url=f'/pages/order-detail/order-detail?id={order.id}',
+        extra=_order_notice_extra(order, 'order_cancelled', reason=reason),
+    )
 
     return success_response(msg='取消成功')
 
@@ -2957,6 +3017,21 @@ def claim_order(request, order_id):
     msg = '已加入选秀队列，等待客户挑选'
     if team_applied_count > 1:
         msg = f'已为您及{team_applied_count - 1}位队友加入选秀队列，等待客户挑选'
+    _notify_users(
+        [order.customer.user],
+        '新的接单申请',
+        f'{employee.nickname or employee.real_name} 申请接取订单 {order.order_no}，请进入订单详情挑选打手。',
+        notice_type='order',
+        level='info',
+        sender=user,
+        jump_url=f'/pages/order-detail/order-detail?id={order.id}',
+        extra=_order_notice_extra(
+            order, 'order_candidate_applied',
+            employee_id=employee.id,
+            employee_name=employee.nickname or employee.real_name,
+            applied_count=team_applied_count,
+        ),
+    )
 
     return success_response(
         msg=msg,
@@ -3006,6 +3081,8 @@ def select_candidate(request, order_id):
     if existing:
         return error_response(msg='该打手已是订单成员')
 
+    selected_employee = candidate.employee
+
     # 打手分摊按优惠券前的订单金额计算，优惠券只影响客户实付。
     gross_amount = _money(order.pay_amount) + _money(order.coupon_discount)
     amount_per_slot = gross_amount / order.quantity if order.quantity > 0 else 0
@@ -3013,7 +3090,7 @@ def select_candidate(request, order_id):
     # 创建正式成员
     member = OrderMember.objects.create(
         order=order,
-        employee=candidate.employee,
+        employee=selected_employee,
         skill=order.skill,
         unit_price=order.unit_price,
         duration=order.duration,
@@ -3034,6 +3111,20 @@ def select_candidate(request, order_id):
     if actual_members >= order.quantity:
         order.status = 'confirming'
         order.save(update_fields=['status', 'updated_at'])
+    _notify_users(
+        [selected_employee.user],
+        '客户已选中你',
+        f'你已被客户选中接取订单 {order.order_no}，请等待客户确认后开始服务。',
+        notice_type='order',
+        level='success',
+        sender=user,
+        jump_url=f'/pages/order-detail/order-detail?id={order.id}',
+        extra=_order_notice_extra(
+            order, 'order_selected',
+            employee_id=selected_employee.id,
+            member_id=member.id,
+        ),
+    )
 
     return success_response(msg='已选中该打手')
 
@@ -3060,6 +3151,20 @@ def withdraw_application(request, order_id):
         return error_response(msg='您不在该订单的选秀队列中')
 
     candidate.delete()
+    _notify_users(
+        [order.customer.user],
+        '接单申请已撤回',
+        f'{employee.nickname or employee.real_name} 已撤回订单 {order.order_no} 的接单申请。',
+        notice_type='order',
+        level='warning',
+        sender=user,
+        jump_url=f'/pages/order-detail/order-detail?id={order.id}',
+        extra=_order_notice_extra(
+            order, 'order_candidate_withdrawn',
+            employee_id=employee.id,
+            employee_name=employee.nickname or employee.real_name,
+        ),
+    )
     return success_response(msg='已撤回申请')
 
 
@@ -3111,7 +3216,13 @@ def invite_order_member(request, order_id):
         target_type='user',
         target_ids=str(target.user_id),
         jump_url=f'/pages/order-detail/order-detail?id={order.id}',
-        extra=json.dumps({'order_id': order.id, 'invite_from': employee.id, 'target_id': target.id}),
+        extra=json.dumps({
+            'type': 'order_invite',
+            'category': 'order_action',
+            'order_id': order.id,
+            'invite_from': employee.id,
+            'target_id': target.id,
+        }),
         publish_time=timezone.now(),
     )
     UserNotice.objects.create(notice=notice, user=target.user)
@@ -3224,6 +3335,16 @@ def confirm_order(request, order_id):
     order.status = 'claimed'
     order.customer_confirmed = True
     order.save(update_fields=['status', 'customer_confirmed', 'updated_at'])
+    _notify_users(
+        _order_member_users(order),
+        '订单已确认',
+        f'客户已确认订单 {order.order_no}，队长现在可以开始服务。',
+        notice_type='order',
+        level='success',
+        sender=user,
+        jump_url=f'/pages/order-detail/order-detail?id={order.id}',
+        extra=_order_notice_extra(order, 'order_confirmed'),
+    )
 
     return success_response(msg='确认成功')
 
@@ -3315,6 +3436,20 @@ def transfer_order(request, order_id):
         'status', 'locked_slots', 'leader', 'assigned_employee', 'customer_confirmed',
         'dasher_confirmed', 'transfer_reason', 'transfer_fee', 'transfer_from_employee', 'updated_at'
     ])
+    _notify_users(
+        [order.customer.user],
+        '订单正在转单',
+        f'订单 {order.order_no} 正在重新匹配打手。原因：{transfer_reason}',
+        notice_type='order',
+        level='warning',
+        sender=user,
+        jump_url=f'/pages/order-detail/order-detail?id={order.id}',
+        extra=_order_notice_extra(
+            order, 'order_transferring',
+            reason=transfer_reason,
+            transfer_fee=float(transfer_fee),
+        ),
+    )
 
     return success_response(msg='转单成功')
 
@@ -3393,6 +3528,13 @@ def kick_member(request, order_id):
             target_type='user',
             target_ids=str(member.employee.user_id),
             jump_url=f'/pages/order-detail/order-detail?id={order.id}',
+            extra=json.dumps({
+                'type': 'order_removed',
+                'category': 'order_status',
+                'order_id': order.id,
+                'order_no': order.order_no,
+                'order_status': order.status,
+            }, ensure_ascii=False),
             publish_time=timezone.now(),
         )
         UserNotice.objects.create(notice=notice, user=member.employee.user)
@@ -3524,6 +3666,17 @@ def complete_order(request, order_id):
         _, settlement = complete_order_and_settle(order.id)
     except OrderCompletionError as exc:
         return error_response(msg=str(exc))
+    order.refresh_from_db(fields=['status', 'end_time', 'complete_time'])
+    _notify_users(
+        [order.customer.user],
+        '订单已完结',
+        f'订单 {order.order_no} 已完结，佣金已结算。请确认服务并进行评价。',
+        notice_type='order',
+        level='success',
+        sender=user,
+        jump_url=f'/pages/order-detail/order-detail?id={order.id}',
+        extra=_order_notice_extra(order, 'order_completed'),
+    )
 
     return success_response(data={
         'settled_count': settlement['settled_count'],
@@ -3622,6 +3775,16 @@ def start_order(request, order_id):
         member.save(update_fields=['status', 'start_time'])
 
     _create_order_chat_group(order)
+    _notify_users(
+        [order.customer.user],
+        '订单已开始',
+        f'订单 {order.order_no} 已开始服务，请留意订单进度和群聊消息。',
+        notice_type='order',
+        level='success',
+        sender=user,
+        jump_url=f'/pages/order-detail/order-detail?id={order.id}',
+        extra=_order_notice_extra(order, 'order_started'),
+    )
 
     return success_response(msg='订单已开始')
 
@@ -4013,6 +4176,16 @@ def comment_order(request, order_id):
         if avg:
             employee.rating = round(avg, 2)
             employee.save(update_fields=['rating'])
+        _notify_users(
+            [employee.user],
+            '收到新的评价',
+            f'客户已评价订单 {order.order_no}，评分 {rating} 星。',
+            notice_type='order',
+            level='info',
+            sender=user,
+            jump_url=f'/pages/order-detail/order-detail?id={order.id}',
+            extra=_order_notice_extra(order, 'order_reviewed', rating=rating),
+        )
 
     return success_response(msg='评价成功')
 
@@ -4037,14 +4210,45 @@ def my_notices(request):
 
     notice_list = []
     for n in notices:
+        raw_extra = n.notice.extra if n.notice else ''
+        extra_data = {}
+        if raw_extra:
+            try:
+                extra_data = json.loads(raw_extra)
+            except (TypeError, ValueError):
+                extra_data = {}
+        subtype = extra_data.get('type') or (n.notice.type if n.notice else '')
+        category = extra_data.get('category') or (n.notice.type if n.notice else 'other')
+        type_label_map = {
+            'order_candidate_applied': '接单申请',
+            'order_candidate_withdrawn': '撤回申请',
+            'order_selected': '客户选中',
+            'order_confirmed': '待开始',
+            'order_started': '服务中',
+            'order_completed': '已完结',
+            'order_reviewed': '评价',
+            'order_cancelled': '已取消',
+            'order_transferring': '转单',
+            'order_removed': '被移除',
+            'cs_request': '客服请求',
+            'team_invite': '组队邀请',
+            'order_invite': '订单邀请',
+            'system': '系统',
+            'order': '订单',
+            'finance': '财务',
+            'activity': '活动',
+        }
         notice_list.append({
             'id': n.id,
             'title': n.notice.title if n.notice else '',
             'content': n.notice.content if n.notice else '',
             'type': n.notice.type if n.notice else '',
+            'subtype': subtype,
+            'category': category,
+            'type_label': type_label_map.get(subtype, type_label_map.get(category, '通知')),
             'level': n.notice.level if n.notice else '',
             'is_read': n.is_read,
-            'extra': n.notice.extra if n.notice else '',
+            'extra': raw_extra,
             'jump_url': n.notice.jump_url if n.notice else '',
             'created_at': n.created_at.strftime('%Y-%m-%d %H:%M'),
         })
