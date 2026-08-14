@@ -3916,6 +3916,59 @@ def _get_employee_quick_welcome_messages(employee, default_message=None):
     return messages or [default_message]
 
 
+def _chat_sender_name(user):
+    if not user:
+        return '系统'
+    return user.nickname or user.username or '成员'
+
+
+def _group_chat_notice_jump_url(group):
+    return f'/pages/group-chat/group-chat?id={group.id}'
+
+
+def _notify_group_chat_message(group, message, sender):
+    if message.msg_type == 'system':
+        return
+    recipients = [
+        member.user
+        for member in group.members.filter(is_deleted=False, user__isnull=False).select_related('user')
+    ]
+    sender_name = _chat_sender_name(sender)
+    order = group.order if group.order_id else None
+    group_title = order.title if order and order.title else group.name
+    _notify_users(
+        recipients,
+        f'{group_title}',
+        f'{sender_name}：{message.content}',
+        notice_type='team',
+        level='info',
+        sender=sender,
+        jump_url=_group_chat_notice_jump_url(group),
+        extra={
+            'type': 'group_message',
+            'category': 'group',
+            'group_id': group.id,
+            'group_name': group.name,
+            'order_id': group.order_id,
+            'message_id': message.id,
+            'sender_id': sender.id if sender else None,
+            'sender_name': sender_name,
+        },
+    )
+
+
+def _mark_group_chat_notices_read(user, group):
+    jump_url = _group_chat_notice_jump_url(group)
+    updated = UserNotice.objects.filter(
+        user=user,
+        is_read=False,
+        is_deleted=False,
+        notice__jump_url=jump_url,
+    ).update(is_read=True)
+    if updated:
+        push_unread_count(user.id)
+
+
 @api_view(['GET'])
 @permission_classes([IsAuthenticated])
 def order_chat_groups(request):
@@ -3991,6 +4044,13 @@ def order_chat_groups(request):
             group.members.filter(is_deleted=False).count(),
             (1 if order and order.customer else 0) + len(dasher_names),
         )
+        group_jump_url = _group_chat_notice_jump_url(group)
+        group_unread_count = UserNotice.objects.filter(
+            user=user,
+            is_read=False,
+            is_deleted=False,
+            notice__jump_url=group_jump_url,
+        ).count()
         data.append({
             'id': group.id, 'name': group.name,
             'title': order.title if order and order.title else group.name,
@@ -4001,6 +4061,7 @@ def order_chat_groups(request):
             'last_message': last_message.content if last_message else '',
             'last_message_time': last_message.created_at.strftime('%m-%d %H:%M') if last_message else '',
             'expires_at': _as_localtime(group.expires_at).strftime('%Y-%m-%d %H:%M'),
+            'unread_count': group_unread_count,
         })
     return success_response(data)
 
@@ -4023,7 +4084,9 @@ def order_chat_group_detail(request, group_id):
         if not content:
             return error_response(msg='消息内容不能为空')
         message = OrderChatMessage.objects.create(group=group, sender=request.user, content=content)
+        _notify_group_chat_message(group, message, request.user)
         return success_response({'message_id': message.id}, msg='发送成功')
+    _mark_group_chat_notices_read(request.user, group)
     messages = group.messages.filter(is_deleted=False).select_related('sender')
     order_card = None
     order = group.order if group.order_id else None
@@ -4119,6 +4182,7 @@ def send_order_chat_quick_welcome(request, group_id):
     if not content:
         return error_response(msg='请先设置快捷欢迎语')
     message = OrderChatMessage.objects.create(group=group, sender=request.user, content=content)
+    _notify_group_chat_message(group, message, request.user)
     return success_response({'message_id': message.id, 'content': content}, msg='发送成功')
 
 

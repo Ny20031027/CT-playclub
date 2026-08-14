@@ -53,6 +53,8 @@ def get_notice_type_label(subtype, category):
         'order_removed': '被移除',
         'cs_request': '客服请求',
         'team_invite': '组队邀请',
+        'group_message': '群组消息',
+        'group': '群组',
         'order_invite': '订单邀请',
         'system': '系统',
         'order': '订单',
