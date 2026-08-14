@@ -2636,12 +2636,15 @@ def order_detail(request, order_id):
         my_booking = OrderMember.objects.filter(
             order=order, employee=employee, is_deleted=False, status__in=['accepted', 'in_progress']
         ).first()
-        can_upload_completion_images = OrderMember.objects.filter(
-            order=order,
-            employee=employee,
-            is_deleted=False,
-            status__in=['accepted', 'in_progress', 'completed'],
-        ).exists()
+        can_upload_completion_images = (
+            order.status == 'in_progress' and
+            OrderMember.objects.filter(
+                order=order,
+                employee=employee,
+                is_deleted=False,
+                status='in_progress',
+            ).exists()
+        )
 
     # 打手端：是否已在选秀队列
     is_candidate = False
@@ -3495,19 +3498,27 @@ def complete_order(request, order_id):
 
     is_member = OrderMember.objects.filter(
         order=order, employee=employee, is_deleted=False,
-        status__in=['accepted', 'in_progress']
+        status='in_progress'
     ).exists()
     if not is_member:
         return error_response(msg='只有订单打手可以完结订单')
 
-    # 保存完成凭证图片
+    # 保存完成凭证图片；若请求未带图片，则使用订单已保存的凭证。
     images = request.data.get('images', [])
     if isinstance(images, str):
         images = [images]
+    if not isinstance(images, list):
+        return error_response(msg='图片格式不正确')
+    valid_images = []
     if images:
-        valid_images = [str(img).strip() for img in images if str(img).strip()]
+        valid_images = [str(img).strip() for img in images if str(img).strip()][:9]
         order.completion_images = ','.join(valid_images)
         order.save(update_fields=['completion_images', 'updated_at'])
+    else:
+        valid_images = parse_completion_images(order)
+
+    if not valid_images:
+        return error_response(msg='请至少上传一张完成凭证后再结束订单')
 
     try:
         _, settlement = complete_order_and_settle(order.id)
@@ -3534,15 +3545,15 @@ def update_completion_images(request, order_id):
         return error_response(msg='您不是打手')
 
     try:
-        order = Order.objects.get(id=order_id, is_deleted=False)
+        order = Order.objects.get(id=order_id, status='in_progress', is_deleted=False)
     except Order.DoesNotExist:
-        return error_response(msg='订单不存在')
+        return error_response(msg='只有进行中的订单可以上传完成凭证')
 
     is_member = OrderMember.objects.filter(
         order=order,
         employee=employee,
         is_deleted=False,
-        status__in=['accepted', 'in_progress', 'completed'],
+        status='in_progress',
     ).exists()
     if not is_member:
         return error_response(msg='只有订单打手可以上传完成凭证')
