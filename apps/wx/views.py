@@ -55,8 +55,11 @@ def _notify_users(users, title, content, notice_type='system', level='info',
     """Create one in-app notice and attach it to every valid target user."""
     target_users = []
     seen = set()
+    sender_id = getattr(sender, 'id', None)
     for user in users or []:
         if not user or not getattr(user, 'id', None) or user.id in seen:
+            continue
+        if sender_id and user.id == sender_id:
             continue
         seen.add(user.id)
         target_users.append(user)
@@ -2904,6 +2907,9 @@ def claim_order(request, order_id):
         order = Order.objects.select_for_update().get(id=order_id, is_deleted=False)
     except Order.DoesNotExist:
         return error_response(msg='订单不存在')
+
+    if order.customer and order.customer.user_id == user.id:
+        return error_response(msg='不能申请接取自己的订单')
 
     # 检查订单状态是否可接取
     if order.status != 'published':
