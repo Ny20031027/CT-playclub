@@ -3969,6 +3969,17 @@ def _mark_group_chat_notices_read(user, group):
         push_unread_count(user.id)
 
 
+def _push_team_update_event(user_ids, team=None, reason='team_updated'):
+    payload = {
+        'event': 'team.updated',
+        'reason': reason,
+        'team_id': team.id if team else None,
+        'team_name': team.name if team else '',
+        'server_time': timezone.now().strftime('%Y-%m-%d %H:%M:%S'),
+    }
+    transaction.on_commit(lambda: push_event_to_users(user_ids, payload))
+
+
 @api_view(['GET'])
 @permission_classes([IsAuthenticated])
 def order_chat_groups(request):
@@ -5816,6 +5827,7 @@ def invite_to_team(request):
     )
     user_notice = UserNotice.objects.create(notice=notice, user=target.user)
     push_user_notice(user_notice)
+    _push_team_update_event([target.user_id, team.leader.user_id], team, 'team_invite_created')
 
     return success_response(msg='邀请已发送')
 
@@ -5847,10 +5859,47 @@ def handle_team_invite(request):
             return error_response(msg='队伍已满，无法加入')
         membership.status = 'active'
         membership.save(update_fields=['status'])
+        _notify_users(
+            [team.leader.user],
+            '队员已加入',
+            f'{employee.nickname or employee.real_name} 已加入队伍「{team.name}」。',
+            notice_type='team',
+            level='success',
+            sender=user,
+            jump_url='/pages/profile/profile',
+            extra={
+                'type': 'team_invite_accepted',
+                'category': 'team',
+                'team_id': team.id,
+                'team_name': team.name,
+                'employee_id': employee.id,
+                'employee_name': employee.nickname or employee.real_name,
+            },
+        )
+        _push_team_update_event([user.id, team.leader.user_id], team, 'team_invite_accepted')
         return success_response(msg='已加入队伍')
     else:
+        team = membership.team
         membership.status = 'left'
         membership.save(update_fields=['status'])
+        _notify_users(
+            [team.leader.user],
+            '组队邀请已拒绝',
+            f'{employee.nickname or employee.real_name} 拒绝加入队伍「{team.name}」。',
+            notice_type='team',
+            level='warning',
+            sender=user,
+            jump_url='/pages/profile/profile',
+            extra={
+                'type': 'team_invite_rejected',
+                'category': 'team',
+                'team_id': team.id,
+                'team_name': team.name,
+                'employee_id': employee.id,
+                'employee_name': employee.nickname or employee.real_name,
+            },
+        )
+        _push_team_update_event([user.id, team.leader.user_id], team, 'team_invite_rejected')
         return success_response(msg='已拒绝邀请')
 
 
@@ -5872,14 +5921,21 @@ def leave_team(request):
 
     if team:
         # 如果是队长，解散队伍
+        affected_user_ids = list(TeamMember.objects.filter(
+            team=team, employee__user__isnull=False
+        ).values_list('employee__user_id', flat=True))
         team.status = False
         team.save(update_fields=['status'])
         TeamMember.objects.filter(team=team).update(status='left')
+        _push_team_update_event(affected_user_ids, team, 'team_disbanded')
         return success_response(msg='队伍已解散')
     elif membership:
         # 普通成员退出
+        team = membership.team
+        leader_user_id = team.leader.user_id if team and team.leader_id else None
         membership.status = 'left'
         membership.save(update_fields=['status'])
+        _push_team_update_event([user.id, leader_user_id], team, 'team_member_left')
         return success_response(msg='已退出队伍')
     else:
         return error_response(msg='您不在任何队伍中')
