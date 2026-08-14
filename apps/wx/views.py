@@ -35,7 +35,7 @@ from apps.order.services import (
     OrderCompletionError, complete_order_and_settle,
 )
 from apps.notice.models import Notice, UserNotice
-from apps.notice.realtime import push_unread_count, push_user_notice
+from apps.notice.realtime import push_event_to_users, push_unread_count, push_user_notice
 from apps.system.agreements import get_agreement, get_agreements
 from apps.system.recharge_offers import get_recharge_offers
 from apps.finance.models import Wallet, Transaction
@@ -105,6 +105,35 @@ def _order_member_users(order):
         member.employee.user
         for member in order.order_members.filter(is_deleted=False, employee__user__isnull=False).select_related('employee__user')
     ]
+
+
+def _dispatch_hall_target_user_ids(order):
+    customer_user_id = getattr(getattr(order, 'customer', None), 'user_id', None)
+    if order.assigned_employee_id:
+        user_id = Employee.objects.filter(
+            id=order.assigned_employee_id, is_deleted=False, user__isnull=False
+        ).values_list('user_id', flat=True).first()
+        return [user_id] if user_id and user_id != customer_user_id else []
+    return list(Employee.objects.filter(
+        is_deleted=False, user__isnull=False
+    ).exclude(user_id=customer_user_id).values_list('user_id', flat=True).distinct())
+
+
+def _push_dispatch_hall_update(order, reason='order_updated'):
+    if order.status not in [OrderStatus.PUBLISHED, OrderStatus.TRANSFERRING]:
+        return
+    user_ids = _dispatch_hall_target_user_ids(order)
+    payload = {
+        'event': 'dispatch.order_updated',
+        'reason': reason,
+        'order_id': order.id,
+        'order_no': order.order_no,
+        'order_status': order.status,
+        'game_name': order.game_name,
+        'is_reserved': bool(order.assigned_employee_id),
+        'server_time': timezone.now().strftime('%Y-%m-%d %H:%M:%S'),
+    }
+    transaction.on_commit(lambda: push_event_to_users(user_ids, payload))
 
 
 class GameCategoryViewSet(BaseModelViewSet):
@@ -1600,6 +1629,7 @@ def create_order(request):
     if coupon_id and coupon_discount > 0:
         _consume_user_coupon(coupon_id, customer, order_no)
 
+    _push_dispatch_hall_update(order, 'order_created')
     return success_response({
         'order_id': order.id,
         'order_no': order.order_no,
@@ -1730,6 +1760,7 @@ def create_self_service_order_legacy(request):
     if coupon_id and coupon_discount > 0:
         _consume_user_coupon(coupon_id, customer, order_no)
 
+    _push_dispatch_hall_update(order, 'order_created')
     return success_response({
         'order_id': order.id,
         'order_no': order.order_no,
@@ -1952,6 +1983,7 @@ def create_self_service_order(request):
         if coupon_id and coupon_discount > 0:
             _consume_user_coupon(coupon_id, customer, order_no)
         _mark_preorder_used(checkout_preorder)
+        _push_dispatch_hall_update(order, 'order_created')
         return success_response({
             'order_id': order.id,
             'order_no': order.order_no,
@@ -2318,6 +2350,7 @@ def create_self_service_order(request):
         _consume_user_coupon(coupon_id, customer, order_no)
 
     _mark_preorder_used(checkout_preorder)
+    _push_dispatch_hall_update(order, 'order_created')
     return success_response({
         'order_id': order.id,
         'order_no': order.order_no,
@@ -2345,7 +2378,7 @@ def dispatch_hall(request):
     queryset = Order.objects.filter(
         status__in=['published', 'transferring'],
         is_deleted=False
-    )
+    ).order_by('-created_at')
 
     if game_name:
         queryset = queryset.filter(game_name=game_name)
@@ -3292,6 +3325,7 @@ def give_up_order(request, order_id):
             'status', 'locked_slots', 'leader', 'customer_confirmed',
             'dasher_confirmed', 'updated_at'
         ])
+        _push_dispatch_hall_update(order, 'order_republished')
         return success_response(msg='队长已取消正式接取，订单已回到派单大厅', data={'locked_slots': 0})
 
     # 释放席位（根据该成员锁定的席位数）
@@ -3313,6 +3347,7 @@ def give_up_order(request, order_id):
         order.customer_confirmed = False
         order.dasher_confirmed = False
         order.save(update_fields=['status', 'locked_slots', 'leader', 'customer_confirmed', 'dasher_confirmed', 'updated_at'])
+        _push_dispatch_hall_update(order, 'order_republished')
     else:
         # 还有其他成员，如果放弃的是队长，需要转移队长
         if is_leader:
@@ -3462,6 +3497,7 @@ def transfer_order(request, order_id):
             transfer_fee=float(transfer_fee),
         ),
     )
+    _push_dispatch_hall_update(order, 'order_transferred')
 
     return success_response(msg='转单成功')
 
@@ -3527,6 +3563,8 @@ def kick_member(request, order_id):
         order.dasher_confirmed = False
 
     order.save(update_fields=['status', 'locked_slots', 'leader', 'customer_confirmed', 'dasher_confirmed', 'updated_at'])
+    if order.status == OrderStatus.PUBLISHED:
+        _push_dispatch_hall_update(order, 'order_republished')
 
     # 通知被踢的打手
     try:

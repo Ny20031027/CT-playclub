@@ -87,6 +87,18 @@ def push_unread_count(user_id):
     })
 
 
+def push_event_to_users(user_ids, payload):
+    seen = set()
+    for user_id in user_ids or []:
+        if not user_id:
+            continue
+        normalized_id = int(user_id)
+        if normalized_id in seen:
+            continue
+        seen.add(normalized_id)
+        push_to_user(normalized_id, payload)
+
+
 def push_to_user(user_id, payload):
     clients = list(_notice_clients.get(int(user_id), []))
     if not clients:
