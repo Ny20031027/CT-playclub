@@ -2,7 +2,11 @@ import os
 
 from django.core.asgi import get_asgi_application
 
-os.environ.setdefault('DJANGO_SETTINGS_MODULE', 'config.settings.dev')
+# Match WSGI startup behavior: production containers provide DB_HOST.
+if os.environ.get('DB_HOST'):
+    os.environ.setdefault('DJANGO_SETTINGS_MODULE', 'config.settings.prod')
+else:
+    os.environ.setdefault('DJANGO_SETTINGS_MODULE', 'config.settings.dev')
 
 django_application = get_asgi_application()
 
