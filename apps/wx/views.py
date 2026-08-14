@@ -3,7 +3,6 @@ import re
 import datetime
 import requests
 import warnings
-import time
 from decimal import Decimal, InvalidOperation, ROUND_HALF_UP
 from django.utils import timezone
 from django.conf import settings
@@ -48,11 +47,6 @@ from .serializers import (
 
 import logging
 logger = logging.getLogger(__name__)
-
-
-def order_watch_version(order):
-    updated_at = order.updated_at or timezone.now()
-    return f'{order.status}:{int(updated_at.timestamp() * 1000)}'
 
 
 class GameCategoryViewSet(BaseModelViewSet):
@@ -2701,7 +2695,6 @@ def order_detail(request, order_id):
         'skill_name': order.skill.name if order.skill else '',
         'status': order.status,
         'status_display': order.get_status_display(),
-        'watch_version': order_watch_version(order),
         'order_type': order.order_type,
         'duration': order.duration,
         'quantity': order.quantity,
@@ -2757,63 +2750,6 @@ def order_detail(request, order_id):
         'end_time': order.end_time.strftime('%Y-%m-%d %H:%M') if order.end_time else None,
         'cancel_time': order.cancel_time.strftime('%Y-%m-%d %H:%M') if order.cancel_time else None,
     })
-
-
-@api_view(['GET'])
-@permission_classes([IsAuthenticated])
-def watch_order_change(request, order_id):
-    """Long-poll until an order changes, then tell the mini-program to refresh detail."""
-    last_version = request.GET.get('version') or ''
-    timeout_seconds = min(max(int(request.GET.get('timeout') or 25), 5), 30)
-    deadline = time.monotonic() + timeout_seconds
-
-    while True:
-        try:
-            order = Order.objects.get(id=order_id, is_deleted=False)
-        except Order.DoesNotExist:
-            return error_response(msg='订单不存在')
-
-        user = request.user
-        allowed = False
-        try:
-            allowed = bool(order.customer_id and order.customer.user_id == user.id)
-        except Exception:
-            allowed = False
-        if not allowed:
-            try:
-                employee = user.employee
-                allowed = (
-                    order.status in ['published', 'transferring'] or
-                    OrderMember.objects.filter(
-                        order=order, employee=employee, is_deleted=False
-                    ).exists()
-                )
-            except Exception:
-                allowed = False
-        if not allowed and getattr(user, 'user_type', '') == 'cs':
-            allowed = True
-        if not allowed:
-            return error_response(msg='订单不存在')
-
-        _auto_complete_order(order)
-        order.refresh_from_db(fields=['status', 'updated_at'])
-        current_version = order_watch_version(order)
-        if current_version != last_version:
-            return success_response({
-                'changed': True,
-                'status': order.status,
-                'status_display': order.get_status_display(),
-                'watch_version': current_version,
-            })
-
-        if time.monotonic() >= deadline:
-            return success_response({
-                'changed': False,
-                'status': order.status,
-                'status_display': order.get_status_display(),
-                'watch_version': current_version,
-            })
-        time.sleep(1)
 
 
 @api_view(['POST'])
