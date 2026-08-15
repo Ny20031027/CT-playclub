@@ -4200,8 +4200,45 @@ def send_order_chat_quick_welcome(request, group_id):
 @api_view(['POST'])
 @permission_classes([IsAuthenticated])
 def end_order(request, order_id):
-    """客户不再拥有结束订单权限，订单结束统一由打手队长操作。"""
-    return error_response(msg='订单结束由打手操作，客户无需结束订单', code=403)
+    """客户结束进行中的订单，并触发统一结算。"""
+    user = request.user
+    try:
+        customer = user.customer
+    except Exception:
+        return error_response(msg='用户不存在')
+
+    try:
+        order = Order.objects.get(
+            id=order_id,
+            customer=customer,
+            status=OrderStatus.IN_PROGRESS,
+            is_deleted=False,
+        )
+    except Order.DoesNotExist:
+        return error_response(msg='订单不存在或状态不正确')
+
+    try:
+        _, settlement = complete_order_and_settle(order.id)
+    except OrderCompletionError as exc:
+        return error_response(msg=str(exc))
+
+    order.refresh_from_db(fields=['status', 'end_time', 'complete_time'])
+    _notify_users(
+        _order_member_users(order),
+        '客户已结束服务',
+        f'客户已结束订单 {order.order_no}，佣金已结算。',
+        notice_type='order',
+        level='success',
+        sender=user,
+        jump_url=f'/pages/order-detail/order-detail?id={order.id}',
+        extra=_order_notice_extra(order, 'order_completed'),
+    )
+
+    return success_response(data={
+        'settled_count': settlement['settled_count'],
+        'commission_total': float(settlement['commission_total']),
+        'platform_commission_total': float(settlement['platform_commission_total']),
+    }, msg='订单已结束，佣金已结算')
 
 
 @api_view(['POST'])
@@ -5727,6 +5764,8 @@ def get_my_team(request):
             'name': team.name,
             'leader_id': team.leader_id,
             'leader_user_id': team.leader.user_id if team.leader_id else None,
+            'current_employee_id': employee.id,
+            'is_leader': employee.id == team.leader_id,
             'member_count': team.member_count,
             'max_members': team.max_members,
             'members': member_list,

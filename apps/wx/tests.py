@@ -692,13 +692,7 @@ class MultiPersonOrderFlowTests(TestCase):
         self.assertEqual(set(order.order_members.values_list('status', flat=True)), {'in_progress'})
 
         customer_end = self.post_as(self.customer_user, f'/api/wx/orders/{order.id}/end/')
-        self.assertNotEqual(customer_end['code'], 200)
-
-        member_detail = self.get_as(self.member.user, f'/api/wx/orders/{order.id}/')
-        self.assertTrue(member_detail['data']['can_complete'])
-
-        ended = self.post_as(self.member.user, f'/api/wx/orders/{order.id}/complete/')
-        self.assertEqual(ended['code'], 200)
+        self.assertEqual(customer_end['code'], 200)
         order.refresh_from_db()
         self.assertEqual(order.status, 'completed')
 
