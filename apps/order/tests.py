@@ -163,6 +163,28 @@ class OrderCommissionSettlementTests(TestCase):
             Decimal('20.00'),
         )
 
+    def test_tip_is_settled_to_employee_without_platform_commission(self):
+        employee = self.create_employee('tip', Decimal('80.00'))
+        order = self.create_order('SETTLE-ORDER-TIP', Decimal('110.00'), [employee])
+        order.total_amount = Decimal('100.00')
+        order.tip_amount = Decimal('10.00')
+        order.save(update_fields=['total_amount', 'tip_amount'])
+
+        _, result = complete_order_and_settle(order.id)
+
+        employee.refresh_from_db()
+        member = order.order_members.get(employee=employee)
+        self.assertEqual(result['commission_total'], Decimal('90.00'))
+        self.assertEqual(result['platform_commission_total'], Decimal('20.00'))
+        self.assertEqual(member.commission_amount, Decimal('90.00'))
+        self.assertEqual(employee.commission_balance, Decimal('90.00'))
+        self.assertEqual(
+            Transaction.objects.get(
+                order_no=order.order_no, employee=employee, category='platform_commission'
+            ).amount,
+            Decimal('20.00'),
+        )
+
     def test_admin_complete_endpoint_also_settles_commission(self):
         employee = self.create_employee('admin', Decimal('70.00'))
         order = self.create_order('SETTLE-ORDER-003', Decimal('50.00'), [employee])

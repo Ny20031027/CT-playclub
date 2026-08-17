@@ -60,9 +60,15 @@ def settle_order_commission(order):
             'platform_commission_total': Decimal('0.00'),
         }
 
-    # 佣金计算基数 = 实付金额 + 优惠券折扣（打手佣金不受优惠券影响）
-    gross_total = max(_money(locked_order.pay_amount) + _money(locked_order.coupon_discount), Decimal('0.00'))
-    gross_shares = _split_evenly(gross_total, len(members))
+    # 服务佣金基数 = 实付金额 + 优惠券折扣 - 小费（打手佣金不受优惠券影响）
+    # 小费不参与平台抽成，按订单成员平均全额结算给打手。
+    tip_total = max(_money(getattr(locked_order, 'tip_amount', 0)), Decimal('0.00'))
+    service_gross_total = max(
+        _money(locked_order.pay_amount) + _money(locked_order.coupon_discount) - tip_total,
+        Decimal('0.00')
+    )
+    service_gross_shares = _split_evenly(service_gross_total, len(members))
+    tip_shares = _split_evenly(tip_total, len(members))
     settled_count = 0
     commission_total = Decimal('0.00')
     platform_commission_total = Decimal('0.00')
@@ -72,7 +78,7 @@ def settle_order_commission(order):
     if platform_wallet is None:
         platform_wallet = Wallet.objects.create(type='platform')
 
-    for member, gross_share in zip(members, gross_shares):
+    for member, service_gross_share, tip_share in zip(members, service_gross_shares, tip_shares):
         employee_tx_exists = Transaction.objects.filter(
             order_no=locked_order.order_no,
             employee_id=member.employee_id,
@@ -87,10 +93,11 @@ def settle_order_commission(order):
         employee = Employee.objects.select_for_update().get(pk=member.employee_id)
         platform_rate = _platform_commission_rate(employee)
         employee_rate = Decimal('100.00') - platform_rate
-        employee_commission = (gross_share * employee_rate / Decimal('100')).quantize(
+        service_commission = (service_gross_share * employee_rate / Decimal('100')).quantize(
             MONEY_STEP, rounding=ROUND_HALF_UP
         )
-        platform_commission = gross_share - employee_commission
+        employee_commission = service_commission + tip_share
+        platform_commission = service_gross_share - service_commission
         if member.commission_amount != employee_commission:
             member.commission_amount = employee_commission
             member.save(update_fields=['commission_amount', 'updated_at'])
@@ -119,8 +126,8 @@ def settle_order_commission(order):
                 amount=employee_commission,
                 balance_after=employee.commission_balance,
                 remark=(
-                    f'订单 {locked_order.order_no} 打手结算：订单分摊¥{gross_share} × '
-                    f'{employee_rate}%（平台抽成{platform_rate}%）'
+                    f'订单 {locked_order.order_no} 打手结算：服务分摊¥{service_gross_share} × '
+                    f'{employee_rate}% + 小费¥{tip_share}（平台抽成{platform_rate}%）'
                 ),
                 source='order',
             )
@@ -143,7 +150,7 @@ def settle_order_commission(order):
                 amount=platform_commission,
                 balance_after=platform_wallet.balance,
                 remark=(
-                    f'订单 {locked_order.order_no} 平台抽成：订单分摊¥{gross_share} × '
+                    f'订单 {locked_order.order_no} 平台抽成：服务分摊¥{service_gross_share} × '
                     f'{platform_rate}%'
                 ),
                 source='order',

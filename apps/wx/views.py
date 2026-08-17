@@ -175,6 +175,20 @@ def amount_to_coins(amount):
     return int((value * Decimal('10')).quantize(Decimal('1'), rounding=ROUND_HALF_UP))
 
 
+def parse_tip_coins(request):
+    raw_value = request.data.get('tip_coins', 0)
+    try:
+        tip_coins = int(str(raw_value or 0).strip())
+    except (TypeError, ValueError):
+        raise ValueError('小费黑钻数量不正确')
+    if tip_coins < 0:
+        raise ValueError('小费不能为负数')
+    if tip_coins > 999999:
+        raise ValueError('小费金额过大')
+    tip_amount = (Decimal(tip_coins) / Decimal('10')).quantize(MONEY_STEP, rounding=ROUND_HALF_UP)
+    return tip_coins, tip_amount
+
+
 def _as_localtime(value):
     return timezone.localtime(value) if timezone.is_aware(value) else value
 
@@ -1787,6 +1801,11 @@ def create_self_service_order(request):
     if preorder_error:
         return preorder_error
 
+    try:
+        tip_coins, tip_amount = parse_tip_coins(request)
+    except ValueError as exc:
+        return error_response(msg=str(exc))
+
     gameplay = SkillGameplay.objects.select_for_update().select_related(
         'skill', 'skill__game_category'
     ).filter(
@@ -1882,6 +1901,11 @@ def create_self_service_order(request):
             coin_cost = max(0, coin_cost - discount_coins)
             charged_amount = (Decimal(coin_cost) / Decimal('10')).quantize(Decimal('0.01'))
 
+        service_coin_cost = coin_cost
+        if tip_coins:
+            coin_cost += tip_coins
+            charged_amount = (charged_amount + tip_amount).quantize(Decimal('0.01'))
+
         if customer.coins_frozen:
             return error_response(msg='黑钻已被冻结，无法下单', code=403)
         if coin_cost > 0 and (customer.coins or 0) < coin_cost:
@@ -1910,6 +1934,9 @@ def create_self_service_order(request):
             'unit_coins': unit_coin_cost,
             'total_amount': float(total_price),
             'pay_amount': float(charged_amount),
+            'service_coins': service_coin_cost,
+            'tip_amount': float(tip_amount),
+            'tip_coins': tip_coins,
             'total_coins': coin_cost,
             'trial_requested': trial_requested,
             **choice_snapshot,
@@ -1930,6 +1957,7 @@ def create_self_service_order(request):
             total_amount=total_price,
             discount_amount=coupon_discount,
             coupon_discount=coupon_discount,
+            tip_amount=tip_amount,
             pay_amount=charged_amount,
             game_id=str(skill.game_category_id or ''),
             game_name=game_name,
@@ -1989,6 +2017,8 @@ def create_self_service_order(request):
             'order_no': order.order_no,
             'total_amount': float(total_price),
             'pay_amount': float(charged_amount),
+            'tip_amount': float(tip_amount),
+            'tip_coins': tip_coins,
             'total_coins': coin_cost,
             'snapshot': snapshot,
         })
@@ -2222,6 +2252,11 @@ def create_self_service_order(request):
         coin_cost = max(0, coin_cost - discount_coins)
         charged_amount = (Decimal(coin_cost) / Decimal('10')).quantize(Decimal('0.01'))
 
+    service_coin_cost = coin_cost
+    if tip_coins:
+        coin_cost += tip_coins
+        charged_amount = (charged_amount + tip_amount).quantize(Decimal('0.01'))
+
     people_count = 2 if companion_type == 'double' else 1
     duration = int(purchase_quantity * 60) if gameplay.settlement_unit == 'hour' else 0
     game_name = skill.game_category.name if skill.game_category else skill.name
@@ -2248,6 +2283,9 @@ def create_self_service_order(request):
         'unit_price': float(unit_price),
         'total_amount': float(total_amount),
         'pay_amount': float(charged_amount),
+        'service_coins': service_coin_cost,
+        'tip_amount': float(tip_amount),
+        'tip_coins': tip_coins,
         'total_coins': coin_cost,
         'price_source': price_source,
         'trial_requested': trial_requested,
@@ -2289,6 +2327,7 @@ def create_self_service_order(request):
         total_amount=total_amount,
         discount_amount=coupon_discount,
         coupon_discount=coupon_discount,
+        tip_amount=tip_amount,
         pay_amount=charged_amount,
         game_id=str(skill.game_category_id or ''),
         game_name=game_name,
@@ -2356,6 +2395,8 @@ def create_self_service_order(request):
         'order_no': order.order_no,
         'total_amount': float(order.total_amount),
         'pay_amount': float(order.pay_amount),
+        'tip_amount': float(order.tip_amount),
+        'tip_coins': amount_to_coins(order.tip_amount),
         'total_coins': coin_cost,
         'snapshot': snapshot,
     })
@@ -2445,6 +2486,9 @@ def dispatch_hall(request):
             'total_amount_coins': amount_to_coins(o.total_amount),
             'pay_amount': float(o.pay_amount),
             'pay_amount_coins': amount_to_coins(o.pay_amount),
+            'tip_amount': float(o.tip_amount),
+            'tip_coins': amount_to_coins(o.tip_amount),
+            'has_tip': o.tip_amount > 0,
             'customer_name': o.customer.nickname if o.customer else '',
             'created_at': o.created_at.strftime('%Y-%m-%d %H:%M'),
             'my_claimed': my_claimed,
@@ -2522,6 +2566,9 @@ def my_orders(request):
             'total_amount_coins': amount_to_coins(o.total_amount),
             'pay_amount': float(o.pay_amount),
             'pay_amount_coins': amount_to_coins(o.pay_amount),
+            'tip_amount': float(o.tip_amount),
+            'tip_coins': amount_to_coins(o.tip_amount),
+            'has_tip': o.tip_amount > 0,
             'pay_method': o.pay_method,
             'game_name': o.game_name,
             'members': members,
@@ -2593,6 +2640,9 @@ def employee_orders(request):
             'total_amount_coins': amount_to_coins(o.total_amount),
             'pay_amount': float(o.pay_amount),
             'pay_amount_coins': amount_to_coins(o.pay_amount),
+            'tip_amount': float(o.tip_amount),
+            'tip_coins': amount_to_coins(o.tip_amount),
+            'has_tip': o.tip_amount > 0,
             'pay_method': o.pay_method,
             'game_name': o.game_name,
             'customer_name': o.customer.nickname if o.customer else '',
@@ -2815,6 +2865,9 @@ def order_detail(request, order_id):
         'total_amount': float(order.total_amount),
         'discount_amount': float(order.discount_amount),
         'pay_amount': float(order.pay_amount),
+        'tip_amount': float(order.tip_amount),
+        'tip_coins': amount_to_coins(order.tip_amount),
+        'has_tip': order.tip_amount > 0,
         'pay_method': order.pay_method,
         'completion_images': parse_completion_images(order, request),
         'can_upload_completion_images': can_upload_completion_images,

@@ -58,6 +58,8 @@ class Order(BaseModel):
                                           verbose_name='优惠金额')
     coupon_discount = models.DecimalField(max_digits=10, decimal_places=2, default=0,
                                           verbose_name='优惠券折扣金额')
+    tip_amount = models.DecimalField(max_digits=10, decimal_places=2, default=0,
+                                     verbose_name='小费金额')
     # 双方确认状态
     customer_confirmed = models.BooleanField(default=False, verbose_name='客户已确认')
     dasher_confirmed = models.BooleanField(default=False, verbose_name='打手已确认')
