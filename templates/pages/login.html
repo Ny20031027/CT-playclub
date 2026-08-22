@@ -49,7 +49,7 @@
                 
                 if (result.code === 200) {
                     setToken(result.data.token);
-                    setUserInfo(result.data.user);
+                    setUserInfo(result.data.user_info || result.data.user);
                     showToast('登录成功', 'success');
                     setTimeout(() => {
                         window.location.href = '/dashboard/';
