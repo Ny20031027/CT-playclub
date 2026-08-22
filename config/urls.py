@@ -22,6 +22,9 @@ def customers_view(request):
 def orders_view(request):
     return render(request, 'pages/orders.html')
 
+def order_detail_view(request, order_id):
+    return render(request, 'pages/order-detail.html', {'order_id': order_id})
+
 def finance_view(request):
     return render(request, 'pages/finance.html')
 
@@ -56,6 +59,7 @@ urlpatterns = [
     path('employees/', employees_view, name='employees'),
     path('customers/', customers_view, name='customers'),
     path('orders/', orders_view, name='orders'),
+    path('orders/<int:order_id>/', order_detail_view, name='order-detail'),
     path('finance/', finance_view, name='finance'),
     path('schedule/', schedule_view, name='schedule'),
     path('statistics/', statistics_view, name='statistics'),

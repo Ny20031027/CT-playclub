@@ -1,0 +1,454 @@
+{% extends 'layout.html' %}
+
+{% block content %}
+<script>
+    document.getElementById('pageTitle').textContent = '订单详情';
+</script>
+
+<style>
+    .detail-page { display: flex; flex-direction: column; gap: 16px; }
+    .detail-topbar {
+        display: flex;
+        justify-content: space-between;
+        align-items: flex-start;
+        gap: 16px;
+        padding: 18px 20px;
+        border-radius: 8px;
+        background: #fff;
+        border: 1px solid #e8edf5;
+        box-shadow: 0 10px 26px rgba(31, 42, 68, .06);
+    }
+    .detail-title { min-width: 0; }
+    .detail-title h2 {
+        margin: 0;
+        color: #1f2937;
+        font-size: 20px;
+        line-height: 1.35;
+        word-break: break-word;
+    }
+    .detail-title p { margin: 8px 0 0; color: #7b8798; font-size: 13px; }
+    .detail-actions { display: flex; gap: 10px; flex-wrap: wrap; justify-content: flex-end; }
+    .detail-shell {
+        display: grid;
+        grid-template-columns: minmax(0, 1.35fr) minmax(280px, .8fr);
+        gap: 16px;
+        align-items: start;
+    }
+    .detail-main { display: grid; gap: 16px; min-width: 0; }
+    .detail-side { display: grid; gap: 16px; min-width: 0; }
+    .detail-panel {
+        padding: 16px;
+        border-radius: 8px;
+        background: #fff;
+        border: 1px solid #e8edf5;
+        box-shadow: 0 10px 26px rgba(31, 42, 68, .05);
+        min-width: 0;
+    }
+    .detail-panel h3 { margin: 0 0 14px; font-size: 15px; color: #1f2937; }
+    .detail-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; }
+    .detail-grid.two { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    .detail-item {
+        min-width: 0;
+        padding: 11px 12px;
+        border-radius: 8px;
+        background: #f8fafd;
+        border: 1px solid #edf1f7;
+    }
+    .detail-item.wide { grid-column: 1 / -1; }
+    .detail-label { display: block; margin-bottom: 6px; color: #8a94a8; font-size: 12px; }
+    .detail-value {
+        display: block;
+        color: #253047;
+        font-weight: 800;
+        line-height: 1.5;
+        word-break: break-word;
+        white-space: pre-wrap;
+    }
+    .person-row {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        padding: 11px;
+        border-radius: 8px;
+        background: #f8fafd;
+        border: 1px solid #edf1f7;
+    }
+    .person-avatar { width: 42px; height: 42px; border-radius: 50%; object-fit: cover; background: #eef1f7; flex: 0 0 auto; }
+    .person-name { color: #253047; font-weight: 800; }
+    .person-sub { color: #8a94a8; font-size: 12px; margin-top: 3px; }
+    .mini-list { display: flex; flex-direction: column; gap: 10px; }
+    .badge { display: inline-flex; align-items: center; height: 24px; padding: 0 10px; border-radius: 999px; font-size: 12px; font-weight: 800; }
+    .badge-purple { color: #6b57e8; background: #efedff; }
+    .badge-blue { color: #2377dd; background: #eaf3ff; }
+    .badge-green { color: #159a67; background: #e9fbf3; }
+    .badge-orange { color: #a66400; background: #fff1d4; }
+    .badge-gray { color: #657184; background: #eef1f6; }
+    .badge-red { color: #db3b56; background: #fff0f3; }
+    .badge-cyan { color: #078a92; background: #e6fbfd; }
+    .completion-gallery { display: grid; grid-template-columns: repeat(auto-fill, minmax(138px, 1fr)); gap: 12px; }
+    .completion-thumb {
+        position: relative;
+        display: block;
+        aspect-ratio: 1;
+        overflow: hidden;
+        border-radius: 8px;
+        background: #eef1f7;
+        border: 1px solid #edf1f7;
+    }
+    .completion-thumb img { width: 100%; height: 100%; object-fit: cover; display: block; transition: transform .2s ease; }
+    .completion-thumb:hover img { transform: scale(1.04); }
+    .completion-thumb span {
+        position: absolute;
+        left: 8px;
+        bottom: 8px;
+        padding: 3px 8px;
+        border-radius: 999px;
+        color: #fff;
+        background: rgba(18, 24, 38, .62);
+        font-size: 11px;
+        font-weight: 800;
+    }
+    .detail-loading,
+    .detail-empty {
+        padding: 70px 20px;
+        text-align: center;
+        color: #8a94a8;
+        border-radius: 8px;
+        background: #fff;
+        border: 1px solid #e8edf5;
+    }
+    .modal-tip {
+        display: flex;
+        gap: 10px;
+        align-items: flex-start;
+        padding: 12px 14px;
+        margin-bottom: 14px;
+        border-radius: 14px;
+        color: #936200;
+        background: #fff7df;
+        border: 1px solid #f6dc91;
+    }
+    .cancel-reason {
+        width: 100%;
+        min-height: 110px;
+        resize: vertical;
+        border: 1px solid #dfe5f0;
+        border-radius: 14px;
+        padding: 12px;
+        outline: none;
+        box-sizing: border-box;
+    }
+    .cancel-reason:focus { border-color: #ef5366; box-shadow: 0 0 0 3px rgba(239, 83, 102, .12); }
+    @media (max-width: 1180px) {
+        .detail-shell { grid-template-columns: 1fr; }
+    }
+    @media (max-width: 760px) {
+        .detail-topbar { flex-direction: column; }
+        .detail-actions { width: 100%; justify-content: flex-start; }
+        .detail-grid,
+        .detail-grid.two { grid-template-columns: 1fr; }
+    }
+</style>
+
+<div class="detail-page">
+    <div class="detail-topbar">
+        <div class="detail-title">
+            <h2 id="detailTitle">订单详情</h2>
+            <p id="detailSubtitle">正在加载订单信息...</p>
+        </div>
+        <div class="detail-actions">
+            <button class="btn btn-default" onclick="window.location.href='/orders/'">
+                <i class="fa-solid fa-arrow-left"></i> 返回列表
+            </button>
+            <button class="btn btn-success" id="completeBtn" style="display:none;" onclick="completeCurrentOrder()">
+                <i class="fa-solid fa-check"></i> 完成订单
+            </button>
+            <button class="btn btn-danger" id="cancelBtn" style="display:none;" onclick="openCancelModal()">
+                <i class="fa-solid fa-ban"></i> 取消订单
+            </button>
+        </div>
+    </div>
+    <div id="detailContent" class="detail-loading">
+        <i class="fa-solid fa-spinner fa-spin"></i><br>加载中...
+    </div>
+</div>
+
+<div class="modal-overlay" id="cancelOrderModal">
+    <div class="modal">
+        <div class="modal-header">
+            <div class="modal-title">取消订单</div>
+            <div class="modal-close" onclick="hideModal('cancelOrderModal')">&times;</div>
+        </div>
+        <div class="modal-body">
+            <div class="modal-tip">
+                <i class="fa-solid fa-triangle-exclamation"></i>
+                <span>取消后订单将不可继续接单或服务，请填写取消原因方便后续核对。</span>
+            </div>
+            <textarea id="cancelReason" class="cancel-reason" placeholder="请输入取消原因，例如：客户主动取消、信息填写错误、无法履约等"></textarea>
+        </div>
+        <div class="modal-footer">
+            <button class="btn btn-default" onclick="hideModal('cancelOrderModal')">再想想</button>
+            <button class="btn btn-danger" onclick="submitCancelOrder()">确认取消</button>
+        </div>
+    </div>
+</div>
+
+<script>
+    const ORDER_ID = {{ order_id }};
+    let currentOrder = null;
+
+    document.addEventListener('DOMContentLoaded', loadOrderDetail);
+
+    function escHtml(value) {
+        return String(value == null ? '' : value)
+            .replace(/&/g, '&amp;')
+            .replace(/</g, '&lt;')
+            .replace(/>/g, '&gt;')
+            .replace(/"/g, '&quot;')
+            .replace(/'/g, '&#39;');
+    }
+
+    function valueOrDash(value) {
+        return value === undefined || value === null || value === '' ? '-' : value;
+    }
+
+    function snapshot(order) {
+        return order.self_service_snapshot || {};
+    }
+
+    function getStatusText(status, fallback) {
+        const map = {
+            published: '可领取',
+            transferring: '转单中',
+            claimed: '待开始',
+            confirming: '待双方确认',
+            in_progress: '进行中',
+            completed: '已结束',
+            reviewed: '已评价',
+            cancelled: '已取消'
+        };
+        return fallback || map[status] || status || '-';
+    }
+
+    function getStatusBadge(status) {
+        const map = {
+            published: 'badge-purple',
+            transferring: 'badge-orange',
+            claimed: 'badge-blue',
+            confirming: 'badge-cyan',
+            in_progress: 'badge-green',
+            completed: 'badge-gray',
+            reviewed: 'badge-gray',
+            cancelled: 'badge-red'
+        };
+        return map[status] || 'badge-gray';
+    }
+
+    function canCancel(order) {
+        return order && !['completed', 'reviewed', 'cancelled'].includes(order.status);
+    }
+
+    function orderTitle(order) {
+        const s = snapshot(order);
+        return [s.skill_name || order.game_name || order.skill_name, s.gameplay_name, s.preset_item_name].filter(Boolean).join(' · ') || order.order_no;
+    }
+
+    function detailItem(label, value, wide=false) {
+        return `
+            <div class="detail-item ${wide ? 'wide' : ''}">
+                <span class="detail-label">${escHtml(label)}</span>
+                <span class="detail-value">${escHtml(valueOrDash(value))}</span>
+            </div>
+        `;
+    }
+
+    function renderPerson(name, avatar, sub) {
+        return `
+            <div class="person-row">
+                <img class="person-avatar" src="${escHtml(avatar || '/static/images/default-avatar.png')}" onerror="this.style.visibility='hidden'">
+                <div>
+                    <div class="person-name">${escHtml(valueOrDash(name))}</div>
+                    <div class="person-sub">${escHtml(valueOrDash(sub))}</div>
+                </div>
+            </div>
+        `;
+    }
+
+    function renderOrderFields(order) {
+        const s = snapshot(order);
+        const unit = order.settlement_unit === 'round' ? '局' : order.settlement_unit === 'hour' ? '小时' : '份';
+        return [
+            detailItem('订单状态', getStatusText(order.status, order.status_text)),
+            detailItem('订单类型', order.order_type === 'self_service' ? '自助订单' : order.order_type),
+            detailItem('游戏品类', s.skill_name || order.game_name || order.skill_name),
+            detailItem('玩法', s.gameplay_name),
+            detailItem('订单项目', s.preset_item_name),
+            detailItem('客户游戏账号', order.game_account_name ? `${order.game_account_category || ''} ${order.game_account_name}` : ''),
+            detailItem('购买数量', `${s.quantity || order.purchase_quantity || order.quantity || 1}${unit}`),
+            detailItem('接单人数', `需要 ${order.quantity || 1} 人，已接 ${(order.members || []).filter(m => m.employee_name).length} 人`),
+            detailItem('单价', `¥${formatMoney(order.unit_price)}/${unit}`),
+            detailItem('实付金额', `¥${formatMoney(order.pay_amount || order.total_amount)}`),
+            detailItem('订单备注', order.remark, true),
+            detailItem('项目内容', s.preset_content, true),
+            detailItem('取消原因', order.cancel_reason, true)
+        ].join('');
+    }
+
+    function renderMembers(order) {
+        const members = (order.members || []).filter(m => m.employee_name);
+        const assigned = order.assigned_employee_name ? `
+            <div class="person-row">
+                <img class="person-avatar" src="${escHtml(order.assigned_employee_avatar || '/static/images/default-avatar.png')}" onerror="this.style.visibility='hidden'">
+                <div>
+                    <div class="person-name">${escHtml(order.assigned_employee_name)} <span class="badge badge-orange">指定</span></div>
+                    <div class="person-sub">${escHtml(order.assigned_employee_display_id ? '黑金ID ' + order.assigned_employee_display_id : '指定打手')}</div>
+                </div>
+            </div>
+        ` : '';
+        const accepted = members.map(m => `
+            <div class="person-row">
+                <img class="person-avatar" src="${escHtml(m.employee_avatar || '/static/images/default-avatar.png')}" onerror="this.style.visibility='hidden'">
+                <div>
+                    <div class="person-name">${escHtml(m.employee_name)} ${m.is_leader ? '<span class="badge badge-orange">队长</span>' : ''}</div>
+                    <div class="person-sub">${escHtml(m.skill_name || '服务打手')} · ¥${formatMoney(m.amount)} · ${escHtml(m.status_display || m.status)}</div>
+                </div>
+            </div>
+        `).join('');
+        return assigned + accepted || '<div class="detail-empty">暂无打手接单</div>';
+    }
+
+    function getCompletionImages(order) {
+        if (Array.isArray(order.completion_image_list) && order.completion_image_list.length) {
+            return order.completion_image_list.filter(Boolean);
+        }
+        if (Array.isArray(order.completion_images)) {
+            return order.completion_images.filter(Boolean);
+        }
+        return String(order.completion_images || '')
+            .split(',')
+            .map(item => item.trim())
+            .filter(Boolean);
+    }
+
+    function renderCompletionImages(order) {
+        const images = getCompletionImages(order);
+        if (!images.length) {
+            return '<div class="detail-empty"><i class="fa-solid fa-image"></i><br>暂无打手上传凭证</div>';
+        }
+        return `
+            <div class="completion-gallery">
+                ${images.map((url, index) => `
+                    <a class="completion-thumb" href="${escHtml(url)}" target="_blank" rel="noopener" title="查看第 ${index + 1} 张凭证">
+                        <img src="${escHtml(url)}" alt="完成凭证${index + 1}" onerror="this.parentElement.style.display='none'">
+                        <span>${index + 1}/${images.length}</span>
+                    </a>
+                `).join('')}
+            </div>
+        `;
+    }
+
+    async function loadOrderDetail() {
+        try {
+            const result = await get(`/order/orders/${ORDER_ID}/`);
+            if (result && result.code && result.code !== 200) {
+                throw new Error(result.msg || '获取订单详情失败');
+            }
+            const order = result && result.data ? result.data : result;
+            if (!order || !order.id) throw new Error('获取订单详情失败');
+            currentOrder = order;
+            renderOrderDetail(order);
+        } catch (error) {
+            document.getElementById('detailContent').className = 'detail-empty';
+            document.getElementById('detailContent').innerHTML = `<i class="fa-solid fa-circle-exclamation"></i><br>${escHtml(error.message || '获取订单详情失败')}`;
+            showToast(error.message || '获取订单详情失败', 'error');
+        }
+    }
+
+    function renderOrderDetail(order) {
+        document.getElementById('detailTitle').innerHTML = `${escHtml(order.order_no)} <span class="badge ${getStatusBadge(order.status)}">${escHtml(getStatusText(order.status, order.status_text))}</span>`;
+        document.getElementById('detailSubtitle').textContent = orderTitle(order);
+        document.getElementById('cancelBtn').style.display = canCancel(order) ? '' : 'none';
+        document.getElementById('completeBtn').style.display = order.status === 'in_progress' ? '' : 'none';
+        document.getElementById('detailContent').className = 'detail-shell';
+        document.getElementById('detailContent').innerHTML = `
+            <div class="detail-main">
+                <div class="detail-panel">
+                    <h3>订单信息</h3>
+                    <div class="detail-grid">${renderOrderFields(order)}</div>
+                </div>
+                <div class="detail-panel">
+                    <h3>打手上传凭证</h3>
+                    ${renderCompletionImages(order)}
+                </div>
+            </div>
+            <div class="detail-side">
+                <div class="detail-panel">
+                    <h3>参与人</h3>
+                    <div class="mini-list">
+                        ${renderPerson(order.customer_name, order.customer_avatar, order.customer_display_id ? '黑金ID ' + order.customer_display_id : '客户')}
+                        ${renderMembers(order)}
+                    </div>
+                </div>
+                <div class="detail-panel">
+                    <h3>时间记录</h3>
+                    <div class="detail-grid two">
+                        ${detailItem('创建时间', formatDate(order.created_at))}
+                        ${detailItem('支付时间', order.pay_time ? formatDate(order.pay_time) : '')}
+                        ${detailItem('开始时间', order.start_time ? formatDate(order.start_time) : '')}
+                        ${detailItem('结束时间', order.end_time ? formatDate(order.end_time) : '')}
+                        ${detailItem('取消时间', order.cancel_time ? formatDate(order.cancel_time) : '')}
+                    </div>
+                </div>
+                <div class="detail-panel">
+                    <h3>费用信息</h3>
+                    <div class="detail-grid two">
+                        ${detailItem('订单金额', '¥' + formatMoney(order.total_amount))}
+                        ${detailItem('优惠/免单', '¥' + formatMoney(order.discount_amount))}
+                        ${detailItem('实付金额', '¥' + formatMoney(order.pay_amount))}
+                        ${detailItem('支付方式', order.pay_method === 'balance' ? '黑钻余额' : order.pay_method)}
+                    </div>
+                </div>
+            </div>
+        `;
+    }
+
+    function openCancelModal() {
+        if (!currentOrder) return;
+        document.getElementById('cancelReason').value = '';
+        showModal('cancelOrderModal');
+    }
+
+    async function submitCancelOrder() {
+        if (!currentOrder) return;
+        const reason = document.getElementById('cancelReason').value.trim();
+        if (!reason) { showToast('请填写取消原因', 'error'); return; }
+        try {
+            const result = await post(`/order/orders/${currentOrder.id}/cancel/`, { reason });
+            if (result.code === 200) {
+                showToast('订单已取消', 'success');
+                hideModal('cancelOrderModal');
+                await loadOrderDetail();
+            } else {
+                showToast(result.msg || '取消失败', 'error');
+            }
+        } catch (error) {
+            showToast(error.message || '取消失败', 'error');
+        }
+    }
+
+    async function completeCurrentOrder() {
+        if (!currentOrder || !confirm('确定将该订单标记为完成并结算佣金吗？')) return;
+        try {
+            const result = await post(`/order/orders/${currentOrder.id}/complete/`);
+            if (result.code === 200) {
+                showToast('订单已完成', 'success');
+                await loadOrderDetail();
+            } else {
+                showToast(result.msg || '操作失败', 'error');
+            }
+        } catch (error) {
+            showToast(error.message || '操作失败', 'error');
+        }
+    }
+</script>
+{% endblock %}

@@ -123,7 +123,7 @@
 
                 if (!canView) {
                     item.style.display = 'none';
-                    if (currentPath === href) {
+                    if (currentPath === href || (href !== '/' && currentPath.startsWith(href))) {
                         const firstVisible = visibleItems[0]?.getAttribute('data-href') || '/login/';
                         window.location.href = firstVisible;
                     }
@@ -131,7 +131,7 @@
                 }
 
                 visibleItems.push(item);
-                if (currentPath === href) {
+                if (currentPath === href || (href !== '/' && currentPath.startsWith(href))) {
                     item.classList.add('active');
                 }
                 
