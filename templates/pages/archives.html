@@ -7,6 +7,7 @@
 
 <style>
     .archive-layout { display:grid; grid-template-columns:320px minmax(0,1fr); gap:16px; align-items:start; }
+    .archive-layout.no-selection { grid-template-columns:minmax(320px,420px); }
     .archive-side { border:1px solid #edf0f5; border-radius:8px; background:#fff; overflow:hidden; }
     .archive-side-head { padding:14px 16px; border-bottom:1px solid #edf0f5; background:#fafbfc; }
     .archive-side-head .search-input { width:100%; box-sizing:border-box; }
@@ -19,6 +20,7 @@
     .archive-person-name { overflow:hidden; color:#252b3b; font-weight:600; text-overflow:ellipsis; white-space:nowrap; }
     .archive-person-meta { margin-top:3px; overflow:hidden; color:#9098a8; font-size:12px; text-overflow:ellipsis; white-space:nowrap; }
     .archive-workspace { min-width:0; }
+    .archive-workspace.is-hidden { display:none; }
     .archive-profile { display:flex; align-items:center; gap:14px; padding:16px; border:1px solid #edf0f5; border-radius:8px; background:#fff; }
     .archive-profile .archive-avatar { width:52px; height:52px; }
     .archive-profile-name { font-size:17px; font-weight:700; color:#252b3b; }
@@ -52,7 +54,7 @@
     <div class="tab-item" id="employeeArchiveTabBtn" onclick="switchArchiveTab('employee')">打手档案</div>
 </div>
 
-<div class="archive-layout">
+<div class="archive-layout no-selection" id="archiveLayout">
     <aside class="archive-side">
         <div class="archive-side-head">
             <input type="text" class="search-input" id="archiveSearchInput" placeholder="搜索姓名/昵称/手机号">
@@ -62,7 +64,7 @@
         </div>
     </aside>
 
-    <section class="archive-workspace">
+    <section class="archive-workspace is-hidden" id="archiveWorkspace">
         <div class="archive-profile" id="archiveProfile">
             <div class="archive-avatar"><i class="fa-solid fa-user"></i></div>
             <div>
@@ -155,7 +157,7 @@
         document.getElementById('customerArchiveTabBtn').classList.toggle('active', type === 'customer');
         document.getElementById('employeeArchiveTabBtn').classList.toggle('active', type === 'employee');
         document.getElementById('archiveSearchInput').value = '';
-        renderArchiveProfile(null);
+        setArchiveWorkspaceVisible(false);
         loadArchivePeople();
         renderArchiveRecords();
     }
@@ -172,9 +174,6 @@
             if (result.code !== 200) throw new Error(result.msg || '加载失败');
             archivePeople = result.data.results || result.data || [];
             renderArchivePeople();
-            if (!selectedArchivePersonId && archivePeople.length > 0) {
-                selectArchivePerson(archivePeople[0].id);
-            }
         } catch (error) {
             list.innerHTML = `<div class="empty-state"><i class="fa-solid fa-triangle-exclamation"></i><br>${escapeHtml(error.message || '加载失败')}</div>`;
         }
@@ -208,9 +207,17 @@
         selectedArchivePersonId = id;
         const person = archivePeople.find(item => Number(item.id) === Number(id));
         renderArchivePeople();
+        setArchiveWorkspaceVisible(true);
         renderArchiveProfile(person);
         resetArchiveForm();
         loadArchiveRecords();
+    }
+
+    function setArchiveWorkspaceVisible(visible) {
+        const layout = document.getElementById('archiveLayout');
+        const workspace = document.getElementById('archiveWorkspace');
+        layout.classList.toggle('no-selection', !visible);
+        workspace.classList.toggle('is-hidden', !visible);
     }
 
     function renderArchiveProfile(person) {
