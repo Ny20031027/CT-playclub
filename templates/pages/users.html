@@ -1,0 +1,452 @@
+{% extends 'layout.html' %}
+
+{% block content %}
+<script>
+    document.getElementById('pageTitle').textContent = '用户管理';
+</script>
+
+<style>
+    .users-page { display: flex; flex-direction: column; gap: 16px; }
+    .users-toolbar {
+        display: grid;
+        grid-template-columns: minmax(220px, 1fr) 160px auto auto;
+        gap: 12px;
+        align-items: center;
+        padding: 16px;
+        border-radius: 8px;
+        background: #fff;
+        border: 1px solid #e8edf5;
+        box-shadow: 0 10px 26px rgba(31, 42, 68, .05);
+    }
+    .users-toolbar input,
+    .users-toolbar select {
+        height: 40px;
+        border-radius: 8px;
+        border: 1px solid #dfe5f0;
+        background: #f8fafd;
+        padding: 0 12px;
+        outline: none;
+        box-sizing: border-box;
+    }
+    .users-toolbar input:focus,
+    .users-toolbar select:focus { border-color: #409eff; box-shadow: 0 0 0 3px rgba(64, 158, 255, .12); }
+    .users-table-card {
+        overflow: hidden;
+        border-radius: 8px;
+        background: #fff;
+        border: 1px solid #e8edf5;
+        box-shadow: 0 10px 26px rgba(31, 42, 68, .05);
+    }
+    .modal-large { width: 860px; max-width: 94vw; }
+    .modal-large .modal-body { max-height: 68vh; overflow-y: auto; }
+    .account-main { display: flex; flex-direction: column; gap: 4px; min-width: 150px; }
+    .account-name { color: #1f2937; font-weight: 800; }
+    .account-sub { color: #8a94a8; font-size: 12px; }
+    .role-tags { display: flex; flex-wrap: wrap; gap: 6px; }
+    .role-tag {
+        display: inline-flex;
+        align-items: center;
+        min-height: 24px;
+        padding: 3px 9px;
+        border-radius: 999px;
+        color: #2b64b1;
+        background: #eaf3ff;
+        font-size: 12px;
+        font-weight: 700;
+    }
+    .status-pill {
+        display: inline-flex;
+        align-items: center;
+        height: 24px;
+        padding: 0 10px;
+        border-radius: 999px;
+        font-size: 12px;
+        font-weight: 800;
+    }
+    .status-pill.ok { color: #159a67; background: #e9fbf3; }
+    .status-pill.off { color: #db3b56; background: #fff0f3; }
+    .ip-text { color: #253047; font-family: Consolas, monospace; }
+    .user-actions { display: flex; flex-wrap: wrap; gap: 8px; }
+    .form-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; }
+    .form-grid .wide { grid-column: 1 / -1; }
+    .role-checks {
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 10px;
+        padding: 10px;
+        border: 1px solid #dfe5f0;
+        border-radius: 8px;
+        background: #f8fafd;
+    }
+    .role-checks label { display: flex; align-items: center; gap: 8px; color: #303846; }
+    .role-checks input { width: auto; height: auto; }
+    .protect-note { margin-top: 8px; color: #8a94a8; font-size: 12px; line-height: 1.5; }
+    @media (max-width: 920px) {
+        .users-toolbar { grid-template-columns: 1fr 1fr; }
+        .form-grid,
+        .role-checks { grid-template-columns: 1fr; }
+    }
+    @media (max-width: 620px) {
+        .users-toolbar { grid-template-columns: 1fr; }
+        .users-toolbar .btn { width: 100%; }
+    }
+</style>
+
+<div class="users-page">
+    <div class="users-toolbar">
+        <input id="userSearchInput" type="text" placeholder="搜索用户名、昵称、手机号、黑金ID">
+        <select id="userStatusSelect">
+            <option value="">全部状态</option>
+            <option value="true">启用</option>
+            <option value="false">禁用</option>
+        </select>
+        <button class="btn btn-default" onclick="resetUserFilters()">重置</button>
+        <button class="btn btn-primary" onclick="openUserModal()">
+            <i class="fa-solid fa-user-plus"></i> 添加账号
+        </button>
+    </div>
+
+    <div class="users-table-card">
+        <div class="card-header">
+            <div class="card-title">网站登录账号</div>
+            <div class="card-actions">
+                <button class="btn btn-default" onclick="loadUsers()">
+                    <i class="fa-solid fa-rotate"></i> 刷新
+                </button>
+            </div>
+        </div>
+        <div class="table-container">
+            <table>
+                <thead>
+                    <tr>
+                        <th>账号</th>
+                        <th>角色权限</th>
+                        <th>状态</th>
+                        <th>最后登录IP</th>
+                        <th>最后登录时间</th>
+                        <th>创建时间</th>
+                        <th>操作</th>
+                    </tr>
+                </thead>
+                <tbody id="userList">
+                    <tr><td colspan="7" class="empty-state"><i class="fa-solid fa-spinner fa-spin"></i><br>加载中...</td></tr>
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
+<div class="modal-overlay" id="userModal">
+    <div class="modal modal-large">
+        <div class="modal-header">
+            <div class="modal-title" id="userModalTitle">添加账号</div>
+            <div class="modal-close" onclick="hideModal('userModal')">&times;</div>
+        </div>
+        <div class="modal-body">
+            <input type="hidden" id="editingUserId">
+            <div class="form-grid">
+                <div class="form-group">
+                    <label>登录账号 *</label>
+                    <input type="text" id="usernameInput" placeholder="请输入登录账号">
+                </div>
+                <div class="form-group">
+                    <label>昵称</label>
+                    <input type="text" id="nicknameInput" placeholder="用于后台显示">
+                </div>
+                <div class="form-group">
+                    <label>手机号</label>
+                    <input type="text" id="phoneInput" placeholder="可选">
+                </div>
+                <div class="form-group">
+                    <label>邮箱</label>
+                    <input type="email" id="emailInput" placeholder="可选">
+                </div>
+                <div class="form-group">
+                    <label>登录密码 <span id="passwordOptionalText"></span></label>
+                    <input type="password" id="passwordInput" placeholder="新账号必填，编辑时留空则不修改">
+                </div>
+                <div class="form-group">
+                    <label>账号状态</label>
+                    <select id="activeInput">
+                        <option value="true">启用</option>
+                        <option value="false">禁用</option>
+                    </select>
+                </div>
+                <div class="form-group wide">
+                    <label>角色权限 *</label>
+                    <div class="role-checks" id="roleChecks"></div>
+                    <div class="protect-note">该账号仅用于登录网站后台，不会创建客户或打手身份。老板、财务角色只能由老板账号分配。</div>
+                </div>
+            </div>
+        </div>
+        <div class="modal-footer">
+            <button class="btn btn-default" onclick="hideModal('userModal')">取消</button>
+            <button class="btn btn-primary" onclick="saveUser()">保存账号</button>
+        </div>
+    </div>
+</div>
+
+<div class="modal-overlay" id="passwordModal">
+    <div class="modal">
+        <div class="modal-header">
+            <div class="modal-title">重置密码</div>
+            <div class="modal-close" onclick="hideModal('passwordModal')">&times;</div>
+        </div>
+        <div class="modal-body">
+            <input type="hidden" id="passwordUserId">
+            <div class="form-group">
+                <label>新密码</label>
+                <input type="password" id="newPasswordInput" placeholder="请输入新密码">
+            </div>
+        </div>
+        <div class="modal-footer">
+            <button class="btn btn-default" onclick="hideModal('passwordModal')">取消</button>
+            <button class="btn btn-primary" onclick="resetPassword()">确认重置</button>
+        </div>
+    </div>
+</div>
+
+<script>
+    const WEB_ROLE_CODES = ['owner', 'admin', 'general_manager', 'finance', 'platform_lead', 'platform_staff'];
+    const PROTECTED_ROLE_CODES = ['owner', 'admin', 'finance'];
+    let users = [];
+    let roles = [];
+
+    document.addEventListener('DOMContentLoaded', async function() {
+        await loadRoles();
+        await loadUsers();
+        document.getElementById('userSearchInput').addEventListener('keydown', function(e) {
+            if (e.key === 'Enter') loadUsers();
+        });
+        document.getElementById('userStatusSelect').addEventListener('change', loadUsers);
+    });
+
+    function escHtml(value) {
+        return String(value == null ? '' : value)
+            .replace(/&/g, '&amp;')
+            .replace(/</g, '&lt;')
+            .replace(/>/g, '&gt;')
+            .replace(/"/g, '&quot;')
+            .replace(/'/g, '&#39;');
+    }
+
+    function currentIsOwner() {
+        const userInfo = getUserInfo() || {};
+        const roleCodes = Array.isArray(userInfo.roles) ? userInfo.roles : [];
+        return Boolean(userInfo.is_superuser || roleCodes.includes('owner') || roleCodes.includes('admin'));
+    }
+
+    function roleNames(user) {
+        if (Array.isArray(user.role_names) && user.role_names.length) return user.role_names;
+        const ids = new Set(Array.isArray(user.roles) ? user.roles : []);
+        return roles.filter(role => ids.has(role.id)).map(role => role.name);
+    }
+
+    async function loadRoles() {
+        try {
+            const result = await get('/account/roles/', { page_size: 100 });
+            const list = result.code === 200 ? (result.data.results || result.data || []) : [];
+            roles = list.filter(role => WEB_ROLE_CODES.includes(role.code));
+            renderRoleChecks();
+        } catch (error) {
+            showToast(error.message || '加载角色失败', 'error');
+        }
+    }
+
+    async function loadUsers() {
+        const tbody = document.getElementById('userList');
+        tbody.innerHTML = '<tr><td colspan="7" class="empty-state"><i class="fa-solid fa-spinner fa-spin"></i><br>加载中...</td></tr>';
+        try {
+            const params = {
+                web_only: '1',
+                page_size: 100,
+                search: document.getElementById('userSearchInput').value.trim(),
+                is_active: document.getElementById('userStatusSelect').value
+            };
+            const result = await get('/account/users/', params);
+            if (result.code !== 200) {
+                showToast(result.msg || '加载失败', 'error');
+                return;
+            }
+            users = result.data.results || result.data || [];
+            renderUsers();
+        } catch (error) {
+            tbody.innerHTML = '<tr><td colspan="7" class="empty-state"><i class="fa-solid fa-circle-exclamation"></i><br>加载失败</td></tr>';
+            showToast(error.message || '加载用户失败', 'error');
+        }
+    }
+
+    function renderUsers() {
+        const tbody = document.getElementById('userList');
+        if (!users.length) {
+            tbody.innerHTML = '<tr><td colspan="7" class="empty-state"><i class="fa-solid fa-inbox"></i><br>暂无后台账号</td></tr>';
+            return;
+        }
+        tbody.innerHTML = users.map(user => {
+            const names = roleNames(user);
+            const statusClass = user.is_active ? 'ok' : 'off';
+            const statusText = user.is_active ? '启用' : '禁用';
+            return `
+                <tr>
+                    <td>
+                        <div class="account-main">
+                            <span class="account-name">${escHtml(user.username)}</span>
+                            <span class="account-sub">${escHtml(user.nickname || '未设置昵称')} · 黑金ID ${escHtml(user.display_id || '-')}</span>
+                        </div>
+                    </td>
+                    <td><div class="role-tags">${names.map(name => `<span class="role-tag">${escHtml(name)}</span>`).join('') || '-'}</div></td>
+                    <td><span class="status-pill ${statusClass}">${statusText}</span></td>
+                    <td><span class="ip-text">${escHtml(user.last_login_ip || '-')}</span></td>
+                    <td>${escHtml(user.last_login ? formatDate(user.last_login) : '-')}</td>
+                    <td>${escHtml(user.created_at ? formatDate(user.created_at) : '-')}</td>
+                    <td>
+                        <div class="user-actions">
+                            <button class="btn btn-primary btn-sm" onclick="openUserModal(${user.id})">编辑</button>
+                            <button class="btn btn-default btn-sm" onclick="openPasswordModal(${user.id})">密码</button>
+                            <button class="btn btn-default btn-sm" onclick="toggleUser(${user.id})">${user.is_active ? '禁用' : '启用'}</button>
+                            <button class="btn btn-danger btn-sm" onclick="deleteUser(${user.id})">删除</button>
+                        </div>
+                    </td>
+                </tr>
+            `;
+        }).join('');
+    }
+
+    function renderRoleChecks(selectedIds = []) {
+        const selected = new Set((selectedIds || []).map(String));
+        const isOwner = currentIsOwner();
+        document.getElementById('roleChecks').innerHTML = roles.map(role => {
+            const disabled = !isOwner && PROTECTED_ROLE_CODES.includes(role.code);
+            return `
+                <label>
+                    <input type="checkbox" value="${role.id}" ${selected.has(String(role.id)) ? 'checked' : ''} ${disabled ? 'disabled' : ''}>
+                    <span>${escHtml(role.name)}</span>
+                </label>
+            `;
+        }).join('');
+    }
+
+    function openUserModal(id = null) {
+        const user = id ? users.find(item => item.id === id) : null;
+        document.getElementById('editingUserId').value = user ? user.id : '';
+        document.getElementById('userModalTitle').textContent = user ? '编辑账号' : '添加账号';
+        document.getElementById('usernameInput').value = user ? user.username : '';
+        document.getElementById('usernameInput').disabled = Boolean(user);
+        document.getElementById('nicknameInput').value = user ? (user.nickname || '') : '';
+        document.getElementById('phoneInput').value = user ? (user.phone || '') : '';
+        document.getElementById('emailInput').value = user ? (user.email || '') : '';
+        document.getElementById('passwordInput').value = '';
+        document.getElementById('passwordOptionalText').textContent = user ? '（留空不修改）' : '';
+        document.getElementById('activeInput').value = user && !user.is_active ? 'false' : 'true';
+        renderRoleChecks(user ? user.roles : []);
+        showModal('userModal');
+    }
+
+    function selectedRoleIds() {
+        return Array.from(document.querySelectorAll('#roleChecks input[type="checkbox"]:checked')).map(input => parseInt(input.value));
+    }
+
+    async function saveUser() {
+        const id = document.getElementById('editingUserId').value;
+        const username = document.getElementById('usernameInput').value.trim();
+        const password = document.getElementById('passwordInput').value;
+        const roleIds = selectedRoleIds();
+
+        if (!username) { showToast('请输入登录账号', 'error'); return; }
+        if (!id && !password) { showToast('新账号必须设置密码', 'error'); return; }
+        if (!roleIds.length) { showToast('请选择角色权限', 'error'); return; }
+
+        const payload = {
+            username,
+            nickname: document.getElementById('nicknameInput').value.trim(),
+            phone: document.getElementById('phoneInput').value.trim(),
+            email: document.getElementById('emailInput').value.trim(),
+            is_active: document.getElementById('activeInput').value === 'true',
+            roles: roleIds
+        };
+        if (password) payload.password = password;
+
+        try {
+            let result;
+            if (id) {
+                result = await request(`/account/users/${id}/`, { method: 'PATCH', body: JSON.stringify(payload) });
+            } else {
+                result = await post('/account/users/', payload);
+            }
+            if (result.code === 200) {
+                showToast(id ? '账号已更新' : '账号已创建', 'success');
+                hideModal('userModal');
+                await loadUsers();
+            } else {
+                showToast(result.msg || '保存失败', 'error');
+            }
+        } catch (error) {
+            showToast(error.message || '保存失败', 'error');
+        }
+    }
+
+    function openPasswordModal(id) {
+        document.getElementById('passwordUserId').value = id;
+        document.getElementById('newPasswordInput').value = '';
+        showModal('passwordModal');
+    }
+
+    async function resetPassword() {
+        const id = document.getElementById('passwordUserId').value;
+        const password = document.getElementById('newPasswordInput').value;
+        if (!password) { showToast('请输入新密码', 'error'); return; }
+        try {
+            const result = await post(`/account/users/${id}/reset-password/`, { password });
+            if (result.code === 200) {
+                showToast('密码已重置', 'success');
+                hideModal('passwordModal');
+            } else {
+                showToast(result.msg || '重置失败', 'error');
+            }
+        } catch (error) {
+            showToast(error.message || '重置失败', 'error');
+        }
+    }
+
+    async function toggleUser(id) {
+        const user = users.find(item => item.id === id);
+        if (!user) return;
+        try {
+            const result = await request(`/account/users/${id}/`, {
+                method: 'PATCH',
+                body: JSON.stringify({ is_active: !user.is_active })
+            });
+            if (result.code === 200) {
+                showToast(user.is_active ? '账号已禁用' : '账号已启用', 'success');
+                await loadUsers();
+            } else {
+                showToast(result.msg || '操作失败', 'error');
+            }
+        } catch (error) {
+            showToast(error.message || '操作失败', 'error');
+        }
+    }
+
+    async function deleteUser(id) {
+        const user = users.find(item => item.id === id);
+        if (!confirm(`确定删除账号 ${user ? user.username : id} 吗？`)) return;
+        try {
+            const result = await del(`/account/users/${id}/`);
+            if (result.code === 200) {
+                showToast('账号已删除', 'success');
+                await loadUsers();
+            } else {
+                showToast(result.msg || '删除失败', 'error');
+            }
+        } catch (error) {
+            showToast(error.message || '删除失败', 'error');
+        }
+    }
+
+    function resetUserFilters() {
+        document.getElementById('userSearchInput').value = '';
+        document.getElementById('userStatusSelect').value = '';
+        loadUsers();
+    }
+</script>
+{% endblock %}

@@ -60,6 +60,14 @@ class BanCheckMiddleware(MiddlewareMixin):
                         'msg': '登录状态已失效，请重新登录',
                         'data': {'session_revoked': True},
                     })
+            current_session_key = getattr(user, 'session_key', '')
+            token_session_key = validated_token.get('session_key') if validated_token else None
+            if current_session_key and not request.path.startswith('/api/wx/') and token_session_key != current_session_key:
+                return JsonResponse({
+                    'code': 401,
+                    'msg': '该账号已在其他设备登录，请重新登录',
+                    'data': {'session_revoked': True},
+                })
         return None
 
 

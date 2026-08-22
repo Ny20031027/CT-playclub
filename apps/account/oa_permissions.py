@@ -21,6 +21,7 @@ MENU_PERMISSIONS = [
     ('数据统计', 'menu.statistics', '/statistics/', 'fa-bar-chart', 80),
     ('档案系统', 'menu.archives', '/archives/', 'fa-folder-open', 90),
     ('入驻审核', 'menu.dasher_review', '/dasher-review/', 'fa-id-card', 100),
+    ('用户管理', 'menu.users', '/users/', 'fa-users-gear', 105),
     ('系统设置', 'menu.system', '/system/', 'fa-gear', 110),
 ]
 
@@ -67,7 +68,7 @@ ROLE_DEFINITIONS = {
         'permissions': {
             'menu.dashboard', 'menu.employees', 'menu.customers', 'menu.cs_manage',
             'menu.orders', 'menu.finance', 'menu.schedule', 'menu.statistics',
-            'menu.archives', 'menu.dasher_review',
+            'menu.archives', 'menu.dasher_review', 'menu.users',
             'account.read', 'account.write',
             'employee.read', 'employee.write',
             'customer.read', 'customer.write',

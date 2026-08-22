@@ -110,6 +110,9 @@ class User(AbstractUser, BaseModel):
     auth_invalid_before = models.DateTimeField(
         null=True, blank=True, verbose_name='登录凭证失效时间'
     )
+    session_key = models.CharField(
+        max_length=64, blank=True, default='', verbose_name='当前登录会话标识'
+    )
 
     class Meta:
         db_table = 'sys_user'

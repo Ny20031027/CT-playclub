@@ -118,13 +118,14 @@ class UserSerializer(serializers.ModelSerializer):
     role_names = serializers.SerializerMethodField()
     user_type = serializers.SerializerMethodField()
     department_name = serializers.CharField(source='department.name', read_only=True)
+    password = serializers.CharField(write_only=True, required=False, allow_blank=True)
 
     class Meta:
         model = User
         fields = ['id', 'username', 'nickname', 'display_id', 'email', 'phone', 'avatar',
                   'gender', 'is_active', 'is_online', 'department', 'department_name',
                   'roles', 'role_names', 'user_type', 'is_superuser',
-                  'last_login', 'last_login_ip', 'created_at', 'updated_at']
+                  'last_login', 'last_login_ip', 'created_at', 'updated_at', 'password']
         read_only_fields = ['id', 'last_login', 'last_login_ip', 'created_at', 'updated_at']
         extra_kwargs = {'password': {'write_only': True, 'required': False}}
 

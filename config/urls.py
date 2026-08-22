@@ -52,6 +52,9 @@ def self_service_view(request):
 def dasher_review_view(request):
     return render(request, 'pages/dasher-review.html')
 
+def users_view(request):
+    return render(request, 'pages/users.html')
+
 urlpatterns = [
     path('admin/', admin.site.urls),
     path('login/', login_view, name='login'),
@@ -69,6 +72,7 @@ urlpatterns = [
     path('game-banners/', game_banners_view, name='game-banners'),
     path('self-service/', self_service_view, name='self-service'),
     path('dasher-review/', dasher_review_view, name='dasher-review'),
+    path('users/', users_view, name='users'),
     path('api/account/', include('apps.account.urls')),
     path('api/employee/', include('apps.employee.urls')),
     path('api/customer/', include('apps.customer.urls')),
