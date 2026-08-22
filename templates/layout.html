@@ -14,47 +14,47 @@
                 <i class="fa-solid fa-gamepad"></i> 黑金电竞
             </div>
             <div class="sidebar-menu" id="sidebarMenu">
-                <div class="menu-item" data-href="/dashboard/">
+                <div class="menu-item" data-href="/dashboard/" data-permission="menu.dashboard">
                     <i class="fa-solid fa-chart-line"></i>
                     <span>数据概览</span>
                 </div>
-                <div class="menu-item" data-href="/employees/">
+                <div class="menu-item" data-href="/employees/" data-permission="menu.employees">
                     <i class="fa-solid fa-user-shield"></i>
                     <span>打手管理</span>
                 </div>
-                <div class="menu-item" data-href="/customers/">
+                <div class="menu-item" data-href="/customers/" data-permission="menu.customers">
                     <i class="fa-solid fa-user"></i>
                     <span>客户管理</span>
                 </div>
-                <div class="menu-item" data-href="/cs-manage/">
+                <div class="menu-item" data-href="/cs-manage/" data-permission="menu.cs_manage">
                     <i class="fa-solid fa-headset"></i>
                     <span>客服管理</span>
                 </div>
-                <div class="menu-item" data-href="/orders/">
+                <div class="menu-item" data-href="/orders/" data-permission="menu.orders">
                     <i class="fa-solid fa-file-text"></i>
                     <span>订单管理</span>
                 </div>
-                <div class="menu-item" data-href="/finance/">
+                <div class="menu-item" data-href="/finance/" data-permission="menu.finance">
                     <i class="fa-solid fa-wallet"></i>
                     <span>财务管理</span>
                 </div>
-                <div class="menu-item" data-href="/schedule/">
+                <div class="menu-item" data-href="/schedule/" data-permission="menu.schedule">
                     <i class="fa-solid fa-calendar-days"></i>
                     <span>排班管理</span>
                 </div>
-                <div class="menu-item" data-href="/statistics/">
+                <div class="menu-item" data-href="/statistics/" data-permission="menu.statistics">
                     <i class="fa-solid fa-bar-chart"></i>
                     <span>数据统计</span>
                 </div>
-                <div class="menu-item" data-href="/archives/">
+                <div class="menu-item" data-href="/archives/" data-permission="menu.archives">
                     <i class="fa-solid fa-folder-open"></i>
                     <span>档案系统</span>
                 </div>
-                <div class="menu-item" data-href="/dasher-review/">
+                <div class="menu-item" data-href="/dasher-review/" data-permission="menu.dasher_review">
                     <i class="fa-solid fa-id-card"></i>
                     <span>入驻审核</span>
                 </div>
-                <div class="menu-item" data-href="/system/">
+                <div class="menu-item" data-href="/system/" data-permission="menu.system">
                     <i class="fa-solid fa-gear"></i>
                     <span>系统设置</span>
                 </div>
@@ -111,9 +111,26 @@
             
             const menuItems = document.querySelectorAll('.menu-item');
             const currentPath = window.location.pathname;
+            const roleCodes = Array.isArray(userInfo?.roles) ? userInfo.roles : [];
+            const permissionCodes = new Set(Array.isArray(userInfo?.permissions) ? userInfo.permissions : []);
+            const isOwner = Boolean(userInfo?.is_superuser || roleCodes.includes('owner') || roleCodes.includes('admin'));
+            const visibleItems = [];
             
             menuItems.forEach(item => {
                 const href = item.getAttribute('data-href');
+                const requiredPermission = item.getAttribute('data-permission');
+                const canView = !requiredPermission || isOwner || permissionCodes.has(requiredPermission);
+
+                if (!canView) {
+                    item.style.display = 'none';
+                    if (currentPath === href) {
+                        const firstVisible = visibleItems[0]?.getAttribute('data-href') || '/login/';
+                        window.location.href = firstVisible;
+                    }
+                    return;
+                }
+
+                visibleItems.push(item);
                 if (currentPath === href) {
                     item.classList.add('active');
                 }

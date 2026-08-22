@@ -1,5 +1,6 @@
 from rest_framework import viewsets, status
 from rest_framework.decorators import action
+from rest_framework.exceptions import PermissionDenied
 from rest_framework.permissions import AllowAny, IsAdminUser, IsAuthenticated
 from rest_framework_simplejwt.tokens import RefreshToken
 from django.contrib.auth import logout
@@ -98,9 +99,56 @@ class UserViewSet(BaseModelViewSet):
     search_fields = ['username', 'nickname', 'phone', 'display_id']
     ordering_fields = ['id', 'username', 'created_at', 'last_login']
 
+    def _is_owner_actor(self):
+        from .oa_permissions import user_is_owner
+        return user_is_owner(self.request.user)
+
+    def _ensure_can_manage_user(self, target_user=None, role_ids=None):
+        if self._is_owner_actor():
+            return
+
+        protected_role_codes = {'owner', 'admin', 'finance'}
+        if target_user is not None:
+            if target_user.is_superuser:
+                raise PermissionDenied('只有老板账号可以管理超级管理员')
+            current_role_codes = set(target_user.get_role_codes())
+            if current_role_codes.intersection(protected_role_codes):
+                raise PermissionDenied('只有老板账号可以管理老板或财务账号')
+
+        if role_ids is not None:
+            if role_ids == '':
+                role_ids = []
+            elif not isinstance(role_ids, (list, tuple, set)):
+                role_ids = [role_ids]
+            target_role_codes = set(
+                Role.objects.filter(id__in=role_ids, status=True, is_deleted=False)
+                .values_list('code', flat=True)
+            )
+            if target_role_codes.intersection(protected_role_codes):
+                raise PermissionDenied('只有老板账号可以分配老板或财务角色')
+
+    def create(self, request, *args, **kwargs):
+        self._ensure_can_manage_user(role_ids=request.data.get('roles'))
+        return super().create(request, *args, **kwargs)
+
+    def update(self, request, *args, **kwargs):
+        role_ids = request.data.get('roles') if 'roles' in request.data else None
+        self._ensure_can_manage_user(self.get_object(), role_ids=role_ids)
+        return super().update(request, *args, **kwargs)
+
+    def partial_update(self, request, *args, **kwargs):
+        role_ids = request.data.get('roles') if 'roles' in request.data else None
+        self._ensure_can_manage_user(self.get_object(), role_ids=role_ids)
+        return super().partial_update(request, *args, **kwargs)
+
+    def destroy(self, request, *args, **kwargs):
+        self._ensure_can_manage_user(self.get_object())
+        return super().destroy(request, *args, **kwargs)
+
     @action(detail=True, methods=['patch'], url_path='display-id', permission_classes=[IsAdminUser])
     def update_display_id(self, request, pk=None):
         user = self.get_object()
+        self._ensure_can_manage_user(user)
         serializer = self.get_serializer(
             user, data={'display_id': request.data.get('display_id')}, partial=True
         )
@@ -128,6 +176,7 @@ class UserViewSet(BaseModelViewSet):
     @action(detail=True, methods=['post'], url_path='reset-password')
     def reset_password(self, request, pk=None):
         user = self.get_object()
+        self._ensure_can_manage_user(user)
         password = request.data.get('password', '123456')
         user.set_password(password)
         user.save()

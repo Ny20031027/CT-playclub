@@ -63,6 +63,46 @@ class BanCheckMiddleware(MiddlewareMixin):
         return None
 
 
+class OAPermissionMiddleware(MiddlewareMixin):
+    """OA后台权限拦截：只控制后台管理API，小程序API不走这套角色体系。"""
+
+    def process_request(self, request):
+        try:
+            from apps.account.oa_permissions import required_permission_for_request, user_has_permission
+        except Exception as exc:
+            logger.warning('OAPermission import skipped: %s', exc)
+            return None
+
+        permission_code = required_permission_for_request(request.path, request.method)
+        if not permission_code:
+            return None
+
+        auth = request.META.get('HTTP_AUTHORIZATION', '')
+        if not auth.startswith('Bearer '):
+            return None
+
+        user = getattr(request, 'user', None)
+        if not user or not getattr(user, 'is_authenticated', False):
+            try:
+                from rest_framework_simplejwt.authentication import JWTAuthentication
+                auth_result = JWTAuthentication().authenticate(request)
+                if auth_result:
+                    user, _ = auth_result
+                    request.user = user
+            except Exception as exc:
+                logger.warning('OAPermission authenticate skipped: %s', exc)
+                return None
+
+        if user_has_permission(user, permission_code):
+            return None
+
+        return JsonResponse({
+            'code': 403,
+            'msg': '当前账号没有该功能权限，请联系老板或总管理调整权限',
+            'data': {'permission': permission_code},
+        }, status=403)
+
+
 class OperationLogMiddleware(MiddlewareMixin):
     def process_response(self, request, response):
         if request.method in ['POST', 'PUT', 'PATCH', 'DELETE']:
