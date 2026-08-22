@@ -133,6 +133,29 @@
         border: 1px solid #edf1f7;
     }
     .mini-member .person-avatar { width: 42px; height: 42px; }
+    .completion-gallery { display: grid; grid-template-columns: repeat(auto-fill, minmax(116px, 1fr)); gap: 12px; }
+    .completion-thumb {
+        position: relative;
+        display: block;
+        aspect-ratio: 1;
+        overflow: hidden;
+        border-radius: 14px;
+        background: #eef1f7;
+        border: 1px solid #edf1f7;
+    }
+    .completion-thumb img { width: 100%; height: 100%; object-fit: cover; display: block; transition: transform .2s ease; }
+    .completion-thumb:hover img { transform: scale(1.04); }
+    .completion-thumb span {
+        position: absolute;
+        left: 8px;
+        bottom: 8px;
+        padding: 3px 8px;
+        border-radius: 999px;
+        color: #fff;
+        background: rgba(18, 24, 38, .62);
+        font-size: 11px;
+        font-weight: 800;
+    }
     .modal-tip {
         display: flex;
         gap: 10px;
@@ -579,6 +602,36 @@
         `).join('');
     }
 
+    function getCompletionImages(order) {
+        if (Array.isArray(order.completion_image_list) && order.completion_image_list.length) {
+            return order.completion_image_list.filter(Boolean);
+        }
+        if (Array.isArray(order.completion_images)) {
+            return order.completion_images.filter(Boolean);
+        }
+        return String(order.completion_images || '')
+            .split(',')
+            .map(item => item.trim())
+            .filter(Boolean);
+    }
+
+    function renderCompletionImages(order) {
+        const images = getCompletionImages(order);
+        if (!images.length) {
+            return '<div class="empty-state"><i class="fa-solid fa-image"></i><br>暂无打手上传凭证</div>';
+        }
+        return `
+            <div class="completion-gallery">
+                ${images.map((url, index) => `
+                    <a class="completion-thumb" href="${escHtml(url)}" target="_blank" rel="noopener" title="查看第 ${index + 1} 张凭证">
+                        <img src="${escHtml(url)}" alt="完成凭证${index + 1}" onerror="this.parentElement.style.display='none'">
+                        <span>${index + 1}/${images.length}</span>
+                    </a>
+                `).join('')}
+            </div>
+        `;
+    }
+
     async function viewOrder(id) {
         try {
             const result = await get(`/order/orders/${id}/`);
@@ -624,6 +677,10 @@
                             ${detailItem('实付金额', '¥' + formatMoney(order.pay_amount))}
                             ${detailItem('支付方式', order.pay_method === 'balance' ? '黑钻余额' : order.pay_method)}
                         </div>
+                    </div>
+                    <div class="detail-panel">
+                        <h4>打手上传凭证</h4>
+                        ${renderCompletionImages(order)}
                     </div>
                 </div>
             `;

@@ -3,7 +3,7 @@ from rest_framework.routers import DefaultRouter
 from .views import (
     EmployeeViewSet, EmployeeSkillViewSet, EmployeeTagViewSet,
     EmployeeWalletViewSet, EmployeeContractViewSet, EmployeeStatusViewSet,
-    GameRankViewSet
+    GameRankViewSet, EmployeeArchiveRecordViewSet
 )
 
 router = DefaultRouter()
@@ -13,6 +13,7 @@ router.register(r'game-ranks', GameRankViewSet, basename='game-rank')
 router.register(r'tags', EmployeeTagViewSet, basename='employee-tag')
 router.register(r'wallets', EmployeeWalletViewSet, basename='employee-wallet')
 router.register(r'contracts', EmployeeContractViewSet, basename='employee-contract')
+router.register(r'archive-records', EmployeeArchiveRecordViewSet, basename='employee-archive-record')
 router.register(r'statuses', EmployeeStatusViewSet, basename='employee-status')
 
 urlpatterns = [

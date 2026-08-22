@@ -44,6 +44,7 @@ class OrderSerializer(serializers.ModelSerializer):
     game_account_id = serializers.SerializerMethodField()
     game_account_name = serializers.SerializerMethodField()
     game_account_category = serializers.SerializerMethodField()
+    completion_image_list = serializers.SerializerMethodField()
     members = OrderMemberSerializer(many=True, read_only=True, source='order_members')
     status_text = serializers.CharField(source='get_status_display', read_only=True)
 
@@ -83,6 +84,14 @@ class OrderSerializer(serializers.ModelSerializer):
     def get_game_account_category(self, obj):
         return self._snapshot_value(obj, 'game_account_category')
 
+    def get_completion_image_list(self, obj):
+        images = [
+            image.strip()
+            for image in (obj.completion_images or '').split(',')
+            if image.strip()
+        ]
+        return [build_media_url(image, self.context.get('request')) for image in images]
+
     class Meta:
         model = Order
         fields = ['id', 'order_no', 'customer', 'customer_name', 'customer_avatar',
@@ -95,7 +104,8 @@ class OrderSerializer(serializers.ModelSerializer):
                   'self_service_snapshot', 'duration', 'unit_price', 'total_amount',
                   'discount_amount', 'pay_amount', 'pay_method', 'pay_time',
                   'start_time', 'end_time', 'assign_time', 'complete_time',
-                  'cancel_time', 'cancel_reason', 'assigner', 'assigner_name',
+                  'cancel_time', 'cancel_reason', 'completion_images',
+                  'completion_image_list', 'assigner', 'assigner_name',
                   'game_id', 'game_name', 'server', 'remark', 'customer_contact',
                   'platform', 'source', 'members', 'created_at', 'updated_at']
         read_only_fields = ['id', 'order_no', 'pay_time', 'start_time', 'end_time',

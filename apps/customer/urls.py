@@ -3,7 +3,7 @@ from rest_framework.routers import DefaultRouter
 from .views import (
     CustomerViewSet, CustomerLevelViewSet, CustomerTagViewSet,
     BlacklistViewSet, CustomerConsumeRecordViewSet,
-    cs_list, cs_add, cs_remove
+    CustomerArchiveRecordViewSet, cs_list, cs_add, cs_remove
 )
 
 router = DefaultRouter()
@@ -12,6 +12,7 @@ router.register(r'levels', CustomerLevelViewSet, basename='customer-level')
 router.register(r'tags', CustomerTagViewSet, basename='customer-tag')
 router.register(r'blacklists', BlacklistViewSet, basename='blacklist')
 router.register(r'consume-records', CustomerConsumeRecordViewSet, basename='consume-record')
+router.register(r'archive-records', CustomerArchiveRecordViewSet, basename='customer-archive-record')
 
 urlpatterns = [
     path('', include(router.urls)),

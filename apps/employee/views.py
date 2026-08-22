@@ -12,13 +12,14 @@ from .models import (
     GameRank, EmployeeGameRank,
     SkillGameplay, GameplayPresetItem, GameplayDifficulty, GameplayLevelOption,
     GameplayService, GameplayPriceRule, ValueAddedService,
-    AddonValueAddedService, ServiceValueAdded
+    AddonValueAddedService, ServiceValueAdded, EmployeeArchiveRecord
 )
 from .serializers import (
     EmployeeSerializer, EmployeeSkillSerializer, EmployeeTagSerializer,
     EmployeeWalletSerializer, EmployeeContractSerializer,
     EmployeeStatusSerializer, EmployeeSkillRelationSerializer,
-    EmployeeSimpleSerializer, GameRankSerializer, EmployeeGameRankSerializer
+    EmployeeSimpleSerializer, GameRankSerializer, EmployeeGameRankSerializer,
+    EmployeeArchiveRecordSerializer
 )
 from .skill_services import sync_employee_rank_skills, sync_rank_auto_skill
 
@@ -845,6 +846,25 @@ class EmployeeContractViewSet(BaseModelViewSet):
     serializer_class = EmployeeContractSerializer
     filterset_fields = ['status', 'contract_type', 'employee']
     search_fields = ['contract_no', 'employee__nickname']
+
+
+class EmployeeArchiveRecordViewSet(BaseModelViewSet):
+    queryset = EmployeeArchiveRecord.objects.select_related('employee', 'operator').all()
+    serializer_class = EmployeeArchiveRecordSerializer
+    filterset_fields = ['employee', 'priority', 'category']
+    search_fields = ['title', 'content', 'category', 'employee__nickname', 'employee__real_name', 'employee__phone']
+    ordering_fields = ['created_at', 'next_follow_time', 'priority']
+
+    def list(self, request, *args, **kwargs):
+        response = super().list(request, *args, **kwargs)
+        data = response.data
+        if isinstance(data, dict) and 'data' in data and isinstance(data.get('data'), dict) and 'results' in data['data']:
+            return response
+        return success_response(data)
+
+    def perform_create(self, serializer):
+        operator = self.request.user if self.request.user and self.request.user.is_authenticated else None
+        serializer.save(operator=operator)
 
 
 class EmployeeStatusViewSet(BaseModelViewSet):

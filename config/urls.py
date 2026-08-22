@@ -31,6 +31,9 @@ def schedule_view(request):
 def statistics_view(request):
     return render(request, 'pages/statistics.html')
 
+def archives_view(request):
+    return render(request, 'pages/archives.html')
+
 def system_view(request):
     return render(request, 'pages/system.html')
 
@@ -56,6 +59,7 @@ urlpatterns = [
     path('finance/', finance_view, name='finance'),
     path('schedule/', schedule_view, name='schedule'),
     path('statistics/', statistics_view, name='statistics'),
+    path('archives/', archives_view, name='archives'),
     path('system/', system_view, name='system'),
     path('cs-manage/', cs_manage_view, name='cs-manage'),
     path('game-banners/', game_banners_view, name='game-banners'),

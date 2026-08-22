@@ -10,7 +10,7 @@ from .models import (
     GameRank, EmployeeGameRank,
     SkillGameplay, GameplayPresetItem, GameplayDifficulty, GameplayLevelOption,
     GameplayService, GameplayPriceRule, ValueAddedService,
-    AddonValueAddedService, ServiceValueAdded
+    AddonValueAddedService, ServiceValueAdded, EmployeeArchiveRecord
 )
 
 
@@ -252,6 +252,24 @@ class EmployeeContractSerializer(serializers.ModelSerializer):
                   'start_date', 'end_date', 'status', 'file', 'salary_type',
                   'base_salary', 'commission_rate', 'remark', 'created_at']
         read_only_fields = ['id', 'created_at']
+
+
+class EmployeeArchiveRecordSerializer(serializers.ModelSerializer):
+    employee_name = serializers.CharField(source='employee.nickname', read_only=True)
+    employee_real_name = serializers.CharField(source='employee.real_name', read_only=True)
+    employee_phone = serializers.CharField(source='employee.phone', read_only=True)
+    operator_name = serializers.CharField(source='operator.username', read_only=True)
+    priority_text = serializers.CharField(source='get_priority_display', read_only=True)
+
+    class Meta:
+        model = EmployeeArchiveRecord
+        fields = [
+            'id', 'employee', 'employee_name', 'employee_real_name',
+            'employee_phone', 'title', 'category', 'priority', 'priority_text',
+            'content', 'next_follow_time', 'operator', 'operator_name',
+            'created_at', 'updated_at'
+        ]
+        read_only_fields = ['id', 'operator', 'operator_name', 'created_at', 'updated_at']
 
 
 class EmployeeStatusSerializer(serializers.ModelSerializer):

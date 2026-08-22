@@ -3,7 +3,8 @@ from apps.account.models import User
 from apps.account.serializers import validate_display_id
 from apps.common.media import build_media_url
 from .models import (
-    Customer, CustomerLevel, CustomerTag, Blacklist, CustomerConsumeRecord
+    Customer, CustomerLevel, CustomerTag, Blacklist, CustomerConsumeRecord,
+    CustomerArchiveRecord
 )
 
 
@@ -140,3 +141,20 @@ class CustomerConsumeRecordSerializer(serializers.ModelSerializer):
         fields = ['id', 'customer', 'customer_name', 'order_no', 'amount',
                   'type', 'remark', 'created_at']
         read_only_fields = ['id', 'created_at']
+
+
+class CustomerArchiveRecordSerializer(serializers.ModelSerializer):
+    customer_name = serializers.CharField(source='customer.nickname', read_only=True)
+    customer_phone = serializers.CharField(source='customer.phone', read_only=True)
+    operator_name = serializers.CharField(source='operator.username', read_only=True)
+    priority_text = serializers.CharField(source='get_priority_display', read_only=True)
+
+    class Meta:
+        model = CustomerArchiveRecord
+        fields = [
+            'id', 'customer', 'customer_name', 'customer_phone', 'title',
+            'category', 'priority', 'priority_text', 'content',
+            'next_follow_time', 'operator', 'operator_name',
+            'created_at', 'updated_at'
+        ]
+        read_only_fields = ['id', 'operator', 'operator_name', 'created_at', 'updated_at']

@@ -1,0 +1,383 @@
+{% extends 'layout.html' %}
+
+{% block content %}
+<script>
+    document.getElementById('pageTitle').textContent = '档案系统';
+</script>
+
+<style>
+    .archive-layout { display:grid; grid-template-columns:320px minmax(0,1fr); gap:16px; align-items:start; }
+    .archive-side { border:1px solid #edf0f5; border-radius:8px; background:#fff; overflow:hidden; }
+    .archive-side-head { padding:14px 16px; border-bottom:1px solid #edf0f5; background:#fafbfc; }
+    .archive-side-head .search-input { width:100%; box-sizing:border-box; }
+    .archive-person-list { max-height:620px; overflow-y:auto; }
+    .archive-person { display:flex; gap:10px; align-items:center; padding:12px 14px; border-bottom:1px solid #f1f2f5; cursor:pointer; }
+    .archive-person:hover { background:#f7f9ff; }
+    .archive-person.active { background:#eef3ff; border-left:3px solid #667eea; padding-left:11px; }
+    .archive-avatar { width:38px; height:38px; flex-shrink:0; border-radius:50%; overflow:hidden; display:flex; align-items:center; justify-content:center; color:#7b8496; background:#edf0f5; font-weight:700; }
+    .archive-person-main { min-width:0; flex:1; }
+    .archive-person-name { overflow:hidden; color:#252b3b; font-weight:600; text-overflow:ellipsis; white-space:nowrap; }
+    .archive-person-meta { margin-top:3px; overflow:hidden; color:#9098a8; font-size:12px; text-overflow:ellipsis; white-space:nowrap; }
+    .archive-workspace { min-width:0; }
+    .archive-profile { display:flex; align-items:center; gap:14px; padding:16px; border:1px solid #edf0f5; border-radius:8px; background:#fff; }
+    .archive-profile .archive-avatar { width:52px; height:52px; }
+    .archive-profile-name { font-size:17px; font-weight:700; color:#252b3b; }
+    .archive-profile-meta { margin-top:5px; color:#8a93a5; font-size:13px; }
+    .archive-form { margin-top:16px; padding:16px; border:1px solid #edf0f5; border-radius:8px; background:#fff; }
+    .archive-form-grid { display:grid; grid-template-columns:1.3fr .8fr .7fr 1fr; gap:12px; }
+    .archive-form textarea { min-height:92px; resize:vertical; }
+    .archive-form input,.archive-form select,.archive-form textarea { width:100%; box-sizing:border-box; }
+    .archive-form-actions { display:flex; justify-content:flex-end; gap:10px; margin-top:12px; }
+    .archive-records { margin-top:16px; border:1px solid #edf0f5; border-radius:8px; background:#fff; overflow:hidden; }
+    .archive-records-head { display:flex; align-items:center; justify-content:space-between; gap:12px; padding:14px 16px; border-bottom:1px solid #edf0f5; background:#fafbfc; }
+    .archive-record-item { padding:15px 16px; border-bottom:1px solid #f1f2f5; }
+    .archive-record-item:last-child { border-bottom:0; }
+    .archive-record-top { display:flex; align-items:flex-start; justify-content:space-between; gap:12px; }
+    .archive-record-title { color:#252b3b; font-weight:700; }
+    .archive-record-meta { display:flex; flex-wrap:wrap; gap:8px; margin-top:7px; color:#8a93a5; font-size:12px; }
+    .archive-record-content { margin-top:10px; color:#4b5565; line-height:1.65; white-space:pre-wrap; }
+    .archive-record-actions { display:flex; gap:8px; flex-shrink:0; }
+    .priority-low { background:#eef6ff; color:#2770b8; }
+    .priority-normal { background:#f0f9eb; color:#529b2e; }
+    .priority-high { background:#fff0f0; color:#c45656; }
+    @media (max-width:900px) {
+        .archive-layout { grid-template-columns:1fr; }
+        .archive-person-list { max-height:320px; }
+        .archive-form-grid { grid-template-columns:1fr; }
+    }
+</style>
+
+<div class="tabs">
+    <div class="tab-item active" id="customerArchiveTabBtn" onclick="switchArchiveTab('customer')">客户档案</div>
+    <div class="tab-item" id="employeeArchiveTabBtn" onclick="switchArchiveTab('employee')">打手档案</div>
+</div>
+
+<div class="archive-layout">
+    <aside class="archive-side">
+        <div class="archive-side-head">
+            <input type="text" class="search-input" id="archiveSearchInput" placeholder="搜索姓名/昵称/手机号">
+        </div>
+        <div class="archive-person-list" id="archivePersonList">
+            <div class="empty-state"><i class="fa-solid fa-spinner fa-spin"></i><br>加载中...</div>
+        </div>
+    </aside>
+
+    <section class="archive-workspace">
+        <div class="archive-profile" id="archiveProfile">
+            <div class="archive-avatar"><i class="fa-solid fa-user"></i></div>
+            <div>
+                <div class="archive-profile-name">请选择档案对象</div>
+                <div class="archive-profile-meta">在左侧选择客户或打手后，可维护档案记录</div>
+            </div>
+        </div>
+
+        <div class="archive-form">
+            <input type="hidden" id="archiveRecordId">
+            <div class="archive-form-grid">
+                <div class="form-group">
+                    <label>标题 <span style="color:red;">*</span></label>
+                    <input type="text" id="archiveTitle" placeholder="如：沟通记录、服务偏好、违规说明">
+                </div>
+                <div class="form-group">
+                    <label>分类</label>
+                    <input type="text" id="archiveCategory" placeholder="如：偏好/跟进/风险">
+                </div>
+                <div class="form-group">
+                    <label>重要级别</label>
+                    <select id="archivePriority">
+                        <option value="normal">普通</option>
+                        <option value="high">重要</option>
+                        <option value="low">低</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label>下次跟进</label>
+                    <input type="datetime-local" id="archiveNextFollowTime">
+                </div>
+            </div>
+            <div class="form-group" style="margin-top:12px;">
+                <label>档案内容 <span style="color:red;">*</span></label>
+                <textarea id="archiveContent" placeholder="记录该客户或打手的关键情况、沟通纪要、服务偏好、注意事项等"></textarea>
+            </div>
+            <div class="archive-form-actions">
+                <button class="btn btn-default" onclick="resetArchiveForm()">清空</button>
+                <button class="btn btn-primary" onclick="saveArchiveRecord()">
+                    <i class="fa-solid fa-floppy-disk"></i> 保存档案
+                </button>
+            </div>
+        </div>
+
+        <div class="archive-records">
+            <div class="archive-records-head">
+                <div class="card-title">档案记录</div>
+                <button class="btn btn-default btn-sm" onclick="loadArchiveRecords()">
+                    <i class="fa-solid fa-rotate"></i> 刷新
+                </button>
+            </div>
+            <div id="archiveRecordList">
+                <div class="empty-state"><i class="fa-solid fa-inbox"></i><br>请选择档案对象</div>
+            </div>
+        </div>
+    </section>
+</div>
+
+<script>
+    let archiveType = 'customer';
+    let archivePeople = [];
+    let archiveRecords = [];
+    let selectedArchivePersonId = null;
+
+    const archiveConfig = {
+        customer: {
+            personUrl: '/customer/customers/',
+            recordUrl: '/customer/archive-records/',
+            personKey: 'customer',
+            label: '客户',
+        },
+        employee: {
+            personUrl: '/employee/employees/',
+            recordUrl: '/employee/archive-records/',
+            personKey: 'employee',
+            label: '打手',
+        }
+    };
+
+    document.addEventListener('DOMContentLoaded', function() {
+        document.getElementById('archiveSearchInput').addEventListener('input', debounce(loadArchivePeople, 300));
+        loadArchivePeople();
+    });
+
+    function switchArchiveTab(type) {
+        archiveType = type;
+        selectedArchivePersonId = null;
+        archiveRecords = [];
+        resetArchiveForm();
+        document.getElementById('customerArchiveTabBtn').classList.toggle('active', type === 'customer');
+        document.getElementById('employeeArchiveTabBtn').classList.toggle('active', type === 'employee');
+        document.getElementById('archiveSearchInput').value = '';
+        renderArchiveProfile(null);
+        loadArchivePeople();
+        renderArchiveRecords();
+    }
+
+    async function loadArchivePeople() {
+        const config = archiveConfig[archiveType];
+        const keyword = document.getElementById('archiveSearchInput').value.trim();
+        const list = document.getElementById('archivePersonList');
+        list.innerHTML = '<div class="empty-state"><i class="fa-solid fa-spinner fa-spin"></i><br>加载中...</div>';
+        try {
+            const params = { page_size: 100 };
+            if (keyword) params.search = keyword;
+            const result = await get(config.personUrl, params);
+            if (result.code !== 200) throw new Error(result.msg || '加载失败');
+            archivePeople = result.data.results || result.data || [];
+            renderArchivePeople();
+            if (!selectedArchivePersonId && archivePeople.length > 0) {
+                selectArchivePerson(archivePeople[0].id);
+            }
+        } catch (error) {
+            list.innerHTML = `<div class="empty-state"><i class="fa-solid fa-triangle-exclamation"></i><br>${escapeHtml(error.message || '加载失败')}</div>`;
+        }
+    }
+
+    function renderArchivePeople() {
+        const list = document.getElementById('archivePersonList');
+        if (!archivePeople.length) {
+            list.innerHTML = '<div class="empty-state"><i class="fa-solid fa-inbox"></i><br>暂无数据</div>';
+            return;
+        }
+        list.innerHTML = archivePeople.map(person => {
+            const name = person.nickname || person.real_name || '未命名';
+            const metaParts = [];
+            if (archiveType === 'employee' && person.real_name) metaParts.push(person.real_name);
+            if (person.phone) metaParts.push(person.phone);
+            if (person.display_id) metaParts.push('ID ' + person.display_id);
+            return `
+                <div class="archive-person ${Number(selectedArchivePersonId) === Number(person.id) ? 'active' : ''}" onclick="selectArchivePerson(${person.id})">
+                    <div class="archive-avatar">${avatarHtml(person, 38)}</div>
+                    <div class="archive-person-main">
+                        <div class="archive-person-name">${escapeHtml(name)}</div>
+                        <div class="archive-person-meta">${escapeHtml(metaParts.join(' · ') || archiveConfig[archiveType].label + ' #' + person.id)}</div>
+                    </div>
+                </div>
+            `;
+        }).join('');
+    }
+
+    function selectArchivePerson(id) {
+        selectedArchivePersonId = id;
+        const person = archivePeople.find(item => Number(item.id) === Number(id));
+        renderArchivePeople();
+        renderArchiveProfile(person);
+        resetArchiveForm();
+        loadArchiveRecords();
+    }
+
+    function renderArchiveProfile(person) {
+        const profile = document.getElementById('archiveProfile');
+        if (!person) {
+            profile.innerHTML = `
+                <div class="archive-avatar"><i class="fa-solid fa-user"></i></div>
+                <div>
+                    <div class="archive-profile-name">请选择档案对象</div>
+                    <div class="archive-profile-meta">在左侧选择客户或打手后，可维护档案记录</div>
+                </div>
+            `;
+            return;
+        }
+        const name = person.nickname || person.real_name || '未命名';
+        const metaParts = [archiveConfig[archiveType].label + ' #' + person.id];
+        if (archiveType === 'employee' && person.real_name) metaParts.push('姓名 ' + person.real_name);
+        if (person.phone) metaParts.push('手机 ' + person.phone);
+        if (person.display_id) metaParts.push('黑金ID ' + person.display_id);
+        profile.innerHTML = `
+            <div class="archive-avatar">${avatarHtml(person, 52)}</div>
+            <div>
+                <div class="archive-profile-name">${escapeHtml(name)}</div>
+                <div class="archive-profile-meta">${escapeHtml(metaParts.join(' · '))}</div>
+            </div>
+        `;
+    }
+
+    async function loadArchiveRecords() {
+        const config = archiveConfig[archiveType];
+        const list = document.getElementById('archiveRecordList');
+        if (!selectedArchivePersonId) {
+            renderArchiveRecords();
+            return;
+        }
+        list.innerHTML = '<div class="empty-state"><i class="fa-solid fa-spinner fa-spin"></i><br>加载中...</div>';
+        try {
+            const params = { page_size: 100, ordering: '-created_at' };
+            params[config.personKey] = selectedArchivePersonId;
+            const result = await get(config.recordUrl, params);
+            if (result.code !== 200) throw new Error(result.msg || '加载失败');
+            archiveRecords = result.data.results || result.data || [];
+            renderArchiveRecords();
+        } catch (error) {
+            list.innerHTML = `<div class="empty-state"><i class="fa-solid fa-triangle-exclamation"></i><br>${escapeHtml(error.message || '加载失败')}</div>`;
+        }
+    }
+
+    function renderArchiveRecords() {
+        const list = document.getElementById('archiveRecordList');
+        if (!selectedArchivePersonId) {
+            list.innerHTML = '<div class="empty-state"><i class="fa-solid fa-inbox"></i><br>请选择档案对象</div>';
+            return;
+        }
+        if (!archiveRecords.length) {
+            list.innerHTML = '<div class="empty-state"><i class="fa-solid fa-folder-open"></i><br>暂无档案记录</div>';
+            return;
+        }
+        list.innerHTML = archiveRecords.map(record => {
+            const priority = record.priority || 'normal';
+            return `
+                <div class="archive-record-item">
+                    <div class="archive-record-top">
+                        <div>
+                            <div class="archive-record-title">${escapeHtml(record.title || '-')}</div>
+                            <div class="archive-record-meta">
+                                <span class="badge priority-${priority}">${escapeHtml(record.priority_text || priority)}</span>
+                                ${record.category ? `<span class="badge badge-info">${escapeHtml(record.category)}</span>` : ''}
+                                <span>记录人：${escapeHtml(record.operator_name || '-')}</span>
+                                <span>创建：${escapeHtml(record.created_at || '-')}</span>
+                                ${record.next_follow_time ? `<span>跟进：${escapeHtml(record.next_follow_time)}</span>` : ''}
+                            </div>
+                        </div>
+                        <div class="archive-record-actions">
+                            <button class="btn btn-default btn-sm" onclick="editArchiveRecord(${record.id})">编辑</button>
+                            <button class="btn btn-danger btn-sm" onclick="deleteArchiveRecord(${record.id})">删除</button>
+                        </div>
+                    </div>
+                    <div class="archive-record-content">${escapeHtml(record.content || '')}</div>
+                </div>
+            `;
+        }).join('');
+    }
+
+    async function saveArchiveRecord() {
+        if (!selectedArchivePersonId) {
+            showToast('请先选择档案对象', 'error');
+            return;
+        }
+        const title = document.getElementById('archiveTitle').value.trim();
+        const content = document.getElementById('archiveContent').value.trim();
+        if (!title) { showToast('请输入档案标题', 'error'); return; }
+        if (!content) { showToast('请输入档案内容', 'error'); return; }
+
+        const config = archiveConfig[archiveType];
+        const recordId = document.getElementById('archiveRecordId').value;
+        const payload = {
+            title: title,
+            category: document.getElementById('archiveCategory').value.trim(),
+            priority: document.getElementById('archivePriority').value,
+            content: content,
+            next_follow_time: document.getElementById('archiveNextFollowTime').value || null,
+        };
+        payload[config.personKey] = parseInt(selectedArchivePersonId, 10);
+
+        try {
+            const result = recordId
+                ? await put(`${config.recordUrl}${recordId}/`, payload)
+                : await post(config.recordUrl, payload);
+            if (result.code === 200) {
+                showToast(recordId ? '档案已更新' : '档案已保存', 'success');
+                resetArchiveForm();
+                await loadArchiveRecords();
+            } else {
+                showToast(result.msg || '保存失败', 'error');
+            }
+        } catch (error) {
+            showToast(error.message || '保存失败', 'error');
+        }
+    }
+
+    function editArchiveRecord(id) {
+        const record = archiveRecords.find(item => Number(item.id) === Number(id));
+        if (!record) return;
+        document.getElementById('archiveRecordId').value = record.id;
+        document.getElementById('archiveTitle').value = record.title || '';
+        document.getElementById('archiveCategory').value = record.category || '';
+        document.getElementById('archivePriority').value = record.priority || 'normal';
+        document.getElementById('archiveContent').value = record.content || '';
+        document.getElementById('archiveNextFollowTime').value = toDatetimeLocal(record.next_follow_time);
+        document.getElementById('archiveTitle').focus();
+    }
+
+    async function deleteArchiveRecord(id) {
+        if (!confirm('确定要删除这条档案记录吗？')) return;
+        try {
+            const result = await del(`${archiveConfig[archiveType].recordUrl}${id}/`);
+            if (result.code === 200) {
+                showToast('删除成功', 'success');
+                if (String(document.getElementById('archiveRecordId').value) === String(id)) resetArchiveForm();
+                await loadArchiveRecords();
+            } else {
+                showToast(result.msg || '删除失败', 'error');
+            }
+        } catch (error) {
+            showToast(error.message || '删除失败', 'error');
+        }
+    }
+
+    function resetArchiveForm() {
+        document.getElementById('archiveRecordId').value = '';
+        document.getElementById('archiveTitle').value = '';
+        document.getElementById('archiveCategory').value = '';
+        document.getElementById('archivePriority').value = 'normal';
+        document.getElementById('archiveNextFollowTime').value = '';
+        document.getElementById('archiveContent').value = '';
+    }
+
+    function toDatetimeLocal(value) {
+        if (!value) return '';
+        return String(value).replace(' ', 'T').substring(0, 16);
+    }
+
+    function escapeHtml(value) {
+        return String(value == null ? '' : value).replace(/[&<>"']/g, function(ch) {
+            return ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[ch];
+        });
+    }
+</script>
+{% endblock %}

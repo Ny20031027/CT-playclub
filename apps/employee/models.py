@@ -558,6 +558,31 @@ class EmployeeContract(BaseModel):
         return self.contract_no
 
 
+class EmployeeArchiveRecord(BaseModel):
+    employee = models.ForeignKey(Employee, on_delete=models.CASCADE,
+                                 related_name='archive_records', verbose_name='打手')
+    title = models.CharField(max_length=100, verbose_name='档案标题')
+    category = models.CharField(max_length=50, blank=True, verbose_name='档案分类')
+    priority = models.CharField(max_length=20, default='normal', choices=[
+        ('low', '低'),
+        ('normal', '普通'),
+        ('high', '重要'),
+    ], verbose_name='重要级别')
+    content = models.TextField(verbose_name='档案内容')
+    next_follow_time = models.DateTimeField(null=True, blank=True, verbose_name='下次跟进时间')
+    operator = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, blank=True,
+                                 related_name='employee_archive_records', verbose_name='记录人')
+
+    class Meta:
+        db_table = 'emp_archive_record'
+        verbose_name = '打手档案记录'
+        verbose_name_plural = verbose_name
+        ordering = ['-created_at']
+
+    def __str__(self):
+        return f"{self.employee} - {self.title}"
+
+
 class EmployeeStatus(BaseModel):
     employee = models.OneToOneField(Employee, on_delete=models.CASCADE,
                                     related_name='status_detail', verbose_name='打手')

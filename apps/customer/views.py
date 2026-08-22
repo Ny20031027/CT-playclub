@@ -6,10 +6,14 @@ from rest_framework.permissions import AllowAny
 from apps.common.response import success_response, error_response
 from apps.common.media import build_media_url
 from apps.common.viewsets import BaseModelViewSet
-from .models import Customer, CustomerLevel, CustomerTag, Blacklist, CustomerConsumeRecord, CustomerService
+from .models import (
+    Customer, CustomerLevel, CustomerTag, Blacklist, CustomerConsumeRecord,
+    CustomerService, CustomerArchiveRecord
+)
 from .serializers import (
     CustomerSerializer, CustomerLevelSerializer, CustomerTagSerializer,
-    BlacklistSerializer, CustomerConsumeRecordSerializer, CustomerSimpleSerializer
+    BlacklistSerializer, CustomerConsumeRecordSerializer, CustomerSimpleSerializer,
+    CustomerArchiveRecordSerializer
 )
 
 
@@ -244,6 +248,25 @@ class CustomerConsumeRecordViewSet(BaseModelViewSet):
     filterset_fields = ['type', 'customer']
     search_fields = ['order_no', 'customer__nickname']
     ordering_fields = ['amount', 'created_at']
+
+
+class CustomerArchiveRecordViewSet(BaseModelViewSet):
+    queryset = CustomerArchiveRecord.objects.select_related('customer', 'operator').all()
+    serializer_class = CustomerArchiveRecordSerializer
+    filterset_fields = ['customer', 'priority', 'category']
+    search_fields = ['title', 'content', 'category', 'customer__nickname', 'customer__phone']
+    ordering_fields = ['created_at', 'next_follow_time', 'priority']
+
+    def list(self, request, *args, **kwargs):
+        response = super().list(request, *args, **kwargs)
+        data = response.data
+        if isinstance(data, dict) and 'data' in data and isinstance(data.get('data'), dict) and 'results' in data['data']:
+            return response
+        return success_response(data)
+
+    def perform_create(self, serializer):
+        operator = self.request.user if self.request.user and self.request.user.is_authenticated else None
+        serializer.save(operator=operator)
 
 
 @api_view(['GET'])
