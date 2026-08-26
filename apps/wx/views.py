@@ -6773,31 +6773,42 @@ def dasher_dashboard(request):
     )['total'] or 0
 
     # ========== 本月回头客排行 ==========
-    customer_ranking_query = OrderMember.objects.filter(
-        employee=employee_obj,
+    customer_order_rows = Order.objects.filter(
         is_deleted=False,
-        order__is_deleted=False,
-        order__created_at__gte=month_start,
-        order__created_at__lte=timezone.now(),
-        order__customer__isnull=False,
-    ).values(
-        'order__customer_id',
-        'order__customer__nickname',
-        'order__customer__avatar',
-        'order__customer__user__display_id',
-    ).annotate(
-        order_count=Count('order_id', distinct=True),
-        total_amount=Sum('order__pay_amount'),
-    ).order_by('-order_count', '-total_amount')[:5]
+        created_at__gte=month_start,
+        created_at__lte=timezone.now(),
+        customer__isnull=False,
+    ).filter(
+        Q(assigned_employee=employee_obj) |
+        Q(order_members__employee=employee_obj, order_members__is_deleted=False)
+    ).distinct().select_related('customer', 'customer__user')
 
+    customer_rank_map = {}
+    for order in customer_order_rows:
+        customer = order.customer
+        if not customer:
+            continue
+        row = customer_rank_map.setdefault(customer.id, {
+            'customer': customer,
+            'order_count': 0,
+            'total_amount': 0,
+        })
+        row['order_count'] += 1
+        row['total_amount'] += float(order.pay_amount or 0)
+
+    customer_rank_rows = sorted(
+        customer_rank_map.values(),
+        key=lambda row: (-row['order_count'], -row['total_amount'], row['customer'].id)
+    )[:5]
     customer_ranking = []
-    for idx, row in enumerate(customer_ranking_query):
+    for idx, row in enumerate(customer_rank_rows):
+        customer = row['customer']
         customer_ranking.append({
             'rank': idx + 1,
-            'customer_id': row['order__customer_id'],
-            'nickname': row['order__customer__nickname'] or '未命名老板',
-            'avatar': field_file_url(row['order__customer__avatar'], request),
-            'display_id': row['order__customer__user__display_id'] or '',
+            'customer_id': customer.id,
+            'nickname': customer.nickname or '未命名老板',
+            'avatar': field_file_url(customer.avatar, request),
+            'display_id': customer.user.display_id if customer.user else '',
             'order_count': row['order_count'] or 0,
             'total_amount': float(row['total_amount'] or 0),
         })

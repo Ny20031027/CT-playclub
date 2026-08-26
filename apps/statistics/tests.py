@@ -44,10 +44,14 @@ class DasherOrderRankTests(TestCase):
             nickname=f'老板{suffix}',
         )
 
-    def create_order(self, order_no, customer, employee, created_at=None, amount=100):
+    def create_order(
+        self, order_no, customer, employee, created_at=None, amount=100,
+        assigned=False, create_member=True
+    ):
         order = Order.objects.create(
             order_no=order_no,
             customer=customer,
+            assigned_employee=employee if assigned else None,
             skill=self.skill,
             status='published',
             order_type='self_service',
@@ -57,15 +61,16 @@ class DasherOrderRankTests(TestCase):
             total_amount=Decimal(str(amount)),
             pay_amount=Decimal(str(amount)),
         )
-        OrderMember.objects.create(
-            order=order,
-            employee=employee,
-            skill=self.skill,
-            unit_price=Decimal(str(amount)),
-            duration=60,
-            amount=Decimal(str(amount)),
-            status='assigned',
-        )
+        if create_member:
+            OrderMember.objects.create(
+                order=order,
+                employee=employee,
+                skill=self.skill,
+                unit_price=Decimal(str(amount)),
+                duration=60,
+                amount=Decimal(str(amount)),
+                status='assigned',
+            )
         if created_at:
             Order.objects.filter(id=order.id).update(created_at=created_at)
             OrderMember.objects.filter(order=order).update(created_at=created_at)
@@ -75,8 +80,11 @@ class DasherOrderRankTests(TestCase):
     def test_monthly_dasher_order_rank_and_detail(self):
         now = timezone.now()
         last_month = now - datetime.timedelta(days=40)
-        self.create_order('MONTH-RANK-001', self.first_customer, self.first_employee, amount=120)
-        second = self.create_order('MONTH-RANK-002', self.second_customer, self.first_employee, amount=80)
+        self.create_order('MONTH-RANK-001', self.first_customer, self.first_employee, assigned=True, amount=120)
+        second = self.create_order(
+            'MONTH-RANK-002', self.second_customer, self.first_employee,
+            assigned=True, create_member=False, amount=80
+        )
         self.create_order('MONTH-RANK-003', self.first_customer, self.second_employee, amount=60)
         self.create_order('MONTH-RANK-OLD', self.first_customer, self.first_employee, created_at=last_month, amount=200)
 
@@ -106,8 +114,11 @@ class DasherOrderRankTests(TestCase):
 
     def test_wx_dasher_dashboard_returns_monthly_customer_top_five(self):
         self.client.force_authenticate(user=self.first_employee.user)
-        self.create_order('CUSTOMER-RANK-001', self.first_customer, self.first_employee, amount=100)
-        self.create_order('CUSTOMER-RANK-002', self.first_customer, self.first_employee, amount=100)
+        self.create_order('CUSTOMER-RANK-001', self.first_customer, self.first_employee, assigned=True, amount=100)
+        self.create_order(
+            'CUSTOMER-RANK-002', self.first_customer, self.first_employee,
+            assigned=True, create_member=False, amount=100
+        )
         self.create_order('CUSTOMER-RANK-003', self.second_customer, self.first_employee, amount=100)
         self.create_order('CUSTOMER-RANK-OTHER', self.first_customer, self.second_employee, amount=100)
 

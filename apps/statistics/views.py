@@ -186,34 +186,47 @@ class StatisticsViewSet(viewsets.ViewSet):
 
     def _dasher_order_rank_payload(self, request, period='month', limit=10):
         period, period_label, start_time, end_time = self._period_range(period)
-        rank_rows = OrderMember.objects.filter(
+        rank_map = {}
+        seen_pairs = set()
+
+        member_rows = OrderMember.objects.filter(
             is_deleted=False,
             employee__isnull=False,
             employee__is_deleted=False,
             order__is_deleted=False,
             order__created_at__gte=start_time,
             order__created_at__lte=end_time,
-        ).values(
-            'employee_id',
-            'employee__nickname',
-            'employee__real_name',
-            'employee__avatar',
-            'employee__level',
-            'employee__level_num',
-        ).annotate(
-            order_count=Count('order_id', distinct=True),
-            total_amount=Sum('amount'),
-        ).order_by('-order_count', '-total_amount', 'employee_id')[:limit]
+        ).select_related('employee', 'order')
+
+        for member in member_rows:
+            self._add_dasher_order_rank_row(rank_map, seen_pairs, member.employee, member.order, member.amount)
+
+        assigned_orders = Order.objects.filter(
+            is_deleted=False,
+            assigned_employee__isnull=False,
+            assigned_employee__is_deleted=False,
+            created_at__gte=start_time,
+            created_at__lte=end_time,
+        ).select_related('assigned_employee')
+
+        for order in assigned_orders:
+            self._add_dasher_order_rank_row(rank_map, seen_pairs, order.assigned_employee, order, order.pay_amount)
+
+        rank_rows = sorted(
+            rank_map.values(),
+            key=lambda row: (-row['order_count'], -row['total_amount'], row['employee'].id)
+        )[:limit]
 
         data = []
         for index, row in enumerate(rank_rows, 1):
+            employee = row['employee']
             data.append({
                 'rank': index,
-                'employee_id': row['employee_id'],
-                'employee_name': row['employee__nickname'] or row['employee__real_name'] or '未命名',
-                'employee_avatar': build_media_url(row['employee__avatar'] or '', request),
-                'level': row['employee__level'] or '',
-                'level_num': row['employee__level_num'] or 0,
+                'employee_id': employee.id,
+                'employee_name': employee.nickname or employee.real_name or '未命名',
+                'employee_avatar': build_media_url(employee.avatar or '', request),
+                'level': employee.level or '',
+                'level_num': employee.level_num or 0,
                 'order_count': row['order_count'] or 0,
                 'total_amount': float(row['total_amount'] or 0),
             })
@@ -225,6 +238,21 @@ class StatisticsViewSet(viewsets.ViewSet):
             'results': data,
         }
 
+    def _add_dasher_order_rank_row(self, rank_map, seen_pairs, employee, order, amount):
+        if not employee or not order:
+            return
+        pair = (employee.id, order.id)
+        if pair in seen_pairs:
+            return
+        seen_pairs.add(pair)
+        row = rank_map.setdefault(employee.id, {
+            'employee': employee,
+            'order_count': 0,
+            'total_amount': 0,
+        })
+        row['order_count'] += 1
+        row['total_amount'] += float(amount or 0)
+
     def _dasher_order_detail_payload(self, request, period='month'):
         employee_id = self._positive_int(request.query_params.get('employee_id'), 0)
         if not employee_id:
@@ -235,17 +263,14 @@ class StatisticsViewSet(viewsets.ViewSet):
         if not employee:
             return success_response({'order_count': 0, 'orders': []})
 
-        order_ids = OrderMember.objects.filter(
-            is_deleted=False,
-            employee=employee,
-            order__is_deleted=False,
-            order__created_at__gte=start_time,
-            order__created_at__lte=end_time,
-        ).values_list('order_id', flat=True).distinct()
         orders = Order.objects.filter(
-            id__in=order_ids,
             is_deleted=False,
-        ).select_related('customer', 'skill').order_by('-created_at')
+            created_at__gte=start_time,
+            created_at__lte=end_time,
+        ).filter(
+            Q(assigned_employee=employee) |
+            Q(order_members__employee=employee, order_members__is_deleted=False)
+        ).distinct().select_related('customer', 'skill').order_by('-created_at')
         order_data = [self._serialize_order(order) for order in orders]
 
         return success_response({
