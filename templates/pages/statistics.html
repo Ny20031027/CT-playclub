@@ -6,9 +6,10 @@
 </script>
 
 <div class="tabs">
-    <div class="tab-item active" onclick="switchTab('revenue')">收入统计</div>
-    <div class="tab-item" onclick="switchTab('employee')">员工排行</div>
-    <div class="tab-item" onclick="switchTab('customer')">客户排行</div>
+    <div class="tab-item active" onclick="switchTab('revenue', this)">收入统计</div>
+    <div class="tab-item" onclick="switchTab('employee', this)">员工排行</div>
+    <div class="tab-item" onclick="switchTab('dasherOrder', this)">打手下单榜</div>
+    <div class="tab-item" onclick="switchTab('customer', this)">客户排行</div>
 </div>
 
 <div id="revenueTab" style="display: block;">
@@ -53,6 +54,42 @@
     </div>
 </div>
 
+<div id="dasherOrderTab" style="display: none;">
+    <div class="card">
+        <div class="card-header">
+            <div>
+                <div class="card-title">打手下单榜单</div>
+                <div class="stats-subtitle" id="dasherOrderSubtitle">本月被老板下单最多的打手排行</div>
+            </div>
+            <div class="card-actions">
+                <select id="dasherOrderPeriod" onchange="loadDasherOrderRank()">
+                    <option value="week">本周</option>
+                    <option value="month" selected>本月</option>
+                    <option value="year">本年</option>
+                </select>
+            </div>
+        </div>
+        <div class="table-container">
+            <table>
+                <thead>
+                    <tr>
+                        <th>排名</th>
+                        <th>打手</th>
+                        <th>等级</th>
+                        <th>下单数</th>
+                        <th>订单金额</th>
+                        <th>统计周期</th>
+                        <th>操作</th>
+                    </tr>
+                </thead>
+                <tbody id="dasherOrderRankList">
+                    <tr><td colspan="7" class="empty-state"><i class="fa-solid fa-spinner fa-spin"></i><br>加载中...</td></tr>
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
 <div id="customerTab" style="display: none;">
     <div class="card">
         <div class="card-header">
@@ -77,19 +114,133 @@
     </div>
 </div>
 
+<div class="modal-overlay" id="dasherOrderDetailModal">
+    <div class="modal dasher-order-modal">
+        <div class="modal-header">
+            <div class="modal-title" id="dasherOrderDetailTitle">打手下单详情</div>
+            <div class="modal-close" onclick="hideModal('dasherOrderDetailModal')">&times;</div>
+        </div>
+        <div class="modal-body">
+            <div class="detail-summary" id="dasherOrderDetailSummary"></div>
+            <div class="table-container">
+                <table>
+                    <thead>
+                        <tr>
+                            <th>订单号</th>
+                            <th>老板</th>
+                            <th>技能</th>
+                            <th>游戏</th>
+                            <th>状态</th>
+                            <th>金额</th>
+                            <th>下单时间</th>
+                        </tr>
+                    </thead>
+                    <tbody id="dasherOrderDetailList">
+                        <tr><td colspan="7" class="empty-state"><i class="fa-solid fa-spinner fa-spin"></i><br>加载中...</td></tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+        <div class="modal-footer">
+            <button class="btn btn-default" onclick="hideModal('dasherOrderDetailModal')">关闭</button>
+        </div>
+    </div>
+</div>
+
+<style>
+    .stats-subtitle {
+        margin-top: 4px;
+        font-size: 12px;
+        color: #909399;
+        font-weight: normal;
+    }
+    .dasher-cell {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        min-width: 0;
+    }
+    .dasher-avatar {
+        width: 34px;
+        height: 34px;
+        border-radius: 50%;
+        object-fit: cover;
+        background: #e5e7eb;
+        flex: 0 0 34px;
+    }
+    .dasher-avatar-placeholder {
+        width: 34px;
+        height: 34px;
+        border-radius: 50%;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        color: #909399;
+        background: #f0f2f5;
+        flex: 0 0 34px;
+    }
+    .dasher-name {
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+    }
+    .link-btn {
+        border: 0;
+        background: transparent;
+        color: #409eff;
+        cursor: pointer;
+        padding: 0;
+    }
+    .link-btn:hover {
+        color: #66b1ff;
+    }
+    .dasher-order-modal {
+        width: 920px;
+        max-width: calc(100vw - 40px);
+    }
+    .dasher-order-modal .modal-body {
+        max-height: 68vh;
+        overflow: auto;
+    }
+    .detail-summary {
+        display: grid;
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+        gap: 10px;
+        margin-bottom: 16px;
+    }
+    .summary-item {
+        padding: 12px 14px;
+        border: 1px solid #ebeef5;
+        border-radius: 6px;
+        background: #f8fafc;
+    }
+    .summary-label {
+        display: block;
+        margin-bottom: 4px;
+        color: #909399;
+        font-size: 12px;
+    }
+    .summary-value {
+        color: #303133;
+        font-weight: 600;
+    }
+</style>
+
 <script>
     document.addEventListener('DOMContentLoaded', async function() {
         await loadRevenueStats();
         await loadEmployeeRank();
+        await loadDasherOrderRank();
         await loadCustomerRank();
     });
 
-    function switchTab(tab) {
+    function switchTab(tab, target) {
         document.querySelectorAll('.tab-item').forEach(t => t.classList.remove('active'));
-        event.target.classList.add('active');
+        if (target) target.classList.add('active');
         
         document.getElementById('revenueTab').style.display = tab === 'revenue' ? 'block' : 'none';
         document.getElementById('employeeTab').style.display = tab === 'employee' ? 'block' : 'none';
+        document.getElementById('dasherOrderTab').style.display = tab === 'dasherOrder' ? 'block' : 'none';
         document.getElementById('customerTab').style.display = tab === 'customer' ? 'block' : 'none';
     }
 
@@ -199,6 +350,151 @@
         } catch (error) {
             console.error('加载客户排行失败:', error);
         }
+    }
+
+    async function loadDasherOrderRank() {
+        const period = document.getElementById('dasherOrderPeriod').value || 'month';
+        const tbody = document.getElementById('dasherOrderRankList');
+        tbody.innerHTML = '<tr><td colspan="7" class="empty-state"><i class="fa-solid fa-spinner fa-spin"></i><br>加载中...</td></tr>';
+        try {
+            const result = await get('/statistics/stats/dasher-order-rank/', { period, limit: 20 });
+            if (result.code !== 200) return;
+
+            const data = result.data || {};
+            const ranks = data.results || [];
+            document.getElementById('dasherOrderSubtitle').textContent =
+                `${data.period_label || periodText(period)}被老板下单最多的打手排行`;
+
+            if (ranks.length === 0) {
+                tbody.innerHTML = '<tr><td colspan="7" class="empty-state"><i class="fa-solid fa-inbox"></i><br>暂无数据</td></tr>';
+                return;
+            }
+
+            const rangeText = `${data.start_date || '-'} 至 ${data.end_date || '-'}`;
+            tbody.innerHTML = ranks.map((r, i) => `
+                <tr>
+                    <td>${r.rank || i + 1}</td>
+                    <td>
+                        <div class="dasher-cell">
+                            ${dasherAvatarHtml(r)}
+                            <span class="dasher-name">${escapeHtml(r.employee_name || '-')}</span>
+                        </div>
+                    </td>
+                    <td>Lv.${r.level_num || 0}</td>
+                    <td>${r.order_count || 0} 单</td>
+                    <td>¥${formatMoney(r.total_amount)}</td>
+                    <td>${rangeText}</td>
+                    <td><button class="link-btn" onclick="showDasherOrderDetail(${Number(r.employee_id || 0)})">查看详情</button></td>
+                </tr>
+            `).join('');
+        } catch (error) {
+            console.error('加载打手下单榜失败:', error);
+            tbody.innerHTML = '<tr><td colspan="7" class="empty-state"><i class="fa-solid fa-circle-exclamation"></i><br>加载失败</td></tr>';
+        }
+    }
+
+    async function showDasherOrderDetail(employeeId) {
+        if (!employeeId) return;
+        const period = document.getElementById('dasherOrderPeriod').value || 'month';
+        const summary = document.getElementById('dasherOrderDetailSummary');
+        const tbody = document.getElementById('dasherOrderDetailList');
+        summary.innerHTML = '';
+        tbody.innerHTML = '<tr><td colspan="7" class="empty-state"><i class="fa-solid fa-spinner fa-spin"></i><br>加载中...</td></tr>';
+        showModal('dasherOrderDetailModal');
+
+        try {
+            const result = await get('/statistics/stats/dasher-order-detail/', { period, employee_id: employeeId });
+            if (result.code !== 200) return;
+
+            const detail = result.data || {};
+            const orders = detail.orders || [];
+            document.getElementById('dasherOrderDetailTitle').textContent =
+                `${detail.employee_name || '打手'} - ${detail.period_label || periodText(period)}下单详情`;
+            summary.innerHTML = `
+                ${summaryItem('打手', detail.employee_name || '-')}
+                ${summaryItem('周期', `${detail.start_date || '-'} 至 ${detail.end_date || '-'}`)}
+                ${summaryItem('订单数', `${detail.order_count || 0} 单`)}
+            `;
+
+            if (orders.length === 0) {
+                tbody.innerHTML = '<tr><td colspan="7" class="empty-state"><i class="fa-solid fa-inbox"></i><br>暂无订单</td></tr>';
+                return;
+            }
+
+            tbody.innerHTML = orders.map(order => `
+                <tr>
+                    <td>${escapeHtml(order.order_no || '-')}</td>
+                    <td>${escapeHtml(order.customer_name || '-')}</td>
+                    <td>${escapeHtml(order.skill_name || '-')}</td>
+                    <td>${escapeHtml(order.game_name || '-')}</td>
+                    <td><span class="badge ${getOrderStatusBadge(order.status)}">${escapeHtml(order.status_text || getOrderStatusText(order.status))}</span></td>
+                    <td>¥${formatMoney(order.pay_amount)}</td>
+                    <td>${escapeHtml(order.created_at || '-')}</td>
+                </tr>
+            `).join('');
+        } catch (error) {
+            console.error('加载打手下单详情失败:', error);
+            tbody.innerHTML = '<tr><td colspan="7" class="empty-state"><i class="fa-solid fa-circle-exclamation"></i><br>加载失败</td></tr>';
+        }
+    }
+
+    function dasherAvatarHtml(row) {
+        const url = row.employee_avatar || row.avatar || '';
+        if (!url) {
+            return '<span class="dasher-avatar-placeholder"><i class="fa-solid fa-user"></i></span>';
+        }
+        return `<img class="dasher-avatar" src="${escapeHtmlAttr(url)}" onerror="this.style.display='none';this.nextElementSibling.style.display='inline-flex';"><span class="dasher-avatar-placeholder" style="display:none;"><i class="fa-solid fa-user"></i></span>`;
+    }
+
+    function summaryItem(label, value) {
+        return `
+            <div class="summary-item">
+                <span class="summary-label">${escapeHtml(label)}</span>
+                <span class="summary-value">${escapeHtml(value)}</span>
+            </div>
+        `;
+    }
+
+    function periodText(period) {
+        const map = { week: '本周', month: '本月', year: '本年' };
+        return map[period] || '本月';
+    }
+
+    function escapeHtml(value) {
+        return String(value ?? '')
+            .replace(/&/g, '&amp;')
+            .replace(/</g, '&lt;')
+            .replace(/>/g, '&gt;')
+            .replace(/"/g, '&quot;')
+            .replace(/'/g, '&#39;');
+    }
+
+    function getOrderStatusText(status) {
+        const map = {
+            published: '可领取',
+            transferring: '转单中',
+            claimed: '待开始',
+            confirming: '待客户确认',
+            in_progress: '进行中',
+            completed: '已结束',
+            reviewed: '已评价',
+            cancelled: '已取消'
+        };
+        return map[status] || status || '-';
+    }
+
+    function getOrderStatusBadge(status) {
+        const map = {
+            published: 'badge-info',
+            transferring: 'badge-warning',
+            claimed: 'badge-primary',
+            confirming: 'badge-warning',
+            in_progress: 'badge-primary',
+            completed: 'badge-success',
+            reviewed: 'badge-success',
+            cancelled: 'badge-danger'
+        };
+        return map[status] || 'badge-info';
     }
 
     function getLevelText(level) {
