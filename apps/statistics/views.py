@@ -1,3 +1,5 @@
+import datetime
+
 from django.db.models import Sum, Count
 from django.db.models import Q
 from django.utils import timezone
@@ -10,7 +12,7 @@ from apps.common.media import build_media_url
 from apps.common.viewsets import BaseModelViewSet
 from .models import DailyStat, MonthlyStat, EmployeeRank
 from .serializers import DailyStatSerializer, MonthlyStatSerializer, EmployeeRankSerializer
-from apps.order.models import Order, OrderStatus
+from apps.order.models import Order, OrderMember, OrderStatus
 from apps.customer.models import Customer
 from apps.employee.models import Employee
 
@@ -40,6 +42,36 @@ class EmployeeRankViewSet(BaseModelViewSet):
 
 class StatisticsViewSet(viewsets.ViewSet):
     permission_classes = [IsAuthenticated]
+
+    def _positive_int(self, value, default):
+        try:
+            parsed = int(value)
+        except (TypeError, ValueError):
+            return default
+        return parsed if parsed > 0 else default
+
+    def _month_range(self):
+        today = timezone.now().date()
+        month_start = datetime.datetime.combine(today.replace(day=1), datetime.time.min)
+        now = timezone.now()
+        return month_start, now
+
+    def _serialize_order(self, order):
+        return {
+            'id': order.id,
+            'order_no': order.order_no,
+            'customer_id': order.customer_id,
+            'customer_name': order.customer.nickname if order.customer else '',
+            'skill_name': order.skill.name if order.skill else '',
+            'status': order.status,
+            'status_text': order.get_status_display(),
+            'game_name': order.game_name,
+            'server': order.server,
+            'duration': order.duration,
+            'quantity': order.quantity,
+            'pay_amount': float(order.pay_amount or 0),
+            'created_at': order.created_at.strftime('%Y-%m-%d %H:%M:%S'),
+        }
 
     @action(detail=False, methods=['get'], url_path='overview')
     def overview(self, request):
@@ -141,6 +173,80 @@ class StatisticsViewSet(viewsets.ViewSet):
                     'total_amount': float(item['total_amount'] or 0),
                 })
         return success_response(result)
+
+    @action(detail=False, methods=['get'], url_path='monthly-dasher-order-rank')
+    def monthly_dasher_order_rank(self, request):
+        limit = self._positive_int(request.query_params.get('limit'), 10)
+        month_start, now = self._month_range()
+
+        rank_rows = OrderMember.objects.filter(
+            is_deleted=False,
+            employee__isnull=False,
+            employee__is_deleted=False,
+            order__is_deleted=False,
+            order__created_at__gte=month_start,
+            order__created_at__lte=now,
+        ).values(
+            'employee_id',
+            'employee__nickname',
+            'employee__real_name',
+            'employee__avatar',
+            'employee__level',
+            'employee__level_num',
+        ).annotate(
+            order_count=Count('order_id', distinct=True),
+            total_amount=Sum('amount'),
+        ).order_by('-order_count', '-total_amount', 'employee_id')[:limit]
+
+        data = []
+        for index, row in enumerate(rank_rows, 1):
+            data.append({
+                'rank': index,
+                'employee_id': row['employee_id'],
+                'employee_name': row['employee__nickname'] or row['employee__real_name'] or '未命名',
+                'employee_avatar': build_media_url(row['employee__avatar'] or '', request),
+                'level': row['employee__level'] or '',
+                'level_num': row['employee__level_num'] or 0,
+                'order_count': row['order_count'] or 0,
+                'total_amount': float(row['total_amount'] or 0),
+            })
+        return success_response({
+            'month': month_start.strftime('%Y-%m'),
+            'results': data,
+        })
+
+    @action(detail=False, methods=['get'], url_path='monthly-dasher-order-detail')
+    def monthly_dasher_order_detail(self, request):
+        employee_id = self._positive_int(request.query_params.get('employee_id'), 0)
+        if not employee_id:
+            return success_response({'order_count': 0, 'orders': []})
+
+        month_start, now = self._month_range()
+        employee = Employee.objects.filter(id=employee_id, is_deleted=False).first()
+        if not employee:
+            return success_response({'order_count': 0, 'orders': []})
+
+        order_ids = OrderMember.objects.filter(
+            is_deleted=False,
+            employee=employee,
+            order__is_deleted=False,
+            order__created_at__gte=month_start,
+            order__created_at__lte=now,
+        ).values_list('order_id', flat=True).distinct()
+        orders = Order.objects.filter(
+            id__in=order_ids,
+            is_deleted=False,
+        ).select_related('customer', 'skill').order_by('-created_at')
+        order_data = [self._serialize_order(order) for order in orders]
+
+        return success_response({
+            'month': month_start.strftime('%Y-%m'),
+            'employee_id': employee.id,
+            'employee_name': employee.nickname or employee.real_name,
+            'employee_avatar': build_media_url(employee.avatar, request),
+            'order_count': len(order_data),
+            'orders': order_data,
+        })
 
     @action(detail=False, methods=['get'], url_path='order-status')
     def order_status(self, request):

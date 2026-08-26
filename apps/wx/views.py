@@ -6689,6 +6689,7 @@ def dasher_dashboard(request):
     today = timezone.now().date()
     today_start = datetime.datetime.combine(today, datetime.time.min)
     today_end = datetime.datetime.combine(today, datetime.time.max)
+    month_start = datetime.datetime.combine(today.replace(day=1), datetime.time.min)
 
     # ========== 全店今日订单数据 ==========
     shop_today_orders = Order.objects.filter(
@@ -6771,6 +6772,36 @@ def dasher_dashboard(request):
         total=Sum('commission_amount')
     )['total'] or 0
 
+    # ========== 本月回头客排行 ==========
+    customer_ranking_query = OrderMember.objects.filter(
+        employee=employee_obj,
+        is_deleted=False,
+        order__is_deleted=False,
+        order__created_at__gte=month_start,
+        order__created_at__lte=timezone.now(),
+        order__customer__isnull=False,
+    ).values(
+        'order__customer_id',
+        'order__customer__nickname',
+        'order__customer__avatar',
+        'order__customer__user__display_id',
+    ).annotate(
+        order_count=Count('order_id', distinct=True),
+        total_amount=Sum('order__pay_amount'),
+    ).order_by('-order_count', '-total_amount')[:5]
+
+    customer_ranking = []
+    for idx, row in enumerate(customer_ranking_query):
+        customer_ranking.append({
+            'rank': idx + 1,
+            'customer_id': row['order__customer_id'],
+            'nickname': row['order__customer__nickname'] or '未命名老板',
+            'avatar': field_file_url(row['order__customer__avatar'], request),
+            'display_id': row['order__customer__user__display_id'] or '',
+            'order_count': row['order_count'] or 0,
+            'total_amount': float(row['total_amount'] or 0),
+        })
+
     return success_response({
         'shop': {
             'order_count': shop_order_count,
@@ -6789,7 +6820,8 @@ def dasher_dashboard(request):
             'total_amount': float(my_total_amount),
             'work_status': employee_obj.work_status,
             'work_status_display': '上班中' if employee_obj.work_status == 'on_duty' else '下班中',
-        }
+        },
+        'customer_ranking': customer_ranking,
     })
 
 

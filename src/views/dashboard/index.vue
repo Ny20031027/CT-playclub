@@ -77,20 +77,89 @@
           <el-table-column prop="rating" label="评分" />
         </el-table>
       </el-card>
+      <el-card class="list-card">
+        <template #header>
+          <div class="card-header">
+            <span>本月打手下单榜</span>
+            <span class="header-sub">按老板下单数排序</span>
+          </div>
+        </template>
+        <el-table :data="monthlyDasherRanking" border style="width: 100%">
+          <el-table-column prop="rank" label="排名" width="60">
+            <template #default="scope">
+              <el-tag v-if="scope.row.rank === 1" type="danger">1</el-tag>
+              <el-tag v-else-if="scope.row.rank === 2" type="warning">2</el-tag>
+              <el-tag v-else-if="scope.row.rank === 3" type="success">3</el-tag>
+              <span v-else>{{ scope.row.rank }}</span>
+            </template>
+          </el-table-column>
+          <el-table-column label="打手" min-width="140">
+            <template #default="scope">
+              <div class="employee-cell">
+                <el-avatar :size="32" :src="scope.row.employee_avatar" />
+                <span>{{ scope.row.employee_name }}</span>
+              </div>
+            </template>
+          </el-table-column>
+          <el-table-column prop="order_count" label="本月下单" width="100">
+            <template #default="scope">{{ scope.row.order_count }} 单</template>
+          </el-table-column>
+          <el-table-column prop="total_amount" label="订单金额" width="110">
+            <template #default="scope">¥{{ scope.row.total_amount }}</template>
+          </el-table-column>
+          <el-table-column label="操作" width="100" fixed="right">
+            <template #default="scope">
+              <el-button type="primary" link @click="openDasherDetail(scope.row)">查看详情</el-button>
+            </template>
+          </el-table-column>
+        </el-table>
+      </el-card>
     </div>
+
+    <el-dialog v-model="detailVisible" title="本月下单详情" width="860px">
+      <el-descriptions :column="3" border class="detail-summary">
+        <el-descriptions-item label="打手">{{ currentDasherDetail.employee_name || '-' }}</el-descriptions-item>
+        <el-descriptions-item label="月份">{{ currentDasherDetail.month || '-' }}</el-descriptions-item>
+        <el-descriptions-item label="订单数">{{ currentDasherDetail.order_count || 0 }} 单</el-descriptions-item>
+      </el-descriptions>
+      <el-table v-loading="detailLoading" :data="currentDasherDetail.orders || []" border style="width: 100%">
+        <el-table-column prop="order_no" label="订单号" min-width="170" />
+        <el-table-column prop="customer_name" label="老板" width="120" />
+        <el-table-column prop="game_name" label="游戏" width="120" />
+        <el-table-column prop="status_text" label="状态" width="100">
+          <template #default="scope">
+            <el-tag :type="getStatusType(scope.row.status)">{{ scope.row.status_text || getStatusText(scope.row.status) }}</el-tag>
+          </template>
+        </el-table-column>
+        <el-table-column prop="pay_amount" label="金额" width="100">
+          <template #default="scope">¥{{ scope.row.pay_amount }}</template>
+        </el-table-column>
+        <el-table-column prop="created_at" label="下单时间" min-width="160" />
+      </el-table>
+    </el-dialog>
   </div>
 </template>
 
 <script setup>
 import { ref, onMounted, onUnmounted } from 'vue'
 import * as echarts from 'echarts'
-import { getOverviewApi, getTrendApi, getEmployeeRankingApi } from '@/api/statistics'
+import {
+  getOverviewApi,
+  getTrendApi,
+  getEmployeeRankingApi,
+  getMonthlyDasherOrderRankApi,
+  getMonthlyDasherOrderDetailApi
+} from '@/api/statistics'
 import { getOrderListApi } from '@/api/order'
 import { ShoppingCart, Wallet, User, UserFilled } from '@element-plus/icons-vue'
 
 const overviewData = ref({})
 const recentOrders = ref([])
 const employeeRanking = ref([])
+const monthlyDasherRanking = ref([])
+const detailVisible = ref(false)
+const detailLoading = ref(false)
+const currentDasherDetail = ref({})
 
 const orderChartRef = ref(null)
 const revenueChartRef = ref(null)
@@ -101,9 +170,14 @@ const getStatusType = (status) => {
   const map = {
     'pending_payment': 'warning',
     'pending_assign': 'info',
+    'published': 'info',
+    'claimed': 'primary',
+    'confirming': 'warning',
     'in_progress': 'primary',
     'completed': 'success',
+    'reviewed': 'success',
     'canceled': 'danger',
+    'cancelled': 'danger',
     'refunded': 'danger'
   }
   return map[status] || 'info'
@@ -113,9 +187,14 @@ const getStatusText = (status) => {
   const map = {
     'pending_payment': '待支付',
     'pending_assign': '待分配',
+    'published': '可领取',
+    'claimed': '待开始',
+    'confirming': '待客户确认',
     'in_progress': '进行中',
     'completed': '已完成',
+    'reviewed': '已评价',
     'canceled': '已取消',
+    'cancelled': '已取消',
     'refunded': '已退款'
   }
   return map[status] || status
@@ -159,16 +238,53 @@ const initCharts = () => {
 
 const fetchData = async () => {
   try {
-    const [overviewRes, ordersRes, rankingRes] = await Promise.all([
+    const [overviewRes, ordersRes, rankingRes, monthlyRankRes] = await Promise.all([
       getOverviewApi(),
       getOrderListApi({ page_size: 5 }),
-      getEmployeeRankingApi({ page_size: 5 })
+      getEmployeeRankingApi({ limit: 5 }),
+      getMonthlyDasherOrderRankApi({ limit: 5 })
     ])
-    overviewData.value = overviewRes.data
-    recentOrders.value = ordersRes.data.results || []
-    employeeRanking.value = rankingRes.data.results || []
+    const overview = overviewRes.data || {}
+    overviewData.value = {
+      ...overview,
+      totalOrders: overview.totalOrders ?? overview.today_orders ?? 0,
+      totalRevenue: overview.totalRevenue ?? overview.today_amount ?? 0,
+      onlineEmployees: overview.onlineEmployees ?? overview.active_employees ?? 0,
+      newCustomers: overview.newCustomers ?? overview.total_customers ?? 0
+    }
+    recentOrders.value = (ordersRes.data.results || []).map((order) => ({
+      ...order,
+      employee_name: order.employee_name || order.assigned_employee_name || (order.members && order.members[0] && order.members[0].employee_name) || '-',
+      amount: order.amount ?? order.pay_amount ?? 0
+    }))
+    employeeRanking.value = (rankingRes.data.results || rankingRes.data || []).map((employee) => ({
+      ...employee,
+      name: employee.name || employee.employee_name,
+      revenue: employee.revenue ?? employee.total_amount ?? 0,
+      rating: employee.rating ?? employee.avg_rating ?? '-'
+    }))
+    monthlyDasherRanking.value = monthlyRankRes.data.results || []
   } catch (error) {
     console.error('获取数据失败', error)
+  }
+}
+
+const openDasherDetail = async (row) => {
+  detailVisible.value = true
+  detailLoading.value = true
+  currentDasherDetail.value = {
+    employee_id: row.employee_id,
+    employee_name: row.employee_name,
+    order_count: row.order_count,
+    orders: []
+  }
+  try {
+    const res = await getMonthlyDasherOrderDetailApi({ employee_id: row.employee_id })
+    currentDasherDetail.value = res.data || currentDasherDetail.value
+  } catch (error) {
+    console.error('获取打手订单详情失败', error)
+  } finally {
+    detailLoading.value = false
   }
 }
 
@@ -236,4 +352,33 @@ onUnmounted(() => {
 }
 
 .list-card { height: 400px; }
+
+.card-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.header-sub {
+  font-size: 12px;
+  color: #909399;
+  font-weight: normal;
+}
+
+.employee-cell {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+}
+
+.employee-cell span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.detail-summary {
+  margin-bottom: 16px;
+}
 </style>
