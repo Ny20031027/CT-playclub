@@ -11,7 +11,7 @@ from apps.employee.models import Employee, EmployeeSkill
 from apps.order.models import Order, OrderMember
 
 
-class MonthlyDasherOrderRankTests(TestCase):
+class DasherOrderRankTests(TestCase):
     def setUp(self):
         self.client = APIClient()
         self.admin = User.objects.create_user(username='stats-admin')
@@ -80,9 +80,12 @@ class MonthlyDasherOrderRankTests(TestCase):
         self.create_order('MONTH-RANK-003', self.first_customer, self.second_employee, amount=60)
         self.create_order('MONTH-RANK-OLD', self.first_customer, self.first_employee, created_at=last_month, amount=200)
 
-        rank_payload = self.client.get('/api/statistics/stats/monthly-dasher-order-rank/?limit=5').json()
+        rank_payload = self.client.get(
+            '/api/statistics/stats/dasher-order-rank/?period=month&limit=5'
+        ).json()
 
         self.assertEqual(rank_payload['code'], 200)
+        self.assertEqual(rank_payload['data']['period'], 'month')
         rank_list = rank_payload['data']['results']
         self.assertEqual(rank_list[0]['employee_id'], self.first_employee.id)
         self.assertEqual(rank_list[0]['order_count'], 2)
@@ -90,7 +93,7 @@ class MonthlyDasherOrderRankTests(TestCase):
         self.assertEqual(rank_list[1]['order_count'], 1)
 
         detail_payload = self.client.get(
-            f'/api/statistics/stats/monthly-dasher-order-detail/?employee_id={self.first_employee.id}'
+            f'/api/statistics/stats/dasher-order-detail/?period=month&employee_id={self.first_employee.id}'
         ).json()
 
         self.assertEqual(detail_payload['code'], 200)

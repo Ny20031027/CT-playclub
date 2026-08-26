@@ -50,11 +50,21 @@ class StatisticsViewSet(viewsets.ViewSet):
             return default
         return parsed if parsed > 0 else default
 
-    def _month_range(self):
+    def _period_range(self, period):
         today = timezone.now().date()
-        month_start = datetime.datetime.combine(today.replace(day=1), datetime.time.min)
+        if period == 'week':
+            start_date = today - datetime.timedelta(days=today.weekday())
+            label = '本周'
+        elif period == 'year':
+            start_date = today.replace(month=1, day=1)
+            label = '本年'
+        else:
+            period = 'month'
+            start_date = today.replace(day=1)
+            label = '本月'
+        start = datetime.datetime.combine(start_date, datetime.time.min)
         now = timezone.now()
-        return month_start, now
+        return period, label, start, now
 
     def _serialize_order(self, order):
         return {
@@ -174,18 +184,15 @@ class StatisticsViewSet(viewsets.ViewSet):
                 })
         return success_response(result)
 
-    @action(detail=False, methods=['get'], url_path='monthly-dasher-order-rank')
-    def monthly_dasher_order_rank(self, request):
-        limit = self._positive_int(request.query_params.get('limit'), 10)
-        month_start, now = self._month_range()
-
+    def _dasher_order_rank_payload(self, request, period='month', limit=10):
+        period, period_label, start_time, end_time = self._period_range(period)
         rank_rows = OrderMember.objects.filter(
             is_deleted=False,
             employee__isnull=False,
             employee__is_deleted=False,
             order__is_deleted=False,
-            order__created_at__gte=month_start,
-            order__created_at__lte=now,
+            order__created_at__gte=start_time,
+            order__created_at__lte=end_time,
         ).values(
             'employee_id',
             'employee__nickname',
@@ -210,18 +217,20 @@ class StatisticsViewSet(viewsets.ViewSet):
                 'order_count': row['order_count'] or 0,
                 'total_amount': float(row['total_amount'] or 0),
             })
-        return success_response({
-            'month': month_start.strftime('%Y-%m'),
+        return {
+            'period': period,
+            'period_label': period_label,
+            'start_date': start_time.strftime('%Y-%m-%d'),
+            'end_date': end_time.strftime('%Y-%m-%d'),
             'results': data,
-        })
+        }
 
-    @action(detail=False, methods=['get'], url_path='monthly-dasher-order-detail')
-    def monthly_dasher_order_detail(self, request):
+    def _dasher_order_detail_payload(self, request, period='month'):
         employee_id = self._positive_int(request.query_params.get('employee_id'), 0)
         if not employee_id:
             return success_response({'order_count': 0, 'orders': []})
 
-        month_start, now = self._month_range()
+        period, period_label, start_time, end_time = self._period_range(period)
         employee = Employee.objects.filter(id=employee_id, is_deleted=False).first()
         if not employee:
             return success_response({'order_count': 0, 'orders': []})
@@ -230,8 +239,8 @@ class StatisticsViewSet(viewsets.ViewSet):
             is_deleted=False,
             employee=employee,
             order__is_deleted=False,
-            order__created_at__gte=month_start,
-            order__created_at__lte=now,
+            order__created_at__gte=start_time,
+            order__created_at__lte=end_time,
         ).values_list('order_id', flat=True).distinct()
         orders = Order.objects.filter(
             id__in=order_ids,
@@ -240,13 +249,36 @@ class StatisticsViewSet(viewsets.ViewSet):
         order_data = [self._serialize_order(order) for order in orders]
 
         return success_response({
-            'month': month_start.strftime('%Y-%m'),
+            'period': period,
+            'period_label': period_label,
+            'start_date': start_time.strftime('%Y-%m-%d'),
+            'end_date': end_time.strftime('%Y-%m-%d'),
             'employee_id': employee.id,
             'employee_name': employee.nickname or employee.real_name,
             'employee_avatar': build_media_url(employee.avatar, request),
             'order_count': len(order_data),
             'orders': order_data,
         })
+
+    @action(detail=False, methods=['get'], url_path='dasher-order-rank')
+    def dasher_order_rank(self, request):
+        period = request.query_params.get('period', 'month')
+        limit = self._positive_int(request.query_params.get('limit'), 10)
+        return success_response(self._dasher_order_rank_payload(request, period, limit))
+
+    @action(detail=False, methods=['get'], url_path='dasher-order-detail')
+    def dasher_order_detail(self, request):
+        period = request.query_params.get('period', 'month')
+        return self._dasher_order_detail_payload(request, period)
+
+    @action(detail=False, methods=['get'], url_path='monthly-dasher-order-rank')
+    def monthly_dasher_order_rank(self, request):
+        limit = self._positive_int(request.query_params.get('limit'), 10)
+        return success_response(self._dasher_order_rank_payload(request, 'month', limit))
+
+    @action(detail=False, methods=['get'], url_path='monthly-dasher-order-detail')
+    def monthly_dasher_order_detail(self, request):
+        return self._dasher_order_detail_payload(request, 'month')
 
     @action(detail=False, methods=['get'], url_path='order-status')
     def order_status(self, request):
